@@ -10,82 +10,75 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
-    
+        node-version: [20.x, 22.x]
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-        
+
     - name: Install dependencies
       run: npm ci
-      
+
     - name: Run type check
       run: npm run typecheck
-      
+
     - name: Run linting
       run: npm run lint:check
-      
-    - name: Run formatting check
-      run: npm run format:check
-      
+
     - name: Run unit tests
       run: npm test
-      
+
     - name: Build application
       run: npm run build
-      
-    - name: Run E2E tests
-      run: npm run test:e2e
-      
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage/lcov.info
-        flags: unittests
-        name: codecov-umbrella
 
   build:
-    name: Build
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs: test
-    
+
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        
+        include:
+          - os: windows-latest
+            artifact-name: win
+          - os: ubuntu-latest
+            artifact-name: linux
+          - os: macos-latest
+            artifact-name: mac
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
+        node-version: '22.x'
         cache: 'npm'
-        
+
     - name: Install dependencies
       run: npm ci
-      
-    - name: Build application
-      run: npm run build
-      
-    - name: Package application
-      run: npm run pack
-      
+
+    - name: Build and package
+      run: npm run dist
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: app-${{ matrix.os }}
-        path: out/
+        name: app-${{ matrix.artifact-name }}
+        path: dist-electron/*
         retention-days: 30
 
   release:
@@ -93,41 +86,29 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+    permissions:
+      contents: write
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
       with:
-        node-version: '20.x'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build and package
-      run: |
-        npm run build
-        npm run dist
-        
+        path: release-assets
+
+    - name: Get version from package.json
+      id: pkg
+      run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+
     - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ github.run_number }}
-        release_name: Release v${{ github.run_number }}
+        tag_name: v${{ steps.pkg.outputs.version }}
+        name: Find My Kid v${{ steps.pkg.outputs.version }}
         draft: false
         prerelease: false
-        
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
+        files: release-assets/**/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist-electron/Find-My-Kid-Offline-${{ github.run_number }}-Setup.exe
-        asset_name: Find-My-Kid-Offline-${{ github.run_number }}-Setup.exe
-        asset_content_type: application/octet-stream

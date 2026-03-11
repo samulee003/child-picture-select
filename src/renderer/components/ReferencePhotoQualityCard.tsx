@@ -3,7 +3,7 @@
  * 顯示單張參考照片及其質量評估結果
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { GlassCard } from './GlassCard';
 import { ModernButton } from './ModernButton';
 import { ImagePreview } from './ImagePreview';
@@ -41,7 +41,7 @@ export function ReferencePhotoQualityCard({
     return '較差';
   };
 
-  const getEnhancementSuggestions = useCallback(() => {
+  const _getEnhancementSuggestions = useCallback(() => {
     if (!quality?.recommendations) return [];
     return quality.recommendations;
   }, [quality]);
@@ -225,7 +225,7 @@ interface QualitySummaryProps {
   avgScore: number;
 }
 
-export function QualitySummary({ total, goodCount, warningCount, poorCount, avgScore }: QualitySummaryProps) {
+export function QualitySummary({ total: _total, goodCount, warningCount, poorCount, avgScore }: QualitySummaryProps) {
   return (
     <GlassCard padding="lg" style={{ display: 'flex', gap: theme.spacing[4] }}>
       <div style={{ textAlign: 'center', flex: 1 }}>

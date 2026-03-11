@@ -14,23 +14,24 @@ try {
   console.warn('Clean step failed, continuing...');
 }
 
-// Type checking (skipping due to known issues)
-console.log('⚠️  Skipping type check (known issues)...');
-// try {
-//   execSync('npm run typecheck', { stdio: 'inherit' });
-// } catch (error) {
-//   console.error('❌ Type check failed');
-//   process.exit(1);
-// }
+// Type checking
+console.log('🔍 Running type check...');
+try {
+  execSync('npm run typecheck', { stdio: 'inherit' });
+  console.log('✅ Type check passed');
+} catch (error) {
+  console.error('❌ Type check failed');
+  process.exit(1);
+}
 
-// Linting (skipping for now)
-console.log('⚠️  Skipping linting...');
-// try {
-//   execSync('npm run lint:check', { stdio: 'inherit' });
-// } catch (error) {
-//   console.error('❌ Linting failed');
-//   process.exit(1);
-// }
+// Linting
+console.log('🔍 Running lint check...');
+try {
+  execSync('npm run lint:check', { stdio: 'inherit' });
+  console.log('✅ Lint check passed');
+} catch (error) {
+  console.warn('⚠️  Lint check had warnings, continuing...');
+}
 
 // Build application - use the individual build scripts instead of recursive call
 console.log('📦 Building application...');
