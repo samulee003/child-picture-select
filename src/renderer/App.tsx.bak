@@ -1,0 +1,819 @@
+/**
+ * Modern App Component with Beautiful UI
+ * Features glassmorphism, gradients, animations, and contemporary design
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ModernButton } from './components/ModernButton';
+import { GlassCard } from './components/GlassCard';
+import { ModernProgress } from './components/ModernProgress';
+import { StatusBadge } from './components/StatusBadge';
+import { ModernLayout, ModernSection, ModernGrid } from './components/ModernLayout';
+import { DragDropZone } from './components/DragDropZone';
+import { ImagePreview } from './components/ImagePreview';
+import { LoadingSpinner } from './components/LoadingSpinner';
+import { HelpModal } from './components/HelpModal';
+import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
+import { theme, animations, modernStyles } from './styles/theme';
+import type { MatchResult, ScanProgress, AppSettings, ElectronAPI } from '../types/api';
+
+export function App() {
+  const [folder, setFolder] = useState<string>('');
+  const [refPaths, setRefPaths] = useState<string>('');
+  const [threshold, setThreshold] = useState<number>(0.6);
+  const [topN, setTopN] = useState<number>(50);
+  const [results, setResults] = useState<MatchResult[]>([]);
+  const [status, setStatus] = useState<string>('idle');
+  const [progress, setProgress] = useState<ScanProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refsLoaded, setRefsLoaded] = useState<number>(0);
+  const [settings, setSettings] = useState<AppSettings>({
+    threshold: 0.6,
+    topN: 50,
+    lastReferencePaths: [],
+    lastFolder: ''
+  });
+  const scanStartTimeRef = useRef<number>();
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const isProcessing = status.includes('ing...');
+
+  // Load settings on mount
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('app-settings');
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        setSettings(parsed);
+        setThreshold(parsed.threshold || 0.6);
+        setTopN(parsed.topN || 50);
+        setRefPaths(parsed.lastReferencePaths?.join('\n') || '');
+        setFolder(parsed.lastFolder || '');
+      } catch (err) {
+        console.warn('Failed to load settings:', err);
+      }
+    }
+  }, []);
+
+  // Save settings when they change
+  useEffect(() => {
+    const newSettings = {
+      ...settings,
+      threshold,
+      topN,
+      lastReferencePaths: refPaths.split('\n').filter(p => p.trim()),
+      lastFolder: folder
+    };
+    setSettings(newSettings);
+    localStorage.setItem('app-settings', JSON.stringify(newSettings));
+  }, [threshold, topN, refPaths, folder]);
+
+  // Setup progress listener
+  useEffect(() => {
+    if (!window.api) return;
+    
+    const api = window.api as any;
+    
+    api.onScanProgress((prog: ScanProgress) => {
+      setProgress(prog);
+    });
+
+    return () => {
+      api.removeScanProgressListener();
+    };
+  }, []);
+
+  // Handle drag and drop for reference files
+  const handleRefFilesDrop = useCallback((files: string[]) => {
+    const imageFiles = files.filter(file => 
+      /\.(jpg|jpeg|png|gif|bmp|webp|heic|heif)$/i.test(file)
+    );
+    
+    if (imageFiles.length > 0) {
+      const currentPaths = refPaths.split('\n').filter(p => p.trim());
+      const newPaths = [...new Set([...currentPaths, ...imageFiles])];
+      setRefPaths(newPaths.join('\n'));
+    }
+  }, [refPaths]);
+
+  // Handle drag and drop for folder
+  const handleFolderDrop = useCallback((folderPath: string) => {
+    setFolder(folderPath);
+  }, []);
+
+  // Keyboard shortcuts
+  const handleSaveSettings = useCallback(() => {
+    const tempError = error;
+    setError('設定已儲存');
+    setTimeout(() => setError(tempError), 2000);
+  }, [error]);
+
+  const handleRun = useCallback(() => {
+    if (!isProcessing && folder.trim() && refsLoaded > 0) {
+      handleRunScan();
+    }
+  }, [isProcessing, folder, refsLoaded]);
+
+  const handleExport = useCallback(() => {
+    if (results.length > 0 && !isProcessing) {
+      handleExportResults();
+    }
+  }, [results.length, isProcessing]);
+
+  const handleClear = useCallback(() => {
+    setResults([]);
+    setError(null);
+  }, []);
+
+  const handleHelp = useCallback(() => {
+    setIsHelpOpen(true);
+  }, []);
+
+  useKeyboardShortcuts([
+    { ...commonShortcuts.save, action: handleSaveSettings },
+    { ...commonShortcuts.run, action: handleRun },
+    { ...commonShortcuts.export, action: handleExport },
+    { ...commonShortcuts.clear, action: handleClear },
+    { ...commonShortcuts.help, action: handleHelp },
+    { key: 'Escape', action: () => setIsHelpOpen(false) }
+  ]);
+
+  const handleEmbedRefs = useCallback(async () => {
+    const files = refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (files.length === 0) {
+      setError('請至少提供一張參考照片');
+      return;
+    }
+    setError(null);
+    setStatus('embedding refs...');
+    if (!window.api) {
+      setError('API 未初始化');
+      return;
+    }
+    try {
+      const result = await window.api!.embedReferences(files);
+      if (!result.ok) {
+        setError(`嵌入參考照片失敗: ${(result as any).error || '未知錯誤'}`);
+        setStatus('idle');
+        return;
+      }
+      setRefsLoaded(result.count || files.length);
+      setStatus('refs ready');
+    } catch (err: any) {
+      setError(`錯誤: ${err?.message || '未知錯誤'}`);
+      setStatus('idle');
+    }
+  }, [refPaths]);
+
+  const handleRunScan = useCallback(async () => {
+    if (!folder || folder.trim() === '') {
+      setError('請提供照片資料夾路徑');
+      return;
+    }
+    if (refsLoaded === 0) {
+      setError('請先載入參考照片');
+      return;
+    }
+    setError(null);
+    setStatus('scanning...');
+    setProgress(null);
+    scanStartTimeRef.current = Date.now();
+    
+    if (!window.api) {
+      setError('API 未初始化');
+      return;
+    }
+    
+    try {
+      const scanResult = await window.api!.runScan(folder);
+      if (!scanResult.ok) {
+        setError(`掃描失敗: ${scanResult.error || '未知錯誤'}`);
+        setStatus('idle');
+        setProgress(null);
+        return;
+      }
+      
+      setStatus('matching...');
+      setProgress(null);
+      scanStartTimeRef.current = undefined;
+      
+      const matched = await window.api!.runMatch({ topN, threshold });
+      setResults(matched);
+      setStatus('done');
+      if (matched.length === 0) {
+        setError('未找到匹配的照片，請嘗試降低門檻值或增加參考照片數量');
+      }
+    } catch (err: any) {
+      setError(`錯誤: ${err?.message || '未知錯誤'}`);
+      setStatus('idle');
+      setProgress(null);
+      scanStartTimeRef.current = undefined;
+    }
+  }, [folder, threshold, topN, refsLoaded]);
+
+  const handleExportResults = useCallback(async () => {
+    if (results.length === 0) {
+      setError('沒有可匯出的結果');
+      return;
+    }
+    setError(null);
+    const out = folder ? folder + '_matched_export' : 'matched_export';
+    const files = results.map(r => r.path);
+    setStatus('exporting...');
+    if (!window.api) {
+      setError('API 未初始化');
+      return;
+    }
+    try {
+      const result = await window.api!.exportCopy(files, out);
+      if (!result.ok) {
+        setError(`匯出失敗: ${result.error || '未知錯誤'}`);
+        setStatus('done');
+        return;
+      }
+      setStatus(`exported (${result.copied || 0} files)`);
+    } catch (err: any) {
+      setError(`匯出錯誤: ${err?.message || '未知錯誤'}`);
+      setStatus('done');
+    }
+  }, [results, folder]);
+
+  const getStatusText = () => {
+    switch (status) {
+      case 'idle': return '就緒';
+      case 'embedding refs...': return '載入參考照片中...';
+      case 'refs ready': return `已載入 ${refsLoaded} 張參考照片`;
+      case 'scanning...': return '掃描照片中...';
+      case 'matching...': return '比對中...';
+      case 'done': return '完成';
+      case 'exporting...': return '匯出中...';
+      default: return status;
+    }
+  };
+
+  const getStatusType = () => {
+    if (status === 'idle') return 'idle';
+    if (status.includes('ing...')) return 'processing';
+    if (status.includes('ready') || status.includes('done') || status.includes('exported')) return 'success';
+    return 'idle';
+  };
+
+  return (
+    <ModernLayout>
+      {/* Header */}
+      <GlassCard padding="lg" glow hover>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: theme.spacing[4],
+        }}>
+          <div>
+            <h1 style={{
+              margin: 0,
+              fontSize: theme.typography.fontSize['4xl'],
+              fontWeight: theme.typography.fontWeight.bold,
+              background: theme.gradients.primary,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              marginBottom: theme.spacing[2],
+            }}>
+              Find My Kid
+            </h1>
+            <p style={{
+              margin: 0,
+              fontSize: theme.typography.fontSize.lg,
+              color: theme.colors.neutral[300],
+              fontWeight: theme.typography.fontWeight.normal,
+            }}>
+              從大量照片中找出與參考照片相符的小孩照片
+            </p>
+          </div>
+          
+          <StatusBadge status={getStatusType()} size="lg">
+            {getStatusText()}
+          </StatusBadge>
+        </div>
+
+        {/* Help Button */}
+        <div style={{ textAlign: 'right', marginBottom: theme.spacing[4] }}>
+          <ModernButton
+            variant="ghost"
+            size="sm"
+            onClick={handleHelp}
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path fillRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2c0-1.5.45-2.1 1.17-2.83l1.24-1.26c.59-.58.98-1.1.98-2.21 0-2.58-1.41-4.7-4-4.7s-4 2.12-4 4.7c0 1.11.39 1.63.98 2.21l1.24 1.26C9.55 11.9 10 12.5 10 14h2c0-1.5-.45-2.1-1.17-2.83l-.9-.92z" clipRule="evenodd" />
+              </svg>
+            }
+          >
+            說明
+          </ModernButton>
+        </div>
+      </GlassCard>
+
+      {/* Error Alert */}
+      {error && (
+        <GlassCard padding="md" style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          animation: 'slideIn 0.3s ease-out',
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            color: theme.colors.error[600],
+          }}>
+            <span style={{
+              fontSize: theme.typography.fontSize.sm,
+              fontWeight: theme.typography.fontWeight.medium,
+            }}>
+              {error}
+            </span>
+            <ModernButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setError(null)}
+              style={{
+                color: theme.colors.error[600],
+                padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
+              }}
+            >
+              ×
+            </ModernButton>
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Progress Bar */}
+      {progress && (
+        <GlassCard padding="lg" style={{ animation: 'slideIn 0.3s ease-out' }}>
+          <ModernProgress
+            value={progress.current}
+            max={progress.total}
+            label="掃描進度"
+            showPercentage={true}
+            color="primary"
+            size="lg"
+            animated={true}
+          />
+          {progress.path && (
+            <div style={{
+              fontSize: theme.typography.fontSize.sm,
+              color: theme.colors.neutral[300],
+              marginTop: theme.spacing[3],
+              textAlign: 'center',
+              wordBreak: 'break-all',
+            }}>
+              正在處理: {progress.path.split(/[/\\]/).pop()}
+            </div>
+          )}
+        </GlassCard>
+      )}
+
+      {/* Main Content Grid */}
+      <ModernGrid columns={2} gap="lg">
+        {/* Left Column - Input Section */}
+        <div>
+          {/* Step 1: Load Reference Photos */}
+          <ModernSection
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: theme.gradients.primary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: theme.colors.neutral[0],
+                  fontWeight: theme.typography.fontWeight.bold,
+                  fontSize: theme.typography.fontSize.sm,
+                }}>
+                  1
+                </div>
+                載入參考照片
+              </div>
+            }
+            description="提供 3-10 張清晰的小孩照片作為參考"
+          >
+            <div style={{ marginBottom: theme.spacing[4] }}>
+              <label style={{
+                display: 'block',
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+                color: theme.colors.neutral[200],
+                marginBottom: theme.spacing[2],
+              }}>
+                參考照片路徑（每行一個檔案）
+              </label>
+              <DragDropZone
+                onFilesDrop={handleRefFilesDrop}
+                accept="files"
+                disabled={isProcessing}
+                style={{ marginBottom: theme.spacing[3] }}
+              >
+                <textarea
+                  style={{
+                    ...modernStyles.input.base,
+                    ...modernStyles.input.textarea,
+                    minHeight: '120px',
+                  }}
+                  placeholder="例如：&#10;C:\Photos\child\photo1.jpg&#10;C:\Photos\child\photo2.jpg&#10;C:\Photos\child\photo3.jpg&#10;&#10;或直接拖放圖片檔案到這裡"
+                  value={refPaths}
+                  onChange={(e) => setRefPaths(e.target.value)}
+                  disabled={isProcessing}
+                />
+              </DragDropZone>
+            </div>
+
+            <ModernButton
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={status === 'embedding refs...'}
+              disabled={isProcessing || refPaths.trim() === ''}
+              onClick={handleEmbedRefs}
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21l7.07-7.07-1.41-1.41z" />
+                  <path d="M20.49 19l-5.73-5.73C15.53 12.2 14.11 12 12.5 12c-1.61 0-3.09.59-4.23 1.57l5.73 5.73c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41L12.5 14.5c-.39-.39-1.02-.39-1.41 0z" />
+                </svg>
+              }
+            >
+              {refsLoaded > 0 ? `重新載入 (已載入 ${refsLoaded} 張)` : '載入參考照片'}
+            </ModernButton>
+          </ModernSection>
+            <div style={{ marginBottom: theme.spacing[4] }}>
+              <label style={{
+                display: 'block',
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+                color: theme.colors.neutral[200],
+                marginBottom: theme.spacing[2],
+              }}>
+                參考照片路徑（每行一個檔案）
+              </label>
+              <DragDropZone
+                onFilesDrop={handleRefFilesDrop}
+                accept="files"
+                disabled={isProcessing}
+                style={{ marginBottom: theme.spacing[3] }}
+              >
+                <textarea
+                  style={{
+                    ...modernStyles.input.base,
+                    ...modernStyles.input.textarea,
+                    minHeight: '120px',
+                  }}
+                  placeholder="例如：&#10;C:\Photos\child\photo1.jpg&#10;C:\Photos\child\photo2.jpg&#10;C:\Photos\child\photo3.jpg&#10;&#10;或直接拖放圖片檔案到這裡"
+                  value={refPaths}
+                  onChange={(e) => setRefPaths(e.target.value)}
+                  disabled={isProcessing}
+                />
+              </DragDropZone>
+            </div>
+            
+            <ModernButton
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={status === 'embedding refs...'}
+              disabled={isProcessing || refPaths.trim() === ''}
+              onClick={handleEmbedRefs}
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21l7.07-7.07-1.41-1.41z" />
+                  <path d="M20.49 19l-5.73-5.73C15.53 12.2 14.11 12 12.5 12c-1.61 0-3.09.59-4.23 1.57l5.73 5.73c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41L12.5 14.5c-.39-.39-1.02-.39-1.41 0z" />
+                </svg>
+              }
+            >
+              {refsLoaded > 0 ? `重新載入 (已載入 ${refsLoaded} 張)` : '載入參考照片'}
+            </ModernButton>
+          </ModernSection>
+
+          {/* Step 2: Select Folder */}
+          <ModernSection
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: theme.gradients.secondary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: theme.colors.neutral[0],
+                  fontWeight: theme.typography.fontWeight.bold,
+                  fontSize: theme.typography.fontSize.sm,
+                }}>
+                  2
+                </div>
+                選擇照片資料夾
+              </div>
+            }
+            description="選擇包含要搜尋照片的資料夾"
+          >
+            <div style={{ marginBottom: theme.spacing[4] }}>
+              <label style={{
+                display: 'block',
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+                color: theme.colors.neutral[200],
+                marginBottom: theme.spacing[2],
+              }}>
+                要搜尋的照片資料夾路徑
+              </label>
+              <DragDropZone
+                onFilesDrop={() => {}}
+                onFolderDrop={handleFolderDrop}
+                accept="folders"
+                disabled={isProcessing}
+                style={{ marginBottom: theme.spacing[3] }}
+              >
+                <input
+                  type="text"
+                  style={{
+                    ...modernStyles.input.base,
+                  }}
+                  placeholder="例如：C:\Photos\Family\2024&#10;&#10;或直接拖放資料夾到這裡"
+                  value={folder}
+                  onChange={(e) => setFolder(e.target.value)}
+                  disabled={isProcessing}
+                />
+              </DragDropZone>
+            </div>
+          </ModernSection>
+
+          {/* Step 3: Adjust Settings */}
+          <ModernSection
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: theme.gradients.success,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: theme.colors.neutral[0],
+                  fontWeight: theme.typography.fontWeight.bold,
+                  fontSize: theme.typography.fontSize.sm,
+                }}>
+                  3
+                </div>
+                調整搜尋參數
+              </div>
+            }
+            description="調整相似度門檻和顯示數量以獲得最佳結果"
+          >
+            <div style={{ marginBottom: theme.spacing[4] }}>
+              <label style={{
+                display: 'block',
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+                color: theme.colors.neutral[200],
+                marginBottom: theme.spacing[2],
+              }}>
+                相似度門檻：<span style={{
+                  color: theme.colors.primary[400],
+                  fontWeight: theme.typography.fontWeight.semibold,
+                }}>{threshold.toFixed(2)}</span>
+              </label>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing[4],
+              }}>
+                <span style={{
+                  fontSize: theme.typography.fontSize.xs,
+                  color: theme.colors.neutral[400],
+                }}>寬鬆 (0.0)</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={threshold}
+                  onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                  style={{
+                    flex: 1,
+                    height: '8px',
+                    borderRadius: theme.borderRadius.full,
+                    outline: 'none',
+                    appearance: 'none',
+                    background: `linear-gradient(to right, ${theme.colors.primary[500]} 0%, ${theme.colors.primary[500]} ${threshold * 100}%, ${theme.colors.neutral[600]} ${threshold * 100}%, ${theme.colors.neutral[600]} 100%)`,
+                  }}
+                  disabled={isProcessing}
+                />
+                <span style={{
+                  fontSize: theme.typography.fontSize.xs,
+                  color: theme.colors.neutral[400],
+                }}>嚴格 (1.0)</span>
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: theme.spacing[6] }}>
+              <label style={{
+                display: 'block',
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.medium,
+                color: theme.colors.neutral[200],
+                marginBottom: theme.spacing[2],
+              }}>
+                顯示數量 (Top-N)：
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                value={topN}
+                onChange={(e) => setTopN(parseInt(e.target.value, 10) || 50)}
+                style={{
+                  ...modernStyles.input.base,
+                  width: '150px',
+                }}
+                disabled={isProcessing}
+              />
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: theme.spacing[3],
+            }}>
+              <ModernButton
+                variant="success"
+                size="lg"
+                loading={isProcessing}
+                disabled={isProcessing || !folder.trim() || refsLoaded === 0}
+                onClick={handleRunScan}
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27v.79l5 4.99L20.49 19l-4.99-5zm-6.88-2.77c.59-.59 1.27-.91 2-.91s1.41.32 2 .91l.09.09L9.5 18.5l3.54-3.54-.09-.09z" />
+                  </svg>
+                }
+              >
+                {isProcessing ? '處理中...' : '開始搜尋'}
+              </ModernButton>
+              
+              {results.length > 0 && (
+                <ModernButton
+                  variant="secondary"
+                  size="lg"
+                  disabled={isProcessing}
+                  onClick={handleExportResults}
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 9h-4V3H9v6H5l7 7 7-7V9zm-17 9l3 3v2h12v-2l3-3H2z" />
+                    </svg>
+                  }
+                >
+                  匯出結果 ({results.length} 張)
+                </ModernButton>
+              )}
+            </div>
+          </ModernSection>
+        </div>
+
+        {/* Right Column - Results */}
+        <div>
+          {results.length > 0 && (
+            <ModernSection
+              title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: theme.colors.neutral[0],
+                    fontWeight: theme.typography.fontWeight.bold,
+                    fontSize: theme.typography.fontSize.sm,
+                  }}>
+                    4
+                  </div>
+                  搜尋結果 ({results.length} 張)
+                </div>
+              }
+              description="找到與參考照片相似的照片"
+            >
+              <ModernGrid columns="auto" gap="md">
+                {results.map((r, index) => (
+                  <GlassCard
+                    key={r.path}
+                    padding="sm"
+                    hover
+                    glow
+                    style={{
+                      cursor: 'pointer',
+                      animation: `scaleIn 0.3s ease-out ${index * 0.05}s`,
+                    }}
+                  >
+                    {r.thumbPath ? (
+                      <ImagePreview
+                        src={`file://${r.thumbPath.replace(/\\/g, '/')}`}
+                        alt={r.path.split(/[/\\]/).pop() || ''}
+                        style={{
+                          width: '100%',
+                          height: '180px',
+                          objectFit: 'cover',
+                          borderRadius: theme.borderRadius.md,
+                          marginBottom: theme.spacing[2],
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: '100%',
+                        height: '180px',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: theme.borderRadius.md,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: theme.colors.neutral[400],
+                        fontSize: theme.typography.fontSize.sm,
+                        marginBottom: theme.spacing[2],
+                      }}>
+                        無縮圖
+                      </div>
+                    )}
+                    <div>
+                      <div style={{
+                        fontSize: theme.typography.fontSize.sm,
+                        fontWeight: theme.typography.fontWeight.semibold,
+                        color: theme.colors.primary[400],
+                        marginBottom: theme.spacing[1],
+                      }}>
+                        相似度: {(r.score * 100).toFixed(1)}%
+                      </div>
+                      <div style={{
+                        fontSize: theme.typography.fontSize.xs,
+                        color: theme.colors.neutral[400],
+                        wordBreak: 'break-all',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}>
+                        {r.path.split(/[/\\]/).pop()}
+                      </div>
+                    </div>
+                  </GlassCard>
+                ))}
+              </ModernGrid>
+            </ModernSection>
+          )}
+
+          {results.length === 0 && status === 'done' && (
+            <ModernSection
+              title="搜尋結果"
+              description="未找到匹配的照片"
+            >
+              <div style={{
+                textAlign: 'center',
+                padding: theme.spacing[16],
+                color: theme.colors.neutral[400],
+              }}>
+                <div style={{
+                  fontSize: theme.typography.fontSize['5xl'],
+                  marginBottom: theme.spacing[4],
+                  opacity: 0.5,
+                }}>
+                  🔍
+                </div>
+                <div style={{
+                  fontSize: theme.typography.fontSize.xl,
+                  fontWeight: theme.typography.fontWeight.semibold,
+                  marginBottom: theme.spacing[2],
+                  color: theme.colors.neutral[300],
+                }}>
+                  未找到匹配的照片
+                </div>
+                <div style={{
+                  fontSize: theme.typography.fontSize.base,
+                  color: theme.colors.neutral[400],
+                  lineHeight: theme.typography.lineHeight.relaxed,
+                }}>
+                  請嘗試降低門檻值或增加參考照片數量
+                </div>
+              </div>
+            </ModernSection>
+          )}
+        </div>
+      </ModernGrid>
+
+      {/* Help Modal */}
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      <style jsx>{animations}</style>
+    </ModernLayout>
+  );
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title>Find My Kid</title>
+  <defs>
+    <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="152" height="152" rx="28" fill="url(#logoGrad)" />
+  <circle cx="52" cy="58" r="18" fill="#ffffff" opacity="0.95"/>
+  <circle cx="108" cy="58" r="18" fill="#ffffff" opacity="0.95"/>
+  <path d="M34 123c13-24 69-24 92 0" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M28 66c7-14 30-30 52-12 22-18 45-2 52 12" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+</svg>

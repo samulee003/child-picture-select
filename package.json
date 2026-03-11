@@ -1,0 +1,135 @@
+{
+  "name": "da-hai-lao-b",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Find My Kid - AI Photo Sorter",
+  "author": "Local Developer",
+  "main": "dist/main/index.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:legacy": "concurrently -k \"npm:dev:*\"",
+    "dev:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --watch --silent --external electron",
+    "dev:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --watch --silent --external electron",
+    "dev:renderer": "vite --config vite.renderer.config.ts",
+    "dev:app": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "start": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "node scripts/build.mjs",
+    "build:legacy": "npm run clean && npm run build:main && npm run build:preload && npm run build:renderer",
+    "build:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --external electron",
+    "build:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --external electron",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "clean": "rimraf dist out",
+    "test": "vitest run --exclude tests/e2e/**",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts,.tsx --fix",
+    "lint:check": "eslint src --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "release:check": "node scripts/release-check.mjs",
+    "dist:win": "npm run build && cross-env TMP=\"D:\\AI-child-picture\\.tmp\" TEMP=\"D:\\AI-child-picture\\.tmp\" electron-builder --win nsis:x64",
+    "release:check-sign": "node -e \"const required=['CSC_LINK','CSC_KEY_PASSWORD']; const missing=required.filter((key)=>!process.env[key]); if (missing.length) { console.log('⚠️ 尚未設定 Windows 程式碼簽章環境變數: '+missing.join(', ')); console.log('請在發佈前設定憑證後再使用 release:win:with-sign。'); } else { console.log('✅ 偵測到簽章環境，將在發佈時自動套用。'); }\"",
+    "release:win": "npm run release:check && npm run dist:win",
+    "release:win:with-sign": "npm run release:check && npm run release:check-sign && npm run dist:win",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "com.local.dahailao-b",
+    "productName": "Find My Kid",
+    "copyright": "Copyright © 2024",
+    "icon": "resources/logo_new.png",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**",
+      "package.json",
+      "!**/*.test.ts",
+      "!**/*.test.tsx",
+      "!tests/**"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "resources/models",
+        "to": "models",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/logo_new.png",
+        "to": "logo_new.png"
+      }
+    ],
+    "win": {
+      "icon": "resources/logo_new.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-Setup.${ext}",
+      "publisherName": "Local Developer"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "大海撈「B」"
+    },
+    "extraMetadata": {
+      "main": "dist/main/index.cjs"
+    }
+  },
+  "dependencies": {
+    "@types/uuid": "^10.0.0",
+    "@vladmandic/human": "^2.10.0",
+    "better-sqlite3": "^11.7.0",
+    "fs-extra": "^11.3.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.33.5",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.12.2",
+    "@typescript-eslint/parser": "^8.12.2",
+    "@vitejs/plugin-react": "^4.3.2",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^31.5.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.14.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "icon-gen": "^5.0.0",
+    "jsdom": "^28.1.0",
+    "node-gyp": "^11.5.0",
+    "node-releases": "^2.0.27",
+    "prettier": "^3.3.3",
+    "rimraf": "^6.0.1",
+    "svg-to-ico": "^1.1.0",
+    "svg2ico": "^1.0.35",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4",
+    "wait-on": "^8.0.2"
+  }
+}

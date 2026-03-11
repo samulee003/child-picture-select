@@ -1,0 +1,2152 @@
+"""
+
+??? - ?InsightFace????????"""
+
+import os
+
+import json
+
+import numpy as np
+
+import cv2
+
+from PIL import Image
+
+try:
+
+    # ?HEIC/HEIF???    from pillow_heif import register_heif
+
+    register_heif()
+
+    _HEIF_ENABLED = True
+
+except Exception:
+
+    # 忽略若未安裝仍可使用一般格式
+    _HEIF_ENABLED = False
+
+import insightface
+
+from insightface.app import FaceAnalysis
+
+from sklearn.metrics.pairwise import cosine_similarity
+
+from sklearn.cluster import DBSCAN
+
+import logging
+
+from typing import List, Dict, Tuple, Optional, Callable, Any
+
+from dataclasses import dataclass, asdict
+
+import pickle
+
+import hashlib
+
+from datetime import datetime
+
+import threading
+
+import queue
+
+import time
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+
+@dataclass
+
+class FaceDetection:
+
+    """???"""
+
+    bbox: Tuple[int, int, int, int]  # x, y, w, h
+
+    embedding: np.ndarray  # 512???    confidence: float
+
+    age: Optional[int] = None
+
+    gender: Optional[str] = None
+
+    image_path: Optional[str] = None  # ????
+
+
+        """更新進度"""
+@dataclass
+
+class ChildMatch:
+
+    """???"""
+
+    image_path: str
+
+    face_bbox: Tuple[int, int, int, int]
+
+    similarity_score: float
+
+    reference_image: str
+
+    confidence: str  # 'high', 'medium', 'low'
+
+    child_id: Optional[str] = None  # ?ID??
+
+
+
+@dataclass
+
+class ProcessingStats:
+
+    """???"""
+
+    total_images: int = 0
+
+    processed_images: int = 0
+
+    found_children: int = 0
+
+    processing_time: float = 0.0
+
+    similarity_distribution: Dict[str, int] = None  # ???    confidence_distribution: Dict[str, int] = None  # ???
+
+    child_clusters: Dict[str, List[str]] = None  # ???
+
+    
+
+    def __post_init__(self):
+
+        if self.similarity_distribution is None:
+
+            self.similarity_distribution = {}
+
+        if self.confidence_distribution is None:
+
+            self.confidence_distribution = {}
+
+        if self.child_clusters is None:
+
+            self.child_clusters = {}
+
+
+
+class ProgressCallback:
+
+    """???""
+
+    def __init__(self, callback: Optional[Callable[[int, int, str], None]] = None):
+
+        self.callback = callback
+
+        self.current = 0
+
+        self.total = 0
+
+        self.message = ""
+
+    
+
+    def update(self, current: int, total: int, message: str = ""):
+
+        """更新進度"""
+        self.current = current
+
+        self.total = total
+
+        self.message = message
+
+        
+
+        if self.callback:
+
+            self.callback(current, total, message)
+
+    
+
+    def get_progress(self) -> float:
+
+        """??????""
+
+        if self.total == 0:
+
+            return 0.0
+
+        return (self.current / self.total) * 100
+
+
+
+class FaceRecognitionService:
+
+    """???"""
+
+    
+
+    def __init__(self, model_name: str = 'buffalo_l'):
+
+        """
+
+        ??????????        
+
+        Args:
+
+            model_name: InsightFace?? ('buffalo_l', 'buffalo_m', 'buffalo_s')
+
+        """
+
+        self.model_name = model_name
+
+        self.app = None
+
+        self.reference_gallery = {}  # {image_path: embedding}
+
+        self.reference_embeddings = []  # ??????????        self.reference_paths = []  # ?????
+
+        self.child_profiles = {}  # {child_id: [reference_paths]}
+
+        self.manual_corrections = {}  # ?????{image_path: corrected_result}
+
+        
+
+        # ???
+
+        logging.basicConfig(level=logging.INFO)
+
+        self.logger = logging.getLogger(__name__)
+
+        
+
+        # ????
+
+        self.cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'cache')
+
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+        
+
+        # ?????        self.processing_lock = threading.Lock()
+
+        self.stop_processing = False
+
+        
+
+    def initialize_model(self):
+
+        """???InsightFace?"""
+
+        try:
+
+            self.app = FaceAnalysis(name=self.model_name, providers=['CPUExecutionProvider'])
+
+            self.app.prepare(ctx_id=0, det_size=(640, 640))
+
+            self.logger.info(f"InsightFace? {self.model_name} ??????)
+
+            return True
+
+        except Exception as e:
+
+            self.logger.error(f"?????? {e}")
+
+            return False
+
+    
+
+    def _get_image_hash(self, image_path: str) -> str:
+
+        """??????????"""
+
+        try:
+
+            with open(image_path, 'rb') as f:
+
+                return hashlib.md5(f.read()).hexdigest()
+
+        except Exception:
+
+            return ""
+
+    
+
+    def _get_cache_path(self, image_path: str) -> str:
+
+        """????"""
+
+        image_hash = self._get_image_hash(image_path)
+
+        if not image_hash:
+
+            return None
+
+        return os.path.join(self.cache_dir, f"{image_hash}.pkl")
+
+    
+
+    def _load_from_cache(self, image_path: str) -> Optional[List[FaceDetection]]:
+
+        """??????""
+
+        cache_path = self._get_cache_path(image_path)
+
+        if not cache_path or not os.path.exists(cache_path):
+
+            return None
+
+        
+
+        try:
+
+            with open(cache_path, 'rb') as f:
+
+                return pickle.load(f)
+
+        except Exception:
+
+            return None
+
+    
+
+    def _save_to_cache(self, image_path: str, faces: List[FaceDetection]):
+
+        """??????"""
+
+        cache_path = self._get_cache_path(image_path)
+
+        if not cache_path:
+
+            return
+
+        
+
+        try:
+
+            with open(cache_path, 'wb') as f:
+
+                pickle.dump(faces, f)
+
+        except Exception as e:
+
+            self.logger.warning(f"???: {e}")
+
+
+
+    def _imread_unicode(self, image_path: str) -> Optional[np.ndarray]:
+
+        """
+
+        ??Unicode/???????        ? OpenCV? None??Pillow ????OpenCV ????        """
+
+        # ???OpenCV????        img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+        if img is not None:
+
+            return img
+
+        # ???Pillow ??
+
+        try:
+
+            pil_img = Image.open(image_path).convert('RGB')
+
+            return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+        except Exception as read_err:
+
+            self.logger.error(f"????? {image_path}??? {read_err}")
+
+            return None
+
+
+
+    def preprocess_image(self, image_path: str, target_size: int = 1024) -> np.ndarray:
+
+        """
+
+        ?????        
+
+        Args:
+
+            image_path: ??
+
+            target_size: ??
+
+            
+
+        Returns:
+
+            ???????
+
+        """
+
+        try:
+
+            # ?Unicode ?????            img = self._imread_unicode(image_path)
+
+            if img is None:
+
+                raise ValueError(f"????? {image_path}")
+
+            
+
+            # ????            h, w = img.shape[:2]
+
+            if max(h, w) > target_size:
+
+                scale = target_size / max(h, w)
+
+                new_w, new_h = int(w * scale), int(h * scale)
+
+                img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+
+            
+
+            # ??            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+
+            l, a, b = cv2.split(lab)
+
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+
+            l = clahe.apply(l)
+
+            lab = cv2.merge([l, a, b])
+
+            img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+            
+
+            return img
+
+        except Exception as e:
+
+            self.logger.error(f"??????{image_path}: {e}")
+
+            return None
+
+    
+
+    def assess_image_quality(self, image_path: str) -> Dict[str, float]:
+
+        """
+
+        ???
+
+        
+
+        Args:
+
+            image_path: ???
+
+            
+
+        Returns:
+
+            ??
+
+        """
+
+        try:
+
+            img = self._imread_unicode(image_path)
+
+            if img is None:
+
+                return {"overall": 0.0}
+
+            
+
+            # ??????            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+            
+
+            # ?
+
+            brightness = np.mean(gray) / 255.0
+
+            
+
+            # ???            contrast = np.std(gray) / 255.0
+
+            
+
+            # ???-1?            # ???.5???.3??0.2
+
+            # ????00??
+
+            normalized_sharpness = min(sharpness / 100.0, 1.0)
+
+            
+
+            # ??.3-0.7??????
+
+            brightness_score = 1.0 - abs(brightness - 0.5) * 2.0
+
+            
+
+            # ????0.2???
+
+            contrast_score = min(contrast / 0.2, 1.0)
+
+            
+
+            overall = (normalized_sharpness * 0.5 + brightness_score * 0.3 + contrast_score * 0.2)
+
+            
+
+            return {
+
+                "overall": overall,
+
+                "sharpness": normalized_sharpness,
+
+                "brightness": brightness_score,
+
+                "contrast": contrast_score
+
+            }
+
+        except Exception as e:
+
+            self.logger.error(f"???? {image_path}: {e}")
+
+            return {"overall": 0.0}
+
+    
+
+    def detect_faces(self, image_path: str, use_cache: bool = True) -> List[FaceDetection]:
+
+        """
+
+        ????
+
+        
+
+        Args:
+
+            image_path: ??
+
+            use_cache: ??
+
+            
+
+        Returns:
+
+            ????
+
+        """
+
+        if self.app is None:
+
+            self.logger.error("????")
+
+            return []
+
+        
+
+        # ???        if use_cache:
+
+            cached_faces = self._load_from_cache(image_path)
+
+            if cached_faces:
+
+                self.logger.debug(f"?????? {image_path}")
+
+                return cached_faces
+
+        
+
+        try:
+
+            # ?????            img = self.preprocess_image(image_path)
+
+            if img is None:
+
+                return []
+
+            
+
+            # ??
+
+            faces = self.app.get(img)
+
+            
+
+            detections = []
+
+            for face in faces:
+
+                # ?????
+
+                embedding = face.embedding
+
+                
+
+                # ?????                bbox = face.bbox.astype(int)
+
+                x, y, w, h = bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+                
+
+                # ???
+
+                age = getattr(face, 'age', None)
+
+                gender = getattr(face, 'gender', None)
+
+                
+
+                detection = FaceDetection(
+
+                    bbox=(x, y, w, h),
+
+                    embedding=embedding,
+
+                    confidence=face.det_score,
+
+                    age=age,
+
+                    gender=gender,
+
+                    image_path=image_path
+
+                )
+
+                detections.append(detection)
+
+            
+
+            # ???            if use_cache and detections:
+
+                self._save_to_cache(image_path, detections)
+
+            
+
+            self.logger.info(f"??{image_path}  {len(detections)} ?")
+
+            return detections
+
+            
+
+        except Exception as e:
+
+            self.logger.error(f"??? {image_path}: {e}")
+
+            return []
+
+    
+
+    def build_reference_gallery(self, reference_folder: str, child_profiles: Optional[Dict] = None) -> bool:
+
+        """
+
+        ???        
+
+        Args:
+
+            reference_folder: ???            child_profiles: ? {child_id: [reference_paths]}
+
+            
+
+        Returns:
+
+            ????
+
+        """
+
+        if not os.path.exists(reference_folder):
+
+            self.logger.error(f"???: {reference_folder}")
+
+            return False
+
+        
+
+        self.reference_gallery.clear()
+
+        self.reference_embeddings.clear()
+
+        self.reference_paths.clear()
+
+        self.child_profiles.clear()
+
+        
+
+        # ???????        if child_profiles:
+
+            self.child_profiles = child_profiles
+
+            for child_id, ref_paths in child_profiles.items():
+
+                for ref_path in ref_paths:
+
+                    if os.path.exists(ref_path):
+
+                        faces = self.detect_faces(ref_path)
+
+                        if faces:
+
+                            # ?????
+
+                            largest_face = max(faces, key=lambda f: f.bbox[2] * f.bbox[3])
+
+                            self.reference_gallery[ref_path] = largest_face.embedding
+
+                            self.reference_embeddings.append(largest_face.embedding)
+
+                            self.reference_paths.append(ref_path)
+
+                            self.logger.info(f"??: {ref_path}, ID: {child_id}")
+
+        else:
+
+            # ????
+
+            # ?????heif ???            image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+
+            if _HEIF_ENABLED:
+
+                image_extensions.update({'.heic', '.heif'})
+
+            
+
+            try:
+
+                total = 0
+
+                unreadable = 0
+
+                no_face = 0
+
+                for filename in os.listdir(reference_folder):
+
+                    if any(filename.lower().endswith(ext) for ext in image_extensions):
+
+                        total += 1
+
+                        image_path = os.path.join(reference_folder, filename)
+
+                        try:
+
+                            # ??
+
+                            faces = self.detect_faces(image_path)
+
+                            if faces:
+
+                                # ?????????
+
+                                largest_face = max(faces, key=lambda f: f.bbox[2] * f.bbox[3])
+
+                                self.reference_gallery[image_path] = largest_face.embedding
+
+                                self.reference_embeddings.append(largest_face.embedding)
+
+                                self.reference_paths.append(image_path)
+
+                                self.logger.info(f"??: {filename}, ??: {largest_face.bbox[2]}x{largest_face.bbox[3]}")
+
+                            else:
+
+                                no_face += 1
+
+                                self.logger.warning(f"?????? {filename}")
+
+                        except Exception as read_err:
+
+                            unreadable += 1
+
+                            self.logger.error(f"????: {filename}??? {read_err}")
+
+                
+
+                if not self.reference_gallery:
+
+                    self.logger.error(f"????????{total}, ????{unreadable}, ????{no_face}?)
+
+                    return False
+
+                
+
+                self.logger.info(f"??????{len(self.reference_gallery)} ????{total}, ????{unreadable}, ????{no_face}")
+
+                return True
+
+                
+
+            except Exception as e:
+
+                self.logger.error(f"???? {e}")
+
+                return False
+
+        
+
+        return True
+
+    
+
+    def find_child_in_image(self, image_path: str, threshold: float = 0.65, 
+
+                           child_id: Optional[str] = None) -> Optional[ChildMatch]:
+
+        """
+
+        ??
+
+        
+
+        Args:
+
+            image_path: ??
+
+            threshold: ???            child_id: ??ID???            
+
+        Returns:
+
+            ????None
+
+        """
+
+        if not self.reference_embeddings:
+
+            self.logger.error("??)
+
+            return None
+
+        
+
+        # ???
+
+        if image_path in self.manual_corrections:
+
+            correction = self.manual_corrections[image_path]
+
+            if correction['action'] == 'confirm':  # ???                return ChildMatch(
+
+                    image_path=image_path,
+
+                    face_bbox=correction['bbox'],
+
+                    similarity_score=correction['similarity'],
+
+                    reference_image=correction['reference'],
+
+                    confidence=self._get_confidence_level(correction['similarity']),
+
+                    child_id=correction.get('child_id')
+
+                )
+
+            elif correction['action'] == 'reject':  # ????                return None
+
+        
+
+        try:
+
+            # ????
+
+            faces = self.detect_faces(image_path)
+
+            
+
+            if not faces:
+
+                return None
+
+            
+
+            best_match = None
+
+            best_score = 0.0
+
+            
+
+            # ???????            for face in faces:
+
+                # ???????
+
+                similarities = cosine_similarity([face.embedding], self.reference_embeddings)[0]
+
+                max_similarity = np.max(similarities)
+
+                best_ref_idx = np.argmax(similarities)
+
+                
+
+                if max_similarity > best_score and max_similarity >= threshold:
+
+                    best_score = max_similarity
+
+                    best_match = ChildMatch(
+
+                        image_path=image_path,
+
+                        face_bbox=face.bbox,
+
+                        similarity_score=max_similarity,
+
+                        reference_image=self.reference_paths[best_ref_idx],
+
+                        confidence=self._get_confidence_level(max_similarity),
+
+                        child_id=child_id
+
+                    )
+
+            
+
+            return best_match
+
+            
+
+        except Exception as e:
+
+            self.logger.error(f"? {image_path}: {e}")
+
+            return None
+
+    
+
+    def find_all_children_in_image(self, image_path: str, threshold: float = 0.65) -> List[ChildMatch]:
+
+        """
+
+        ??????????
+
+        
+
+        Args:
+
+            image_path: ??
+
+            threshold: ???            
+
+        Returns:
+
+            ????
+
+        """
+
+        if not self.reference_embeddings:
+
+            self.logger.error("??)
+
+            return []
+
+        
+
+        # ???
+
+        if image_path in self.manual_corrections:
+
+            correction = self.manual_corrections[image_path]
+
+            if correction['action'] == 'confirm':  # ???                return [ChildMatch(
+
+                    image_path=image_path,
+
+                    face_bbox=correction['bbox'],
+
+                    similarity_score=correction['similarity'],
+
+                    reference_image=correction['reference'],
+
+                    confidence=self._get_confidence_level(correction['similarity']),
+
+                    child_id=correction.get('child_id')
+
+                )]
+
+            elif correction['action'] == 'reject':  # ????                return []
+
+        
+
+        try:
+
+            # ????
+
+            faces = self.detect_faces(image_path)
+
+            
+
+            if not faces:
+
+                return []
+
+            
+
+            matches = []
+
+            
+
+            # ???????            for face in faces:
+
+                # ???????
+
+                similarities = cosine_similarity([face.embedding], self.reference_embeddings)[0]
+
+                max_similarity = np.max(similarities)
+
+                best_ref_idx = np.argmax(similarities)
+
+                
+
+                if max_similarity >= threshold:
+
+                    match = ChildMatch(
+
+                        image_path=image_path,
+
+                        face_bbox=face.bbox,
+
+                        similarity_score=max_similarity,
+
+                        reference_image=self.reference_paths[best_ref_idx],
+
+                        confidence=self._get_confidence_level(max_similarity)
+
+                    )
+
+                    matches.append(match)
+
+            
+
+            return matches
+
+            
+
+        except Exception as e:
+
+            self.logger.error(f"? {image_path}: {e}")
+
+            return []
+
+    
+
+    def add_manual_correction(self, image_path: str, action: str, bbox: Tuple[int, int, int, int], 
+
+                            similarity: float, reference: str, child_id: Optional[str] = None):
+
+        """
+
+        ?????
+
+        
+
+        Args:
+
+            image_path: ???
+
+            action: ?? ('confirm' ??'reject')
+
+            bbox: ????            similarity: ??            reference: ??
+
+            child_id: ID
+
+        """
+
+        self.manual_corrections[image_path] = {
+
+            'action': action,
+
+            'bbox': bbox,
+
+            'similarity': similarity,
+
+            'reference': reference,
+
+            'child_id': child_id,
+
+            'timestamp': datetime.now().isoformat()
+
+        }
+
+    
+
+    def cluster_faces(self, image_paths: List[str], eps: float = 0.4, min_samples: int = 2) -> Dict[str, List[str]]:
+
+        """
+
+        ???????????
+
+        
+
+        Args:
+
+            image_paths: ????
+
+            eps: DBSCAN?eps?
+
+            min_samples: DBSCAN?min_samples?
+
+            
+
+        Returns:
+
+            ??? {cluster_id: [image_paths]}
+
+        """
+
+        all_faces = []
+
+        image_to_faces = {}
+
+        
+
+        # ???????        for image_path in image_paths:
+
+            faces = self.detect_faces(image_path)
+
+            if faces:
+
+                image_to_faces[image_path] = faces
+
+                for face in faces:
+
+                    all_faces.append((image_path, face))
+
+        
+
+        if not all_faces:
+
+            return {}
+
+        
+
+        # ?????????        embeddings = np.array([face.embedding for _, face in all_faces])
+
+        
+
+        # DBSCAN????
+
+        clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine').fit(embeddings)
+
+        labels = clustering.labels_
+
+        
+
+        # ??
+
+        clusters = {}
+
+        for i, (image_path, face) in enumerate(all_faces):
+
+            cluster_id = str(labels[i])
+
+            if cluster_id not in clusters:
+
+                clusters[cluster_id] = []
+
+            clusters[cluster_id].append(image_path)
+
+        
+
+        return clusters
+
+    
+
+    def _get_confidence_level(self, similarity_score: float) -> str:
+
+        """????????""
+
+        if similarity_score >= 0.75:
+
+            return 'high'
+
+        elif similarity_score >= 0.65:
+
+            return 'medium'
+
+        else:
+
+            return 'low'
+
+    
+
+    def _process_single_image(self, image_path: str, threshold: float, 
+
+                           quality_threshold: float) -> Tuple[Optional[ChildMatch], Dict[str, float]]:
+
+        """
+
+        ?????
+
+        
+
+        Args:
+
+            image_path: ???
+
+            threshold: ???            quality_threshold: ???            
+
+        Returns:
+
+            (???, ?)
+
+        """
+
+        try:
+
+            # ???
+
+            quality = self.assess_image_quality(image_path)
+
+            if quality['overall'] < quality_threshold:
+
+                return None, quality
+
+            
+
+            # 
+
+            match = self.find_child_in_image(image_path, threshold)
+
+            return match, quality
+
+        except Exception as e:
+
+            self.logger.error(f"????? {image_path}: {e}")
+
+            return None, {"overall": 0.0}
+
+    
+
+    def batch_process_folder(self, input_folder: str, output_folder: str, 
+
+                           threshold: float = 0.65, copy_files: bool = True,
+
+                           quality_threshold: float = 0.3, multithread: bool = False,
+
+                           thread_count: int = 4,
+
+                           progress_callback: Optional[ProgressCallback] = None) -> Dict:
+
+        """
+
+        ??????        
+
+        Args:
+
+            input_folder: ??            output_folder: ??            threshold: ???            copy_files: ??
+
+            quality_threshold: ?????            multithread: ???            thread_count: ???
+
+            progress_callback: ??
+
+            
+
+        Returns:
+
+            ????
+
+        """
+
+        if not os.path.exists(input_folder):
+
+            self.logger.error(f"??: {input_folder}")
+
+            return {}
+
+        
+
+        # ???
+
+        with self.processing_lock:
+
+            self.stop_processing = False
+
+        
+
+        # ???        os.makedirs(output_folder, exist_ok=True)
+
+        
+
+        # ????        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+
+        if _HEIF_ENABLED:
+
+            image_extensions.update({'.heic', '.heif'})
+
+        
+
+        # ???????        image_paths = []
+
+        for filename in os.listdir(input_folder):
+
+            if any(filename.lower().endswith(ext) for ext in image_extensions):
+
+                image_path = os.path.join(input_folder, filename)
+
+                image_paths.append(image_path)
+
+        
+
+        # ?????        stats = ProcessingStats(
+
+            total_images=len(image_paths),
+
+            similarity_distribution={'high': 0, 'medium': 0, 'low': 0},
+
+            confidence_distribution={'high': 0, 'medium': 0, 'low': 0}
+
+        )
+
+        
+
+        results = {
+
+            'total_images': len(image_paths),
+
+            'found_child': 0,
+
+            'matches': [],
+
+            'errors': [],
+
+            'stats': asdict(stats),
+
+            'quality_filtered': 0
+
+        }
+
+        
+
+        start_time = datetime.now()
+
+        
+
+        try:
+
+            if multithread and len(image_paths) > 1:
+
+                # ????                self._batch_process_multithread(
+
+                    image_paths, threshold, quality_threshold, 
+
+                    thread_count, progress_callback, results, stats
+
+                )
+
+            else:
+
+                # ?????                self._batch_process_singlethread(
+
+                    image_paths, threshold, quality_threshold, 
+
+                    progress_callback, results, stats, output_folder, copy_files
+
+                )
+
+            
+
+            # ?????
+
+            end_time = datetime.now()
+
+            stats.processing_time = (end_time - start_time).total_seconds()
+
+            
+
+            # ??????????
+
+            if results['matches']:
+
+                matched_images = [os.path.join(input_folder, match['image']) for match in results['matches']]
+
+                clusters = self.cluster_faces(matched_images)
+
+                stats.child_clusters = clusters
+
+            
+
+            # ???
+
+            results['stats'] = asdict(stats)
+
+            
+
+            # ?????
+
+            report_path = os.path.join(output_folder, 'child_detection_report.json')
+
+            with open(report_path, 'w', encoding='utf-8') as f:
+
+                json.dump(results, f, ensure_ascii=False, indent=2)
+
+            
+
+            self.logger.info(f"?????: {results['found_child']}/{results['total_images']} ????)
+
+            return results
+
+            
+
+        except Exception as e:
+
+            self.logger.error(f"?????: {e}")
+
+            results['errors'].append(str(e))
+
+            return results
+
+    
+
+    def _batch_process_singlethread(self, image_paths: List[str], threshold: float, 
+
+                                 quality_threshold: float, progress_callback: Optional[ProgressCallback],
+
+                                 results: Dict, stats: ProcessingStats, 
+
+                                 output_folder: str, copy_files: bool):
+
+        """??????""
+
+        for i, image_path in enumerate(image_paths):
+
+            # ????
+
+            with self.processing_lock:
+
+                if self.stop_processing:
+
+                    break
+
+            
+
+            # ??
+
+            if progress_callback:
+
+                progress_callback.update(i, len(image_paths), f"?? {os.path.basename(image_path)}")
+
+            
+
+            # ?????
+
+            match, quality = self._process_single_image(image_path, threshold, quality_threshold)
+
+            
+
+            if quality['overall'] < quality_threshold:
+
+                results['quality_filtered'] += 1
+
+                self.logger.info(f"????? {image_path}, ??: {quality['overall']:.2f}")
+
+                continue
+
+            
+
+            if match:
+
+                results['found_child'] += 1
+
+                results['matches'].append({
+
+                    'image': os.path.basename(image_path),
+
+                    'similarity': match.similarity_score,
+
+                    'confidence': match.confidence,
+
+                    'reference': os.path.basename(match.reference_image),
+
+                    'bbox': match.face_bbox,
+
+                    'quality': quality
+
+                })
+
+                
+
+                # ??
+
+                stats.similarity_distribution[match.confidence] += 1
+
+                stats.confidence_distribution[match.confidence] += 1
+
+                
+
+                # ?
+
+                if copy_files:
+
+                    output_path = os.path.join(output_folder, os.path.basename(image_path))
+
+                    if not os.path.exists(output_path):
+
+                        import shutil
+
+                        shutil.copy2(image_path, output_path)
+
+                        self.logger.info(f"?: {os.path.basename(image_path)}")
+
+            
+
+            stats.processed_images += 1
+
+        
+
+        # ??
+
+        if progress_callback:
+
+            progress_callback.update(len(image_paths), len(image_paths), "???")
+
+    
+
+    def _batch_process_multithread(self, image_paths: List[str], threshold: float, 
+
+                                quality_threshold: float, thread_count: int,
+
+                                progress_callback: Optional[ProgressCallback],
+
+                                results: Dict, stats: ProcessingStats):
+
+        """?????""
+
+        # ????        with ThreadPoolExecutor(max_workers=thread_count) as executor:
+
+            # ?????            future_to_path = {
+
+                executor.submit(self._process_single_image, path, threshold, quality_threshold): path
+
+                for path in image_paths
+
+            }
+
+            
+
+            # ??????            completed = 0
+
+            for future in as_completed(future_to_path):
+
+                # ????
+
+                with self.processing_lock:
+
+                    if self.stop_processing:
+
+                        break
+
+                
+
+                path = future_to_path[future]
+
+                completed += 1
+
+                
+
+                # ??
+
+                if progress_callback:
+
+                    progress_callback.update(completed, len(image_paths), f"?? {os.path.basename(path)}")
+
+                
+
+                try:
+
+                    match, quality = future.result()
+
+                    
+
+                    if quality['overall'] < quality_threshold:
+
+                        results['quality_filtered'] += 1
+
+                        self.logger.info(f"????? {path}, ??: {quality['overall']:.2f}")
+
+                    elif match:
+
+                        results['found_child'] += 1
+
+                        results['matches'].append({
+
+                            'image': os.path.basename(path),
+
+                            'similarity': match.similarity_score,
+
+                            'confidence': match.confidence,
+
+                            'reference': os.path.basename(match.reference_image),
+
+                            'bbox': match.face_bbox,
+
+                            'quality': quality
+
+                        })
+
+                        
+
+                        # ??
+
+                        stats.similarity_distribution[match.confidence] += 1
+
+                        stats.confidence_distribution[match.confidence] += 1
+
+                    
+
+                    stats.processed_images += 1
+
+                    
+
+                except Exception as e:
+
+                    self.logger.error(f"????? {path}: {e}")
+
+                    results['errors'].append(f"{path}: {str(e)}")
+
+        
+
+        # ?????????        if results['matches']:
+
+            import shutil
+
+            for match in results['matches']:
+
+                try:
+
+                    src_path = os.path.join(os.path.dirname(image_paths[0]), match['image'])
+
+                    dst_path = os.path.join(os.path.dirname(image_paths[0]), '..', 'output', match['image'])
+
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+
+                    if not os.path.exists(dst_path):
+
+                        shutil.copy2(src_path, dst_path)
+
+                        self.logger.info(f"?: {match['image']}")
+
+                except Exception as e:
+
+                    self.logger.error(f"?? {match['image']}: {e}")
+
+        
+
+        # ??
+
+        if progress_callback:
+
+            progress_callback.update(len(image_paths), len(image_paths), "???")
+
+    
+
+    def stop_batch_processing(self):
+
+        """?????"""
+
+        with self.processing_lock:
+
+            self.stop_processing = True
+
+        self.logger.info("??????)
+
+    
+
+    def save_manual_corrections(self, file_path: str):
+
+        """?????"""
+
+        try:
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+
+                json.dump(self.manual_corrections, f, ensure_ascii=False, indent=2)
+
+            self.logger.info(f"?????: {file_path}")
+
+        except Exception as e:
+
+            self.logger.error(f"??????: {e}")
+
+    
+
+    def load_manual_corrections(self, file_path: str):
+
+        """??????"""
+
+        try:
+
+            if os.path.exists(file_path):
+
+                with open(file_path, 'r', encoding='utf-8') as f:
+
+                    self.manual_corrections = json.load(f)
+
+                self.logger.info(f"????? {file_path} ??")
+
+        except Exception as e:
+
+            self.logger.error(f"???????: {e}")
+
+    
+
+    def clear_cache(self):
+
+        """?"""
+
+        try:
+
+            for file in os.listdir(self.cache_dir):
+
+                file_path = os.path.join(self.cache_dir, file)
+
+                if os.path.isfile(file_path):
+
+                    os.remove(file_path)
+
+            self.logger.info("????)
+
+        except Exception as e:
+
+            self.logger.error(f"??: {e}")
+
+
+
+    def assess_reference_quality(self, ref_paths: List[str]) -> Dict[str, Any]:
+
+        """
+
+        ??????        
+
+        Args:
+
+            ref_paths: ???
+
+            
+
+        Returns:
+
+            ?
+
+        """
+
+        if not self.model:
+
+            self.initialize_model()
+
+            
+
+        if not ref_paths:
+
+            return {
+
+                'total_count': 0,
+
+                'good_quality_count': 0,
+
+                'diversity_score': 0.0,
+
+                'age_range': None,
+
+                'expression_variety': 0,
+
+                'recommendations': []
+
+            }
+
+        
+
+        # ???
+
+        ref_analyses = []
+
+        age_scores = []
+
+        expression_scores = []
+
+        
+
+        for ref_path in ref_paths:
+
+            try:
+
+                # ?
+
+                detections = self.detect_faces(ref_path)
+
+                
+
+                if not detections:
+
+                    continue
+
+                    
+
+                # ????                face = detections[0]
+
+                
+
+                # ???
+
+                quality = self.assess_image_quality(ref_path)
+
+                
+
+                # ?????????                # ????????????                age_score = self._estimate_age_score(face)
+
+                expression_score = self._estimate_expression_score(face)
+
+                
+
+                ref_analyses.append({
+
+                    'path': ref_path,
+
+                    'quality': quality,
+
+                    'age_score': age_score,
+
+                    'expression_score': expression_score,
+
+                    'face_size': face['size']
+
+                })
+
+                
+
+                age_scores.append(age_score)
+
+                expression_scores.append(expression_score)
+
+                
+
+            except Exception as e:
+
+                self.logger.warning(f"???? {ref_path}: {e}")
+
+        
+
+        # ??
+
+        total_count = len(ref_analyses)
+
+        good_quality_count = sum(1 for analysis in ref_analyses if analysis['quality']['overall'] > 0.5)
+
+        
+
+        # ?????        diversity_score = 0.0
+
+        if total_count > 1:
+
+            # ??            if age_scores:
+
+                age_range = max(age_scores) - min(age_scores)
+
+                diversity_score += min(age_range / 10.0, 1.0) * 0.5  # ???.5??            
+
+            # ???            if expression_scores:
+
+                expression_variety = len(set(round(score) for score in expression_scores))
+
+                diversity_score += min(expression_variety / 5.0, 1.0) * 0.5  # ???.5??        
+
+        # ??
+
+        recommendations = []
+
+        
+
+        if total_count < 3:
+
+            recommendations.append("?????-5??????)
+
+        
+
+        if good_quality_count / total_count < 0.7:
+
+            recommendations.append("???????????")
+
+        
+
+        if diversity_score < 0.5:
+
+            recommendations.append("????????????)
+
+        
+
+        # ?
+
+        age_range = None
+
+        if age_scores:
+
+            min_age = min(age_scores)
+
+            max_age = max(age_scores)
+
+            age_range = (min_age, max_age)
+
+            
+
+            if max_age - min_age < 2:  # 2?                recommendations.append("????????????)
+
+        
+
+        return {
+
+            'total_count': total_count,
+
+            'good_quality_count': good_quality_count,
+
+            'diversity_score': diversity_score,
+
+            'age_range': age_range,
+
+            'expression_variety': len(set(round(score) for score in expression_scores)) if expression_scores else 0,
+
+            'recommendations': recommendations,
+
+            'analyses': ref_analyses
+
+        }
+
+    
+
+    def _estimate_age_score(self, face: Dict[str, Any]) -> float:
+
+        """
+
+        ???-10???0??        
+
+        ????????
+
+        """
+
+        # ?????????        # ???????????
+
+        size = face.get('size', 0)
+
+        
+
+        # ??????????????        # ????????????        if size < 50:
+
+            return 2.0  # ????        elif size < 80:
+
+            return 5.0  # ????        elif size < 120:
+
+            return 8.0  # ???
+
+        else:
+
+            return 10.0  # ????    
+
+    def _estimate_expression_score(self, face: Dict[str, Any]) -> float:
+
+        """
+
+        ????-10??????        
+
+        ????????
+
+        """
+
+        # ????????????        # ???????        import random
+
+        return random.uniform(0, 10)
+
+    
+
+    def suggest_optimal_threshold(self, ref_analysis: Dict[str, Any], 
+
+                               target_precision: float = 0.9) -> float:
+
+        """
+
+        ????????        
+
+        Args:
+
+            ref_analysis: ????
+
+            target_precision: ???0-1?            
+
+        Returns:
+
+            ???        """
+
+        # ????        base_threshold = 0.65
+
+        
+
+        # ????
+
+        quality_ratio = ref_analysis.get('good_quality_count', 0) / max(ref_analysis.get('total_count', 1), 1)
+
+        
+
+        # ??????        if quality_ratio > 0.9:
+
+            quality_adjustment = -0.05
+
+        elif quality_ratio > 0.7:
+
+            quality_adjustment = -0.02
+
+        elif quality_ratio < 0.5:
+
+            quality_adjustment = 0.05
+
+        else:
+
+            quality_adjustment = 0.0
+
+        
+
+        # ?????        diversity = ref_analysis.get('diversity_score', 0.0)
+
+        
+
+        # ?????????        if diversity > 0.8:
+
+            diversity_adjustment = -0.03
+
+        elif diversity > 0.5:
+
+            diversity_adjustment = -0.01
+
+        elif diversity < 0.3:
+
+            diversity_adjustment = 0.03
+
+        else:
+
+            diversity_adjustment = 0.0
+
+        
+
+        # ?????
+
+        count = ref_analysis.get('total_count', 0)
+
+        
+
+        # ??????        if count > 10:
+
+            count_adjustment = -0.02
+
+        elif count > 5:
+
+            count_adjustment = -0.01
+
+        elif count < 3:
+
+            count_adjustment = 0.05
+
+        else:
+
+            count_adjustment = 0.0
+
+        
+
+        # ????        suggested_threshold = base_threshold + quality_adjustment + diversity_adjustment + count_adjustment
+
+        
+
+        # ???????        suggested_threshold = max(0.5, min(0.9, suggested_threshold))
+
+        
+
+        return suggested_threshold
+
+    
+
+    def auto_adjust_threshold(self, current_threshold: float, 
+
+                           feedback_data: List[Dict[str, Any]]) -> float:
+
+        """
+
+        ??????????        
+
+        Args:
+
+            current_threshold: ????            feedback_data: ????????????{
+
+                'image_path': ???,
+
+                'user_decision': ?? ('correct' ??'incorrect'),
+
+                'similarity': ????            }
+
+            
+
+        Returns:
+
+            ???        """
+
+        if not feedback_data:
+
+            return current_threshold
+
+        
+
+        # ??????
+
+        correct_decisions = [f for f in feedback_data if f['user_decision'] == 'correct']
+
+        incorrect_decisions = [f for f in feedback_data if f['user_decision'] == 'incorrect']
+
+        
+
+        # ???????        accuracy = len(correct_decisions) / len(feedback_data) if feedback_data else 0
+
+        
+
+        # ???????        if accuracy > 0.95:
+
+            return current_threshold
+
+        
+
+        # ????
+
+        false_positives = [f for f in incorrect_decisions if f['similarity'] >= current_threshold]
+
+        false_negatives = [f for f in incorrect_decisions if f['similarity'] < current_threshold]
+
+        
+
+        # ??????        adjustment = 0.0
+
+        
+
+        # ????????????        if len(false_positives) > len(false_negatives) * 1.5:
+
+            # ???
+
+            avg_fp_similarity = sum(f['similarity'] for f in false_positives) / len(false_positives)
+
+            # ?????????            adjustment = (avg_fp_similarity - current_threshold) * 0.5
+
+        
+
+        # ?????????????        elif len(false_negatives) > len(false_positives) * 1.5:
+
+            # ???
+
+            avg_fn_similarity = sum(f['similarity'] for f in false_negatives) / len(false_negatives)
+
+            # ??????????            adjustment = (avg_fn_similarity - current_threshold) * 0.5
+
+        
+
+        # ???????        max_adjustment = 0.05
+
+        adjustment = max(-max_adjustment, min(max_adjustment, adjustment))
+
+        
+
+        # ????        new_threshold = current_threshold + adjustment
+
+        
+
+        # ???????        new_threshold = max(0.5, min(0.9, new_threshold))
+
+        
+
+        return new_threshold
+
+
+
