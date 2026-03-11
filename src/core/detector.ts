@@ -8,7 +8,7 @@ import { AppError } from '../utils/error-handler';
 
 export interface FaceDetection {
   bbox: [number, number, number, number]; // x, y, width, height
-  embedding: number[]; // 512 維特徵向量
+  embedding: number[]; // 1024 維特徵向量 (faceres model)
   confidence: number;
   age?: number;
   gender?: 'male' | 'female';
@@ -21,63 +21,137 @@ export interface DetectorOptions {
   minConfidence?: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let humanInstance: any = null;
+let modelLoadAttempted = false;
+let modelLoadError: string | null = null;
+
+/**
+ * 設置 Node.js canvas polyfill（Electron main process 沒有 DOM）
+ */
+function ensureCanvasPolyfill() {
+  if (typeof globalThis.HTMLCanvasElement !== 'undefined') return;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const canvas = require('canvas');
+    globalThis.HTMLCanvasElement = canvas.Canvas;
+    globalThis.HTMLImageElement = canvas.Image;
+    globalThis.ImageData = canvas.ImageData;
+    if (typeof globalThis.document === 'undefined') {
+      // @ts-expect-error - minimal DOM polyfill for @vladmandic/human
+      globalThis.document = {
+        createElement: (tag: string) => {
+          if (tag === 'canvas') return canvas.createCanvas(100, 100);
+          return {};
+        },
+      };
+    }
+    logger.info('✅ Canvas polyfill installed for Node.js environment');
+  } catch (err) {
+    logger.warn('⚠️ canvas package not available, face detection may not work in Node.js');
+  }
+}
+
+/**
+ * 解析模型路徑，支援開發模式和打包後的 Electron
+ */
+function resolveModelBasePath(): string {
+  const { join } = require('path');
+  const { existsSync } = require('fs');
+
+  // 1. 嘗試 node_modules 中的模型（開發模式）
+  const nodeModulesPath = join(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
+  if (existsSync(nodeModulesPath)) {
+    logger.info(`✅ Using local models from: ${nodeModulesPath}`);
+    return `file://${nodeModulesPath.replace(/\\/g, '/')}/`;
+  }
+
+  // 2. 嘗試打包後的 Electron app 路徑
+  try {
+    const { app } = require('electron');
+    // extraResources 中的 models 目錄
+    const resourcesModelsPath = join(process.resourcesPath || app.getAppPath(), 'models');
+    if (existsSync(resourcesModelsPath)) {
+      logger.info(`✅ Using packaged models from: ${resourcesModelsPath}`);
+      return `file://${resourcesModelsPath.replace(/\\/g, '/')}/`;
+    }
+
+    // app.asar 旁邊的 node_modules
+    const appModulesPath = join(app.getAppPath(), 'node_modules', '@vladmandic', 'human', 'models');
+    if (existsSync(appModulesPath)) {
+      logger.info(`✅ Using app models from: ${appModulesPath}`);
+      return `file://${appModulesPath.replace(/\\/g, '/')}/`;
+    }
+  } catch {
+    // Not running inside Electron
+  }
+
+  logger.warn('⚠️ Local models not found, using CDN fallback');
+  return 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/';
+}
 
 /**
  * 初始化 Human 實例（延遲載入）
  */
 async function getHuman() {
   if (humanInstance) return humanInstance;
-  
+  if (modelLoadAttempted) return null; // 已嘗試過且失敗
+
+  modelLoadAttempted = true;
+
   try {
     logger.info('🔄 Loading @vladmandic/human model...');
-    
-    // 動態載入以避免在沒有依賴時崩潰
-    // @ts-ignore - 動態載入，型別可能不存在
+
+    // 安裝 canvas polyfill
+    ensureCanvasPolyfill();
+
+    // 動態載入
     const { Human } = await import('@vladmandic/human');
-    
-    // 嘗試使用 node_modules 裡的本地模型
-    let modelBasePath = 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/';
-    try {
-      const { join } = await import('path');
-      const { existsSync } = await import('fs');
-      // 嘗試找到 node_modules 裡的模型路徑
-      const localModelsPath = join(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
-      if (existsSync(localModelsPath)) {
-        modelBasePath = `file://${localModelsPath.replace(/\\/g, '/')}/`;
-        logger.info(`✅ Using local models from: ${localModelsPath}`);
-      } else {
-        logger.warn(`⚠️ Local models not found at ${localModelsPath}, using CDN`);
-      }
-    } catch (pathErr) {
-      logger.warn('⚠️ Could not resolve local model path, using CDN:', pathErr);
-    }
-    
+
+    const modelBasePath = resolveModelBasePath();
+
     humanInstance = new Human({
       modelBasePath,
-      backend: 'cpu', // 在 Electron main process 中使用 CPU 後端
+      backend: 'tensorflow',
+      cacheSensitivity: 0,
+      filter: { enabled: false }, // 不使用 canvas filter（Node.js 環境不需要）
       face: {
         enabled: true,
         detector: { enabled: true, modelPath: 'blazeface.json', maxDetected: 10 },
         mesh: { enabled: false },
         iris: { enabled: false },
         emotion: { enabled: false },
-        description: { enabled: true, modelPath: 'faceres.json' }, // 特徵提取
+        description: { enabled: true, modelPath: 'faceres.json' }, // 1024-dim embedding
         antispoof: { enabled: false },
       },
+      body: { enabled: false },
+      hand: { enabled: false },
+      gesture: { enabled: false },
+      segmentation: { enabled: false },
+      object: { enabled: false },
     });
-    
-    logger.info('🔄 Warming up @vladmandic/human model...');
-    await humanInstance.warmup(); // 預熱模型
+
     logger.info('✅ @vladmandic/human model loaded and ready!');
-    
     return humanInstance;
-  } catch (err: any) {
-    logger.error(`❌ Failed to load @vladmandic/human: ${err?.message || err}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    modelLoadError = message;
+    logger.error(`❌ Failed to load @vladmandic/human: ${message}`);
     logger.error('❌ Face detection will NOT work. All photos will get deterministic (non-face) embeddings.');
     logger.error('❌ This means photo matching will NOT produce meaningful results!');
     return null;
   }
+}
+
+/**
+ * 取得模型載入狀態（供 UI 顯示）
+ */
+export function getModelStatus(): { loaded: boolean; error: string | null } {
+  return {
+    loaded: humanInstance !== null,
+    error: modelLoadError,
+  };
 }
 
 /**
@@ -88,7 +162,7 @@ export async function detectFaces(
   options: DetectorOptions = {}
 ): Promise<FaceDetection[]> {
   const human = await getHuman();
-  
+
   // 如果 Human 未載入，回傳空陣列（將使用 deterministic embedding 作為 fallback）
   if (!human) {
     logger.debug('Human model not available, skipping face detection');
@@ -97,14 +171,14 @@ export async function detectFaces(
 
   try {
     logger.debug(`Processing image for face detection: ${imagePath}`);
-    
+
     // 在 Electron main process 中，使用 sharp 載入圖片並轉換為適合的格式
     const sharp = (await import('sharp')).default;
-    
+
     // Handle different image formats
     let sharpInstance = sharp(imagePath);
     const isHeic = imagePath.toLowerCase().endsWith('.heic') || imagePath.toLowerCase().endsWith('.heif');
-    
+
     if (isHeic) {
       try {
         sharpInstance = sharp(imagePath, { sequentialRead: true });
@@ -117,12 +191,12 @@ export async function detectFaces(
         );
       }
     }
-    
+
     const imageBuffer = await sharpInstance
       .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 85 })
       .toBuffer();
-    
+
     // 使用 Human 的 TensorFlow.js 後端處理圖片
     const tensor = await human.tf.node.decodeImage(imageBuffer, 3); // RGB
     const result = await human.detect(tensor);
@@ -133,7 +207,7 @@ export async function detectFaces(
 
     if (result.face && result.face.length > 0) {
       logger.debug(`Found ${result.face.length} face(s) in ${imagePath}`);
-      
+
       for (const face of result.face) {
         if (face.score < minConfidence) {
           logger.debug(`Skipping face with low confidence: ${face.score} < ${minConfidence}`);
@@ -146,12 +220,12 @@ export async function detectFaces(
           embedding = Array.from(face.embedding);
         }
 
-        // 邊界框 [x, y, width, height]
+        // @vladmandic/human face.box 格式: [x, y, width, height]
         const bbox: [number, number, number, number] = [
           face.box[0], // x
           face.box[1], // y
-          face.box[2] - face.box[0], // width
-          face.box[3] - face.box[1], // height
+          face.box[2], // width
+          face.box[3], // height
         ];
 
         const detection: FaceDetection = {
@@ -194,16 +268,15 @@ export async function extractFaceEmbedding(
   options: DetectorOptions = {}
 ): Promise<number[] | null> {
   const faces = await detectFaces(imagePath, options);
-  
+
   if (faces.length === 0) {
     return null;
   }
 
   // 使用信心度最高的臉部
-  const bestFace = faces.reduce((best, current) => 
+  const bestFace = faces.reduce((best, current) =>
     current.confidence > best.confidence ? current : best
   );
 
   return bestFace.embedding.length > 0 ? bestFace.embedding : null;
 }
-

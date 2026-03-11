@@ -12,17 +12,29 @@ export interface EmbeddingResult {
   dimensions: number;
 }
 
+/**
+ * FaceRes 模型輸出的 embedding 維度為 1024
+ * 確定性 fallback 必須使用相同維度以保持 cosine similarity 可計算
+ */
+export const EMBEDDING_DIMS = 1024;
+
 // Deterministic placeholder embedding based on file bytes.
-// Produces a 128-dim unit-normalized vector so cosine similarity is meaningful.
+// Produces a unit-normalized vector so cosine similarity is computable.
 // ⚠️ WARNING: This is NOT a face embedding — it's a file hash.
 // Two different files of the same person will produce completely different vectors.
-export async function fileToDeterministicEmbedding(filePath: string, dims = 128): Promise<Embedding> {
+export async function fileToDeterministicEmbedding(filePath: string, dims = EMBEDDING_DIMS): Promise<Embedding> {
   const buf = await readFile(filePath);
   // Hash chunks to expand entropy deterministically
-  const h1 = createHash('sha256').update(buf).digest();
-  const h2 = createHash('sha256').update(h1).digest();
-  const h3 = createHash('sha256').update(h2).digest();
-  const source = Buffer.concat([h1, h2, h3]);
+  const hashes: Buffer[] = [];
+  let h = createHash('sha256').update(buf).digest();
+  hashes.push(h);
+  // Generate enough hash rounds to cover dims
+  const roundsNeeded = Math.ceil((dims * 4) / 32); // 32 bytes per SHA-256
+  for (let i = 0; i < roundsNeeded; i++) {
+    h = createHash('sha256').update(h).digest();
+    hashes.push(h);
+  }
+  const source = Buffer.concat(hashes);
 
   const arr = new Array<number>(dims);
   for (let i = 0; i < dims; i++) {
@@ -46,7 +58,7 @@ export async function fileToDeterministicEmbedding(filePath: string, dims = 128)
 export async function fileToEmbeddingWithSource(filePath: string): Promise<EmbeddingResult> {
   try {
     logger.debug(`Attempting face detection for: ${filePath}`);
-    
+
     // 嘗試使用真正的臉部偵測
     const faceEmbedding = await extractFaceEmbedding(filePath);
     if (faceEmbedding && faceEmbedding.length > 0) {
@@ -55,7 +67,7 @@ export async function fileToEmbeddingWithSource(filePath: string): Promise<Embed
       for (let i = 0; i < faceEmbedding.length; i++) norm += faceEmbedding[i] * faceEmbedding[i];
       norm = Math.sqrt(norm) + 1e-12;
       const normalized = faceEmbedding.map(v => v / norm);
-      
+
       logger.info(`✅ Face detection successful for: ${filePath} (${normalized.length} dims)`);
       return {
         embedding: normalized,
@@ -63,7 +75,7 @@ export async function fileToEmbeddingWithSource(filePath: string): Promise<Embed
         dimensions: normalized.length,
       };
     }
-    
+
     logger.warn(`⚠️ No face detected in: ${filePath}, using deterministic embedding (NOT a face embedding!)`);
   } catch (err) {
     // 臉部偵測失敗，降級到 deterministic embedding
@@ -71,14 +83,14 @@ export async function fileToEmbeddingWithSource(filePath: string): Promise<Embed
   }
 
   // 降級到 deterministic embedding
-  // 使用 512 維以匹配常見的臉部特徵向量維度
+  // 使用 EMBEDDING_DIMS (1024) 以匹配 faceres 模型的輸出維度
   try {
-    const deterministicEmbedding = await fileToDeterministicEmbedding(filePath, 512);
+    const deterministicEmbedding = await fileToDeterministicEmbedding(filePath, EMBEDDING_DIMS);
     logger.warn(`🔶 Generated DETERMINISTIC embedding for: ${filePath} — this is a FILE HASH, not a face embedding!`);
     return {
       embedding: deterministicEmbedding,
       source: 'deterministic',
-      dimensions: 512,
+      dimensions: EMBEDDING_DIMS,
     };
   } catch (error) {
     throw new AppError(
