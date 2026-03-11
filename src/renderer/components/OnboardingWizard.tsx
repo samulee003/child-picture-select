@@ -2,7 +2,7 @@
  * 影像式導引系統 - 幫助首次用戶快速上手
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { theme } from '../styles/theme';
 
 interface OnboardingStep {

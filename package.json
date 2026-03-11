@@ -1,6 +1,6 @@
 {
   "name": "da-hai-lao-b",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Find My Kid - AI Photo Sorter",
   "author": "Local Developer",
@@ -21,18 +21,20 @@
     "build:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --external electron",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "clean": "rimraf dist out",
-    "test": "vitest run --exclude tests/e2e/**",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts,.tsx --fix",
-    "lint:check": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src --fix",
+    "lint:check": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "release:check": "node scripts/release-check.mjs",
-    "dist:win": "npm run build && cross-env TMP=\"D:\\AI-child-picture\\.tmp\" TEMP=\"D:\\AI-child-picture\\.tmp\" electron-builder --win nsis:x64",
+    "dist:win": "npm run build && electron-builder --win nsis:x64",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
     "release:check-sign": "node -e \"const required=['CSC_LINK','CSC_KEY_PASSWORD']; const missing=required.filter((key)=>!process.env[key]); if (missing.length) { console.log('⚠️ 尚未設定 Windows 程式碼簽章環境變數: '+missing.join(', ')); console.log('請在發佈前設定憑證後再使用 release:win:with-sign。'); } else { console.log('✅ 偵測到簽章環境，將在發佈時自動套用。'); }\"",
     "release:win": "npm run release:check && npm run dist:win",
     "release:win:with-sign": "npm run release:check && npm run release:check-sign && npm run dist:win",
@@ -79,6 +81,18 @@
       ],
       "artifactName": "${productName}-${version}-Setup.${ext}",
       "publisherName": "Local Developer"
+    },
+    "mac": {
+      "icon": "resources/logo_new.png",
+      "target": ["dmg"],
+      "category": "public.app-category.photography",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "linux": {
+      "icon": "resources/logo_new.png",
+      "target": ["AppImage", "deb"],
+      "category": "Graphics",
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
