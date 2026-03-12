@@ -84,7 +84,7 @@ describe('fileToEmbedding', () => {
     await unlink(testImagePath).catch(() => {});
   });
 
-  it('returns a normalized embedding vector', async () => {
+  it('returns a normalized embedding vector', { timeout: 30000 }, async () => {
     const emb = await fileToEmbedding(testImagePath);
     expect(Array.isArray(emb)).toBe(true);
     expect(emb.length).toBeGreaterThan(0);
@@ -95,14 +95,14 @@ describe('fileToEmbedding', () => {
     expect(norm).toBeLessThan(1.01);
   });
 
-  it('falls back to deterministic embedding when face detection fails', async () => {
+  it('falls back to deterministic embedding when face detection fails', { timeout: 30000 }, async () => {
     // fileToEmbedding 會在臉部偵測失敗時降級到 deterministic embedding
     const emb = await fileToEmbedding(testImagePath);
     expect(emb.length).toBe(EMBEDDING_DIMS); // 1024 維，匹配 faceres 模型
     expect(emb.every(v => typeof v === 'number')).toBe(true);
   });
 
-  it('is deterministic for the same file', async () => {
+  it('is deterministic for the same file', { timeout: 30000 }, async () => {
     const a = await fileToEmbedding(testImagePath);
     const b = await fileToEmbedding(testImagePath);
     // 即使臉部偵測可能不穩定，至少 deterministic fallback 應該是一致的

@@ -15,11 +15,12 @@ import { OnboardingWizard } from './components/OnboardingWizard';
 import { MatchResultCard } from './components/MatchResultCard';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme, animations, modernStyles } from './styles/theme';
-import type { MatchResult, ScanProgress, AppSettings, ElectronAPI, AppInfo } from '../types/api';
+import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../types/api';
 
 export function App() {
   const [folder, setFolder] = useState<string>('');
   const [refPaths, setRefPaths] = useState<string>('');
+  const [modelStatus, setModelStatus] = useState<{ loaded: boolean; error: string | null } | null>(null);
   const [threshold, setThreshold] = useState<number>(0.6);
   const [topN, setTopN] = useState<number>(50);
   const [results, setResults] = useState<MatchResult[]>([]);
@@ -125,7 +126,7 @@ export function App() {
 
   useEffect(() => {
     if (!window.api) return;
-    window.api.getAppInfo().then((info) => {
+    window.api.getAppInfo().then((info: AppInfo) => {
       setAppInfo(info);
     }).catch(() => {
       setAppInfo({
@@ -134,6 +135,16 @@ export function App() {
       });
     });
   }, []);
+
+  // Check AI model status on mount and after first reference embedding
+  useEffect(() => {
+    if (!window.api?.getModelStatus) return;
+    window.api.getModelStatus().then((status: { loaded: boolean; error: string | null }) => {
+      setModelStatus(status);
+    }).catch(() => {
+      // Model status API not available
+    });
+  }, [refsLoaded]);
 
   // Save settings when they change
   useEffect(() => {
@@ -766,10 +777,19 @@ export function App() {
               }}>
                 大海撈「B」
               </h1>
-              <div style={{ marginTop: theme.spacing[1] }}>
+              <div style={{ marginTop: theme.spacing[1], display: 'flex', gap: theme.spacing[2], alignItems: 'center' }}>
                 <StatusBadge status={getStatusType()} size="sm">
                   {getStatusText()}
                 </StatusBadge>
+                {modelStatus && (
+                  <span style={{
+                    fontSize: theme.typography.fontSize.xs,
+                    color: modelStatus.loaded ? (theme.colors.success as Record<string, string>)[500] : (theme.colors.error as Record<string, string>)[500],
+                    opacity: 0.8,
+                  }}>
+                    {modelStatus.loaded ? 'AI 就緒' : 'AI 未載入'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -854,6 +874,22 @@ export function App() {
             }}>
               上次：{settings.lastReferencePaths.length} 參考照 / {lastFolderDisplay}
             </div>
+          )}
+
+          {/* Model Not Loaded Warning */}
+          {modelStatus && !modelStatus.loaded && (
+            <GlassCard padding="md" style={{
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+            }}>
+              <div style={{ color: '#f59e0b', fontSize: theme.typography.fontSize.sm }}>
+                <strong>AI 模型未載入</strong> — 臉部辨識功能無法運作。
+                {modelStatus.error && <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>{modelStatus.error}</div>}
+                <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
+                  請確認 @tensorflow/tfjs-node 和 canvas 已正確安裝。照片比對結果將不準確。
+                </div>
+              </div>
+            </GlassCard>
           )}
 
           {/* Error Alert */}

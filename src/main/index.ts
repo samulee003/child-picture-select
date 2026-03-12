@@ -13,10 +13,23 @@ import { performanceManager } from '../core/performance';
 import { photoEnhancer } from '../core/photoEnhancer';
 import { ChildQualityAssessor } from '../core/childQualityAssessment';
 import { growthRecordManager } from './growthRecordManager';
+import { getModelStatus } from '../core/detector';
 
 let mainWindow: BrowserWindow | null = null;
 const referenceEmbeddings: Embedding[] = [];
+
+// LRU cache for photo embeddings with max size to prevent memory leaks
+const MAX_EMBEDDING_CACHE_SIZE = 50000; // ~200MB for 1024-dim float64
 const photoEmbeddings = new Map<string, Embedding>();
+
+function evictOldestEmbeddings(count: number) {
+  const keys = photoEmbeddings.keys();
+  for (let i = 0; i < count; i++) {
+    const next = keys.next();
+    if (next.done) break;
+    photoEmbeddings.delete(next.value);
+  }
+}
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
@@ -83,6 +96,11 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
 }
 
 function wireIpc() {
+  // 模型狀態查詢 — 讓 UI 知道 face detection 是否可用
+  ipcMain.handle('model:status', async () => {
+    return getModelStatus();
+  });
+
   ipcMain.handle('app:about', async () => ({
     appName: '大海撈「B」',
     version: app.getVersion(),
@@ -188,7 +206,14 @@ function wireIpc() {
       }
       
       logger.info(`Found ${total} images to process`);
-      
+
+      // Evict old embeddings if cache is getting too large
+      if (photoEmbeddings.size + total > MAX_EMBEDDING_CACHE_SIZE) {
+        const toEvict = Math.min(photoEmbeddings.size, photoEmbeddings.size + total - MAX_EMBEDDING_CACHE_SIZE);
+        logger.info(`Evicting ${toEvict} old embeddings to stay within cache limit`);
+        evictOldestEmbeddings(toEvict);
+      }
+
       // Process files in batches for better performance
       const processFile = async (filePath: string) => {
         const s = await fsStat(filePath);

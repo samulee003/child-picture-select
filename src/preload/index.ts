@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('scan:progress');
   },
   clearEmbeddingCache: () => ipcRenderer.invoke('scan:clear-cache'),
+  getModelStatus: () => ipcRenderer.invoke('model:status'),
 
   // 照片质量评估
   assessPhotoQuality: (filePath: string) => ipcRenderer.invoke('assess:photo-quality', filePath),
