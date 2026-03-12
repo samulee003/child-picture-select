@@ -14,6 +14,8 @@ import { HelpModal } from './components/HelpModal';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { MatchResultCard } from './components/MatchResultCard';
 import { AIAnalysisPanel } from './components/AIAnalysisPanel';
+import { ScanControls } from './components/ScanControls';
+import { UpdateBanner } from './components/UpdateBanner';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme, animations, modernStyles } from './styles/theme';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../types/api';
@@ -311,6 +313,15 @@ export function App() {
       
       // 顯示掃描診斷
       const scanData = scanResult.data as any;
+
+      // Handle cancelled scan
+      if (scanData?.cancelled) {
+        setStatus('idle');
+        setProgress(null);
+        setError(`掃描已取消（已完成 ${scanData?.scanned || 0} 張）`);
+        return;
+      }
+
       if (scanData?.deterministicFallback > 0) {
         console.warn(`[scan] ${scanData.deterministicFallback} photos used deterministic (non-face) embeddings`);
       }
@@ -1372,6 +1383,9 @@ C:\Photos\child\photo3.jpg
           margin: '0 auto',
           width: '100%',
         }}>
+          {/* Update Banner */}
+          <UpdateBanner />
+
           {/* Welcome State */}
           {results.length === 0 && !status.includes('ing...') && status !== 'done' && (
             <div style={{
@@ -1432,6 +1446,13 @@ C:\Photos\child\photo3.jpg
           {progress && (
             <div style={{ animation: 'slideIn 0.3s ease-out' }}>
               <AIAnalysisPanel progress={progress} />
+              {status === 'scanning...' && (
+                <ScanControls onCancelled={() => {
+                  setStatus('idle');
+                  setProgress(null);
+                  setError('掃描已取消');
+                }} />
+              )}
             </div>
           )}
 
