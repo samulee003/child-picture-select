@@ -312,7 +312,7 @@ export function App() {
       }
       
       // 顯示掃描診斷
-      const scanData = scanResult.data as any;
+      const scanData = scanResult.data;
 
       // Handle cancelled scan
       if (scanData?.cancelled) {
@@ -322,10 +322,10 @@ export function App() {
         return;
       }
 
-      if (scanData?.deterministicFallback > 0) {
+      if (scanData && scanData.deterministicFallback && scanData.deterministicFallback > 0) {
         console.warn(`[scan] ${scanData.deterministicFallback} photos used deterministic (non-face) embeddings`);
       }
-      if (scanData?.faceDetected > 0) {
+      if (scanData && scanData.faceDetected && scanData.faceDetected > 0) {
         console.info(`[scan] ${scanData.faceDetected} photos had faces detected`);
       }
       
@@ -1447,7 +1447,7 @@ C:\Photos\child\photo3.jpg
             <div style={{ animation: 'slideIn 0.3s ease-out' }}>
               <AIAnalysisPanel progress={progress} />
               {status === 'scanning...' && (
-                <ScanControls onCancelled={() => {
+                <ScanControls key={scanStartTimeRef.current} onCancelled={() => {
                   setStatus('idle');
                   setProgress(null);
                   setError('掃描已取消');

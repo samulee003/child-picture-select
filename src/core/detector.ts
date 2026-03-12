@@ -5,6 +5,7 @@
 
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
+import sharp from 'sharp';
 
 export interface FaceDetection {
   bbox: [number, number, number, number]; // x, y, width, height
@@ -25,6 +26,7 @@ export interface DetectorOptions {
 let humanInstance: any = null;
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
+let hasTfjsNodeBackend = false;
 
 /**
  * 設置 Node.js canvas polyfill（Electron main process 沒有 DOM）
@@ -132,14 +134,20 @@ async function getHuman() {
     ensureCanvasPolyfill();
 
     // 預先檢查 tfjs-node
-    const hasTfjsNode = checkTfjsNode();
-    const backend = hasTfjsNode ? 'tensorflow' : 'cpu';
-    if (!hasTfjsNode) {
+    hasTfjsNodeBackend = checkTfjsNode();
+    const backend = hasTfjsNodeBackend ? 'tensorflow' : 'cpu';
+    if (!hasTfjsNodeBackend) {
       logger.warn('⚠️ Falling back to CPU backend (slower but works without native modules)');
     }
 
-    // 動態載入
-    const { Human } = await import('@vladmandic/human');
+    // 使用 require 載入 — 避免 ESM dynamic import 在 asar 中失敗
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const humanModule = require('@vladmandic/human');
+    const Human = humanModule.Human || humanModule.default?.Human || humanModule.default;
+
+    if (!Human) {
+      throw new Error('@vladmandic/human module loaded but Human class not found');
+    }
 
     const modelBasePath = resolveModelBasePath();
 
@@ -187,6 +195,29 @@ export function getModelStatus(): { loaded: boolean; error: string | null } {
 }
 
 /**
+ * 將圖片 buffer 轉換為 tensor（支援 tfjs-node 和 CPU 兩種 backend）
+ */
+async function bufferToTensor(human: any, imageBuffer: Buffer) {
+  // tfjs-node backend: 使用 node.decodeImage（快速）
+  if (hasTfjsNodeBackend && human.tf?.node?.decodeImage) {
+    return human.tf.node.decodeImage(imageBuffer, 3);
+  }
+
+  // CPU backend fallback: 手動解碼 JPEG buffer 為 pixel data
+  // 使用 sharp 解碼為 raw RGB pixels，再建立 tensor
+  const { data, info } = await sharp(imageBuffer)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  // 建立 3D tensor [height, width, channels]
+  return human.tf.tensor3d(
+    new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+    [height, width, channels]
+  );
+}
+
+/**
  * 從圖片檔案偵測臉部並提取特徵
  */
 export async function detectFaces(
@@ -203,9 +234,6 @@ export async function detectFaces(
 
   try {
     logger.debug(`Processing image for face detection: ${imagePath}`);
-
-    // 在 Electron main process 中，使用 sharp 載入圖片並轉換為適合的格式
-    const sharp = (await import('sharp')).default;
 
     // Handle different image formats
     let sharpInstance = sharp(imagePath);
@@ -229,8 +257,8 @@ export async function detectFaces(
       .jpeg({ quality: 85 })
       .toBuffer();
 
-    // 使用 Human 的 TensorFlow.js 後端處理圖片
-    const tensor = await human.tf.node.decodeImage(imageBuffer, 3); // RGB
+    // 將圖片轉換為 tensor（自動選擇 tfjs-node 或 CPU fallback）
+    const tensor = await bufferToTensor(human, imageBuffer);
     const result = await human.detect(tensor);
     tensor.dispose(); // 釋放記憶體
 
