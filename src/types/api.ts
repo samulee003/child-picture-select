@@ -60,6 +60,7 @@ export interface RunScanResponse extends ApiResponse {
     faceDetected?: number;
     deterministicFallback?: number;
     thumbnailErrors?: number;
+    cancelled?: boolean;
   };
 }
 

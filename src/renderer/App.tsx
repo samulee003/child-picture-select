@@ -312,7 +312,7 @@ export function App() {
       }
       
       // 顯示掃描診斷
-      const scanData = scanResult.data as any;
+      const scanData = scanResult.data;
 
       // Handle cancelled scan
       if (scanData?.cancelled) {
@@ -322,10 +322,10 @@ export function App() {
         return;
       }
 
-      if (scanData?.deterministicFallback > 0) {
+      if (scanData && scanData.deterministicFallback && scanData.deterministicFallback > 0) {
         console.warn(`[scan] ${scanData.deterministicFallback} photos used deterministic (non-face) embeddings`);
       }
-      if (scanData?.faceDetected > 0) {
+      if (scanData && scanData.faceDetected && scanData.faceDetected > 0) {
         console.info(`[scan] ${scanData.faceDetected} photos had faces detected`);
       }
       
@@ -926,10 +926,10 @@ export function App() {
               border: '1px solid rgba(245, 158, 11, 0.3)',
             }}>
               <div style={{ color: '#f59e0b', fontSize: theme.typography.fontSize.sm }}>
-                <strong>AI 模型未載入</strong> — 臉部辨識功能無法運作。
-                {modelStatus.error && <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>{modelStatus.error}</div>}
+                <strong>AI 模型尚未載入</strong> — 首次啟動可能需要 10~30 秒載入模型。
+                {modelStatus.error && <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>錯誤：{modelStatus.error}</div>}
                 <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
-                  請確認 @tensorflow/tfjs-node 和 canvas 已正確安裝。照片比對結果將不準確。
+                  如果長時間未載入，請嘗試重新開啟程式。載入參考照片時會自動觸發模型載入。
                 </div>
               </div>
             </GlassCard>
@@ -1447,7 +1447,7 @@ C:\Photos\child\photo3.jpg
             <div style={{ animation: 'slideIn 0.3s ease-out' }}>
               <AIAnalysisPanel progress={progress} />
               {status === 'scanning...' && (
-                <ScanControls onCancelled={() => {
+                <ScanControls key={scanStartTimeRef.current} onCancelled={() => {
                   setStatus('idle');
                   setProgress(null);
                   setError('掃描已取消');

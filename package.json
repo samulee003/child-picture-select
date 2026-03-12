@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:legacy": "concurrently -k \"npm:dev:*\"",
-    "dev:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --watch --silent --external electron",
+    "dev:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --watch --silent --external electron --external better-sqlite3 --external sharp --external canvas --external @tensorflow/tfjs-node --external @vladmandic/human --external electron-updater --external fs-extra --external uuid",
     "dev:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --watch --silent --external electron",
     "dev:renderer": "vite --config vite.renderer.config.ts",
     "dev:app": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
@@ -17,8 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "node scripts/build.mjs",
     "build:legacy": "npm run clean && npm run build:main && npm run build:preload && npm run build:renderer",
-    "build:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --external electron",
-    "build:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --external electron",
+    "build:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --external electron --external better-sqlite3 --external sharp --external canvas --external @tensorflow/tfjs-node --external @vladmandic/human --external electron-updater --external fs-extra --external uuid",
+    "build:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --external electron --external electron-updater",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "clean": "rimraf dist out",
     "test": "vitest run",
@@ -51,19 +51,23 @@
     "files": [
       "dist/**",
       "package.json",
+      "node_modules/**",
+      "!node_modules/**/{test,tests,__tests__,docs,examples,example,doc}/**",
+      "!node_modules/**/*.md",
       "!**/*.test.ts",
       "!**/*.test.tsx",
       "!tests/**"
     ],
     "asar": true,
+    "asarUnpack": [
+      "node_modules/@tensorflow/**",
+      "node_modules/canvas/**",
+      "node_modules/better-sqlite3/**",
+      "node_modules/sharp/**",
+      "node_modules/@vladmandic/**",
+      "node_modules/electron-updater/**"
+    ],
     "extraResources": [
-      {
-        "from": "resources/models",
-        "to": "models",
-        "filter": [
-          "**/*"
-        ]
-      },
       {
         "from": "resources/logo_new.png",
         "to": "logo_new.png"
