@@ -56,7 +56,12 @@
       "!node_modules/**/*.md",
       "!**/*.test.ts",
       "!**/*.test.tsx",
-      "!tests/**"
+      "!tests/**",
+      "!node_modules/@tensorflow/tfjs-node/**",
+      "!node_modules/@tensorflow/tfjs-node-gpu/**",
+      "!node_modules/canvas/**",
+      "!node_modules/@vladmandic/human/dist/human.node.js",
+      "!node_modules/@vladmandic/human/dist/human.node-gpu.js"
     ],
     "asar": true,
     "asarUnpack": [
@@ -123,6 +128,7 @@
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "long": "^5.2.3",
     "@vladmandic/human": "^2.10.0",
     "better-sqlite3": "^11.7.0",
     "electron-updater": "^6.8.3",
