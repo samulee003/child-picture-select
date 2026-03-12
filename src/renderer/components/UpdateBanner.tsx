@@ -20,7 +20,8 @@ export function UpdateBanner() {
   }, []);
 
   if (dismissed || !updateStatus) return null;
-  if (updateStatus.status === 'checking' || updateStatus.status === 'not-available') return null;
+  // Only show banner for actionable statuses — silently ignore check failures
+  if (updateStatus.status === 'checking' || updateStatus.status === 'not-available' || updateStatus.status === 'error') return null;
 
   const handleDownload = () => {
     window.api?.downloadUpdate?.();
@@ -54,10 +55,6 @@ export function UpdateBanner() {
         </button>
       </>
     );
-  } else if (updateStatus.status === 'error') {
-    bgColor = 'rgba(239, 68, 68, 0.08)';
-    borderColor = 'rgba(239, 68, 68, 0.2)';
-    content = <span style={{ color: '#fca5a5' }}>更新檢查失敗：{updateStatus.error}</span>;
   }
 
   if (!content) return null;
