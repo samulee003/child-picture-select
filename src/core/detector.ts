@@ -1,6 +1,7 @@
 /**
  * 臉部偵測模組
- * 使用 @vladmandic/human 進行臉部偵測與特徵提取
+ * 使用 @vladmandic/human (WASM backend) 進行臉部偵測與特徵提取
+ * 不依賴 @tensorflow/tfjs-node 或 canvas，安裝包更小更穩定
  */
 
 import { logger } from '../utils/logger';
@@ -26,7 +27,6 @@ export interface DetectorOptions {
 let humanInstance: any = null;
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
-let hasTfjsNodeBackend = false;
 const FACE_DETECTION_TIMEOUT_MS = 30000;
 type DisposableTensor = { dispose: () => void };
 
@@ -47,46 +47,36 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCod
 }
 
 /**
- * 設置 Node.js canvas polyfill（Electron main process 沒有 DOM）
+ * 解析 WASM 二進位檔案路徑
  */
-function ensureCanvasPolyfill() {
-  if (typeof globalThis.HTMLCanvasElement !== 'undefined') return;
+function resolveWasmPath(): string {
+  const { join } = require('path');
+  const { existsSync } = require('fs');
 
+  // 開發模式
+  const devPath = join(process.cwd(), 'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist');
+  if (existsSync(join(devPath, 'tfjs-backend-wasm.wasm'))) {
+    logger.info(`Using WASM from: ${devPath}`);
+    return devPath + '/';
+  }
+
+  // 打包後 — asarUnpack 路徑
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const canvas = require('canvas');
-    globalThis.HTMLCanvasElement = canvas.Canvas;
-    globalThis.HTMLImageElement = canvas.Image;
-    globalThis.ImageData = canvas.ImageData;
-    if (typeof globalThis.document === 'undefined') {
-      // @ts-expect-error - minimal DOM polyfill for @vladmandic/human
-      globalThis.document = {
-        createElement: (tag: string) => {
-          if (tag === 'canvas') return canvas.createCanvas(100, 100);
-          return {};
-        },
-      };
+    const { app } = require('electron');
+    const appPath = app.getAppPath();
+    const unpackedPath = join(
+      appPath.replace('app.asar', 'app.asar.unpacked'),
+      'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist'
+    );
+    if (existsSync(join(unpackedPath, 'tfjs-backend-wasm.wasm'))) {
+      logger.info(`Using WASM from: ${unpackedPath}`);
+      return unpackedPath + '/';
     }
-    logger.info('✅ Canvas polyfill installed for Node.js environment');
-  } catch (err: any) {
-    logger.error(`❌ canvas package failed to load: ${err?.message || err}`);
-    logger.warn('⚠️ Face detection may not work without canvas polyfill');
+  } catch {
+    // Not in Electron
   }
-}
 
-/**
- * 驗證 tfjs-node 是否可用
- */
-function checkTfjsNode(): boolean {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('@tensorflow/tfjs-node');
-    logger.info('✅ @tensorflow/tfjs-node loaded successfully');
-    return true;
-  } catch (err: any) {
-    logger.error(`❌ @tensorflow/tfjs-node failed to load: ${err?.message || err}`);
-    return false;
-  }
+  return '';
 }
 
 /**
@@ -99,7 +89,7 @@ function resolveModelBasePath(): string {
   // 1. 開發模式：node_modules 中的模型
   const nodeModulesPath = join(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
   if (existsSync(nodeModulesPath)) {
-    logger.info(`✅ Using local models from: ${nodeModulesPath}`);
+    logger.info(`Using models from: ${nodeModulesPath}`);
     return `file://${nodeModulesPath.replace(/\\/g, '/')}/`;
   }
 
@@ -108,79 +98,93 @@ function resolveModelBasePath(): string {
     const { app } = require('electron');
     const appPath = app.getAppPath();
 
-    // 2a. asarUnpack 路徑 (app.asar.unpacked/node_modules/...)
-    const unpackedPath = join(appPath.replace('app.asar', 'app.asar.unpacked'), 'node_modules', '@vladmandic', 'human', 'models');
+    // asarUnpack 路徑
+    const unpackedPath = join(
+      appPath.replace('app.asar', 'app.asar.unpacked'),
+      'node_modules', '@vladmandic', 'human', 'models'
+    );
     if (existsSync(unpackedPath)) {
-      logger.info(`✅ Using unpacked models from: ${unpackedPath}`);
+      logger.info(`Using unpacked models from: ${unpackedPath}`);
       return `file://${unpackedPath.replace(/\\/g, '/')}/`;
     }
 
-    // 2b. extraResources 中的 models 目錄
+    // extraResources
     const resourcesModelsPath = join(process.resourcesPath || appPath, 'models');
     if (existsSync(resourcesModelsPath)) {
-      logger.info(`✅ Using packaged models from: ${resourcesModelsPath}`);
+      logger.info(`Using packaged models from: ${resourcesModelsPath}`);
       return `file://${resourcesModelsPath.replace(/\\/g, '/')}/`;
     }
 
-    // 2c. asar 內的 node_modules（JSON/bin 可從 asar 讀取）
+    // asar 內 (JSON 可讀)
     const asarModulesPath = join(appPath, 'node_modules', '@vladmandic', 'human', 'models');
     if (existsSync(asarModulesPath)) {
-      logger.info(`✅ Using asar models from: ${asarModulesPath}`);
+      logger.info(`Using asar models from: ${asarModulesPath}`);
       return `file://${asarModulesPath.replace(/\\/g, '/')}/`;
     }
   } catch {
-    // Not running inside Electron
+    // Not in Electron
   }
 
-  logger.warn('⚠️ Local models not found, using CDN fallback');
+  logger.warn('Local models not found, using CDN fallback');
   return 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/';
 }
 
 /**
- * 初始化 Human 實例（延遲載入）
+ * 初始化 Human 實例（延遲載入，WASM backend）
  */
 async function getHuman() {
   if (humanInstance) return humanInstance;
-  if (modelLoadAttempted) return null; // 已嘗試過且失敗
+  if (modelLoadAttempted) return null;
 
   modelLoadAttempted = true;
 
   try {
-    logger.info('🔄 Loading @vladmandic/human model...');
+    logger.info('Loading @vladmandic/human model (WASM backend)...');
 
-    // 安裝 canvas polyfill
-    ensureCanvasPolyfill();
-
-    // 預先檢查 tfjs-node
-    hasTfjsNodeBackend = checkTfjsNode();
-    const backend = hasTfjsNodeBackend ? 'tensorflow' : 'cpu';
-    if (!hasTfjsNodeBackend) {
-      logger.warn('⚠️ Falling back to CPU backend (slower but works without native modules)');
-    }
-
-    // 使用 require 載入 — 避免 ESM dynamic import 在 asar 中失敗
+    // 載入 WASM 版本 — 不依賴 tfjs-node，無 native bindings
+    // 動態構建路徑，避免 Node.js exports 限制和 tsup 靜態分析
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const humanModule = require('@vladmandic/human');
+    const { join } = require('path');
+    const { existsSync } = require('fs');
+    const humanWasmFile = ['dist', 'human.node-wasm.js'].join('/');
+    const candidates = [
+      join(process.cwd(), 'node_modules', '@vladmandic', 'human', humanWasmFile),
+    ];
+    // Electron 打包路徑
+    try {
+      const { app } = require('electron');
+      const appPath = app.getAppPath();
+      candidates.push(
+        join(appPath.replace('app.asar', 'app.asar.unpacked'), 'node_modules', '@vladmandic', 'human', humanWasmFile),
+        join(appPath, 'node_modules', '@vladmandic', 'human', humanWasmFile),
+      );
+    } catch { /* not in Electron */ }
+    const wasmEntry = candidates.find(c => existsSync(c));
+    if (!wasmEntry) throw new Error('Cannot find @vladmandic/human WASM build');
+    const humanModule = require(wasmEntry);
     const Human = humanModule.Human || humanModule.default?.Human || humanModule.default;
 
     if (!Human) {
       throw new Error('@vladmandic/human module loaded but Human class not found');
     }
 
+    // 配置 WASM 路徑
+    const wasmPath = resolveWasmPath();
     const modelBasePath = resolveModelBasePath();
 
     humanInstance = new Human({
       modelBasePath,
-      backend,
+      backend: 'wasm',
+      wasmPath,
       cacheSensitivity: 0,
-      filter: { enabled: false }, // 不使用 canvas filter（Node.js 環境不需要）
+      filter: { enabled: false },
       face: {
         enabled: true,
         detector: { enabled: true, modelPath: 'blazeface.json', maxDetected: 10 },
         mesh: { enabled: false },
         iris: { enabled: false },
         emotion: { enabled: false },
-        description: { enabled: true, modelPath: 'faceres.json' }, // 1024-dim embedding
+        description: { enabled: true, modelPath: 'faceres.json' },
         antispoof: { enabled: false },
       },
       body: { enabled: false },
@@ -190,14 +194,13 @@ async function getHuman() {
       object: { enabled: false },
     });
 
-    logger.info('✅ @vladmandic/human model loaded and ready!');
+    logger.info('@vladmandic/human model loaded and ready (WASM backend)');
     return humanInstance;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     modelLoadError = message;
-    logger.error(`❌ Failed to load @vladmandic/human: ${message}`);
-    logger.error('❌ Face detection will NOT work. All photos will get deterministic (non-face) embeddings.');
-    logger.error('❌ This means photo matching will NOT produce meaningful results!');
+    logger.error(`Failed to load @vladmandic/human: ${message}`);
+    logger.error('Face detection will NOT work. Photos will get deterministic embeddings.');
     return null;
   }
 }
@@ -213,22 +216,15 @@ export function getModelStatus(): { loaded: boolean; error: string | null } {
 }
 
 /**
- * 將圖片 buffer 轉換為 tensor（支援 tfjs-node 和 CPU 兩種 backend）
+ * 將圖片 buffer 轉為 tensor（使用 sharp 解碼 + human.tf）
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function bufferToTensor(human: any, imageBuffer: Buffer) {
-  // tfjs-node backend: 使用 node.decodeImage（快速）
-  if (hasTfjsNodeBackend && human.tf?.node?.decodeImage) {
-    return human.tf.node.decodeImage(imageBuffer, 3);
-  }
-
-  // CPU backend fallback: 手動解碼 JPEG buffer 為 pixel data
-  // 使用 sharp 解碼為 raw RGB pixels，再建立 tensor
   const { data, info } = await sharp(imageBuffer)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
   const { width, height, channels } = info;
-  // 建立 3D tensor [height, width, channels]
   return human.tf.tensor3d(
     new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
     [height, width, channels]
@@ -244,7 +240,6 @@ export async function detectFaces(
 ): Promise<FaceDetection[]> {
   const human = await getHuman();
 
-  // 如果 Human 未載入，回傳空陣列（將使用 deterministic embedding 作為 fallback）
   if (!human) {
     logger.debug('Human model not available, skipping face detection');
     return [];
@@ -253,7 +248,6 @@ export async function detectFaces(
   try {
     logger.debug(`Processing image for face detection: ${imagePath}`);
 
-    // Handle different image formats
     let sharpInstance = sharp(imagePath);
     const isHeic = imagePath.toLowerCase().endsWith('.heic') || imagePath.toLowerCase().endsWith('.heif');
 
@@ -280,7 +274,6 @@ export async function detectFaces(
       `Image preprocessing timed out for ${imagePath}`
     );
 
-    // 將圖片轉換為 tensor（自動選擇 tfjs-node 或 CPU fallback）
     const tensor = await withTimeout<DisposableTensor>(
       bufferToTensor(human, imageBuffer),
       FACE_DETECTION_TIMEOUT_MS,
@@ -311,18 +304,16 @@ export async function detectFaces(
           continue;
         }
 
-        // 提取特徵向量
         let embedding: number[] = [];
         if (face.embedding && face.embedding.length > 0) {
           embedding = Array.from(face.embedding);
         }
 
-        // @vladmandic/human face.box 格式: [x, y, width, height]
         const bbox: [number, number, number, number] = [
-          face.box[0], // x
-          face.box[1], // y
-          face.box[2], // width
-          face.box[3], // height
+          face.box[0],
+          face.box[1],
+          face.box[2],
+          face.box[3],
         ];
 
         const detection: FaceDetection = {
@@ -331,12 +322,10 @@ export async function detectFaces(
           confidence: face.score,
         };
 
-        // 年齡和性別
         if (enableAgeGender && face.age != null) {
           detection.age = Math.round(face.age);
         }
         if (enableAgeGender && face.gender != null) {
-          // @vladmandic/human returns gender as string 'male'/'female'
           detection.gender = typeof face.gender === 'string' ? face.gender : (face.gender === 0 ? 'female' : 'male');
         }
 
@@ -375,7 +364,6 @@ export async function extractFaceEmbedding(
     return null;
   }
 
-  // 使用信心度最高的臉部
   const bestFace = faces.reduce((best, current) =>
     current.confidence > best.confidence ? current : best
   );
