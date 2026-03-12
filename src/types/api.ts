@@ -213,6 +213,7 @@ export interface ElectronAPI extends GrowthApi {
   onScanProgress: (callback: (progress: ScanProgress) => void) => void;
   removeScanProgressListener: () => void;
   clearEmbeddingCache: () => Promise<{ ok: boolean; error?: string }>;
+  getModelStatus: () => Promise<{ loaded: boolean; error: string | null }>;
   assessPhotoQuality: (filePath: string) => Promise<QualityMetrics>;
   enhancePhoto: (filePath: string) => Promise<EnhancePhotoResponse>;
 }

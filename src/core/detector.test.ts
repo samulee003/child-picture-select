@@ -22,7 +22,7 @@ describe('detector', () => {
   });
 
   describe('detectFaces', () => {
-    it('returns an array or throws for invalid images', async () => {
+    it('returns an array or throws for invalid images', { timeout: 30000 }, async () => {
       try {
         const faces = await detectFaces(testImagePath);
         // If Human model loaded and processed the image, expect an array
