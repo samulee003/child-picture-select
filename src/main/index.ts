@@ -59,7 +59,9 @@ async function createWindow() {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
     await mainWindow.loadURL(devUrl);
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    if (isDev) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
   } else {
     await mainWindow.loadFile(htmlPath);
   }
@@ -388,9 +390,22 @@ function wireIpc() {
       
       let copied = 0;
       const failedPaths: string[] = [];
+      const usedNames = new Set<string>();
       for (const src of files) {
         try {
-          const base = src.split(/[/\\]/).pop() || 'image.jpg';
+          let base = src.split(/[/\\]/).pop() || 'image.jpg';
+          // Handle filename collisions by appending a counter
+          if (usedNames.has(base.toLowerCase())) {
+            const dot = base.lastIndexOf('.');
+            const name = dot > 0 ? base.slice(0, dot) : base;
+            const ext = dot > 0 ? base.slice(dot) : '';
+            let counter = 2;
+            while (usedNames.has(`${name}_${counter}${ext}`.toLowerCase())) {
+              counter++;
+            }
+            base = `${name}_${counter}${ext}`;
+          }
+          usedNames.add(base.toLowerCase());
           const dest = join(outDir, base);
           await copyFile(src, dest);
           copied += 1;
@@ -417,6 +432,15 @@ function wireIpc() {
       logger.error('Export failed:', errorInfo);
       return { ok: false, error: errorInfo.message };
     }
+  });
+
+  ipcMain.handle('shell:open-external', async (_e, url: string) => {
+    // Only allow known safe URLs
+    if (url.startsWith('https://')) {
+      await shell.openExternal(url);
+      return { ok: true };
+    }
+    return { ok: false, error: 'Only HTTPS URLs are allowed' };
   });
 
   ipcMain.handle('folder:open', async (_e, folderPath: string) => {

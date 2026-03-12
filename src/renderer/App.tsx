@@ -793,12 +793,30 @@ export function App() {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: theme.spacing[2] }}>
+          <div style={{ display: 'flex', gap: theme.spacing[2], alignItems: 'center' }}>
             <ModernButton variant="ghost" size="sm" onClick={handleHelp}>
               說明
             </ModernButton>
             <ModernButton variant="ghost" size="sm" onClick={() => setIsHelpOpen(true)}>
               {appInfo?.version ? `版本 ${appInfo.version}` : '關於'}
+            </ModernButton>
+            <ModernButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                window.api?.openExternal?.('https://buymeacoffee.com/samulee003');
+              }}
+              style={{
+                background: 'linear-gradient(135deg, #FF813F 0%, #FFDD00 100%)',
+                color: '#000',
+                fontWeight: 700,
+                border: 'none',
+                borderRadius: '8px',
+                padding: '4px 12px',
+                fontSize: '13px',
+              }}
+            >
+              Buy me a coffee
             </ModernButton>
           </div>
 
