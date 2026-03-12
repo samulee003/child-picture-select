@@ -40,21 +40,10 @@ jobs:
     - name: Build application
       run: npm run build
 
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
     needs: test
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            artifact-name: win
-          - os: ubuntu-latest
-            artifact-name: linux
-          - os: macos-latest
-            artifact-name: mac
 
     steps:
     - name: Checkout code
@@ -69,22 +58,24 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Build and package
-      run: npm run dist
+    - name: Build and package Windows installer
+      run: npm run dist:win
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload build artifacts
+    - name: Upload Windows installer
       uses: actions/upload-artifact@v4
       with:
-        name: app-${{ matrix.artifact-name }}
-        path: dist-electron/*
-        retention-days: 30
+        name: FindMyKid-Windows-Setup
+        path: |
+          dist-electron/*.exe
+          dist-electron/*.exe.blockmap
+        retention-days: 90
 
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test, build]
+    needs: [test, build-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
@@ -93,22 +84,35 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download all artifacts
+    - name: Download Windows installer
       uses: actions/download-artifact@v4
       with:
+        name: FindMyKid-Windows-Setup
         path: release-assets
 
     - name: Get version from package.json
       id: pkg
-      run: echo "version=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+      run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.pkg.outputs.version }}
-        name: Find My Kid v${{ steps.pkg.outputs.version }}
+        name: "Find My Kid v${{ steps.pkg.outputs.version }} - \u5927\u6D77\u6488\u300CB\u300D"
         draft: false
         prerelease: false
-        files: release-assets/**/*
+        generate_release_notes: true
+        files: release-assets/*
+        body: |
+          ## 下載安裝
+
+          1. 下載下方的 `.exe` 檔案
+          2. 執行安裝程式，如遇到 Windows SmartScreen 警告，請點選「更多資訊」→「仍要執行」
+          3. 安裝完成後從桌面捷徑啟動
+
+          ## 功能說明
+
+          用 AI 臉部辨識，從大量照片中自動找出指定小孩的照片。
+          完全離線運作，照片不會上傳到任何伺服器。
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
