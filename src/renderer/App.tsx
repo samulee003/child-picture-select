@@ -133,7 +133,7 @@ export function App() {
       setAppInfo(info);
     }).catch(() => {
       setAppInfo({
-        appName: '大海撈「B」',
+        appName: '大海撈Ｂ',
         version: '獲取中...',
       });
     });
@@ -579,7 +579,7 @@ export function App() {
       return;
     }
     const content = [
-      `大海撈「B」匯出結果`,
+      `大海撈Ｂ匯出結果`,
       new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19),
       `輸出資料夾：${exportSummary.outDir}`,
       `成功：${exportSummary.copied} 張`,
@@ -820,7 +820,7 @@ export function App() {
           }}>
             <img
               src="logo.png"
-              alt="大海撈「B」 Logo"
+              alt="大海撈Ｂ Logo"
               style={{ width: '56px', height: '56px', borderRadius: theme.borderRadius.base }}
             />
             <div>
@@ -833,7 +833,7 @@ export function App() {
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
               }}>
-                大海撈「B」
+                大海撈Ｂ
               </h1>
               <div style={{ marginTop: theme.spacing[1], display: 'flex', gap: theme.spacing[2], alignItems: 'center' }}>
                 <StatusBadge status={getStatusType()} size="sm">

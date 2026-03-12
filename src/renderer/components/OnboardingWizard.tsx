@@ -16,7 +16,7 @@ interface OnboardingStep {
 
 const steps: OnboardingStep[] = [
   {
-    title: '歡迎使用 大海撈「B」',
+    title: '歡迎使用 大海撈Ｂ',
     description: '從班級/團體照中快速找出特定孩子的照片',
     icon: '👋',
     reassurance: '不用怕，第一次上手照步驟走完就能看到結果，不用一次就做到完美。',

@@ -16,7 +16,7 @@
       "@preload/*": ["src/preload/*"],
       "@core/*": ["src/core/*"]
     },
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
   "include": [
     "electron/**/*.ts",
@@ -26,5 +26,4 @@
   ],
   "exclude": ["node_modules", "dist", "out"]
 }
-
 
