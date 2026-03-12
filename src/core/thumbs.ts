@@ -6,6 +6,20 @@ import { getThumbsDir } from './db';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 
+async function createFallbackThumbnail(outPath: string): Promise<string> {
+  await sharp({
+    create: {
+      width: 256,
+      height: 256,
+      channels: 3,
+      background: { r: 236, g: 239, b: 244 },
+    },
+  })
+    .jpeg({ quality: 70, progressive: true })
+    .toFile(outPath);
+  return outPath;
+}
+
 export async function ensureThumbnailFor(filePath: string): Promise<string> {
   const thumbsDir = getThumbsDir();
   const hash = createHash('md5').update(filePath).digest('hex');
@@ -42,16 +56,20 @@ export async function ensureThumbnailFor(filePath: string): Promise<string> {
         
       logger.debug(`Thumbnail generated successfully: ${out}`);
     } catch (error) {
-      logger.error(`Failed to generate thumbnail for ${filePath}:`, error);
-      throw new AppError(
-        `Failed to generate thumbnail for ${filePath}`,
-        'THUMBNAIL_ERROR',
-        { originalError: error }
-      );
+      logger.warn(`Failed to generate thumbnail for ${filePath}, using fallback thumbnail:`, error);
+      try {
+        return await createFallbackThumbnail(out);
+      } catch (fallbackError) {
+        logger.error(`Failed to generate fallback thumbnail for ${filePath}:`, fallbackError);
+        throw new AppError(
+          `Failed to generate thumbnail for ${filePath}`,
+          'THUMBNAIL_ERROR',
+          { originalError: error, fallbackError }
+        );
+      }
     }
   }
   
   return out;
 }
-
 

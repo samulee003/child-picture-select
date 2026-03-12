@@ -3,6 +3,7 @@ import { join } from 'path';
 import { app } from 'electron';
 import { existsSync } from 'fs';
 import { mkdirSync } from 'fs';
+import { logger } from '../utils/logger';
 
 let db: any | null = null;
 
@@ -68,7 +69,29 @@ export function upsertFace(path: string, embedding: number[]) {
 export function getFacesByPath(path: string): number[][] {
   const d = getDb();
   const rows = d.prepare('SELECT embedding FROM faces WHERE photoPath = ?').all(path) as Array<{ embedding: string }>;
-  return rows.map(r => JSON.parse(r.embedding));
+  return rows.flatMap((r) => {
+    try {
+      const parsed = JSON.parse(r.embedding);
+      if (!Array.isArray(parsed) || !parsed.every(v => typeof v === 'number')) {
+        logger.warn(`Invalid embedding payload in DB for ${path}, skipping row`);
+        return [];
+      }
+      return [parsed];
+    } catch (error) {
+      logger.warn(`Failed to parse embedding JSON for ${path}, skipping row: ${(error as Error)?.message || error}`);
+      return [];
+    }
+  });
 }
 
+export function closeDb(): void {
+  if (!db) return;
+  try {
+    db.close();
+  } catch (error) {
+    logger.warn(`Failed to close SQLite database: ${(error as Error)?.message || error}`);
+  } finally {
+    db = null;
+  }
+}
 
