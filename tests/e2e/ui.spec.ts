@@ -43,7 +43,7 @@ test.beforeEach(async ({ page }) => {
 
 test('user can embed refs, scan, match, and see results', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('h1')).toHaveText(/Find My Kid/i);
+  await expect(page.locator('h1')).toHaveText(/大海撈Ｂ/i);
 
   // Provide reference files
   await page.locator('textarea').fill('C:/ref/1.jpg\nC:/ref/2.jpg');

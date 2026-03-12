@@ -99,7 +99,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
-    title: '大海撈「B」',
+    title: '大海撈Ｂ',
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -250,7 +250,7 @@ function wireIpc() {
   });
 
   ipcMain.handle('app:about', async () => ({
-    appName: '大海撈「B」',
+    appName: '大海撈Ｂ',
     version: app.getVersion(),
     supportEmail: 'support@findmykid.app',
     changelog: [
@@ -853,9 +853,9 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(async () => {
-  app.setName('大海撈「B」');
+  app.setName('大海撈Ｂ');
   app.setAboutPanelOptions({
-    applicationName: '大海撈「B」',
+    applicationName: '大海撈Ｂ',
     version: app.getVersion(),
   });
   wireIpc();

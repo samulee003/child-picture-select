@@ -98,7 +98,7 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.pkg.outputs.version }}
-        name: "Find My Kid v${{ steps.pkg.outputs.version }} - \u5927\u6D77\u6488\u300CB\u300D"
+        name: "大海撈Ｂ v${{ steps.pkg.outputs.version }}"
         draft: false
         prerelease: false
         generate_release_notes: true

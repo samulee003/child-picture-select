@@ -13,7 +13,7 @@ describe('OnboardingWizard', () => {
   it('should render first step correctly', () => {
     render(<OnboardingWizard />);
 
-    expect(screen.getByText('歡迎使用 大海撈「B」')).toBeInTheDocument();
+    expect(screen.getByText('歡迎使用 大海撈Ｂ')).toBeInTheDocument();
     expect(screen.getByText('👋')).toBeInTheDocument();
     expect(screen.getByText('步驟 1 / 5')).toBeInTheDocument();
   });
