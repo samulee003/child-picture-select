@@ -22,7 +22,16 @@ export interface ScanProgress {
   path: string;
   thumbPath?: string | null;
   faceAnalysis?: ScanProgressFaceAnalysis | null;
+  cancelled?: boolean;
 }
+
+export type UpdateStatus =
+  | { status: 'checking' }
+  | { status: 'available'; version: string; releaseNotes?: string }
+  | { status: 'not-available' }
+  | { status: 'downloading'; percent: number }
+  | { status: 'downloaded' }
+  | { status: 'error'; error: string };
 
 export interface ApiResponse<T = any> {
   ok: boolean;
@@ -226,4 +235,14 @@ export interface ElectronAPI extends GrowthApi {
   getModelStatus: () => Promise<{ loaded: boolean; error: string | null }>;
   assessPhotoQuality: (filePath: string) => Promise<QualityMetrics>;
   enhancePhoto: (filePath: string) => Promise<EnhancePhotoResponse>;
+  // 掃描控制
+  cancelScan: () => Promise<{ ok: boolean }>;
+  pauseScan: () => Promise<{ ok: boolean }>;
+  resumeScan: () => Promise<{ ok: boolean }>;
+  // 自動更新
+  checkForUpdate: () => Promise<ApiResponse>;
+  downloadUpdate: () => Promise<ApiResponse>;
+  installUpdate: () => Promise<ApiResponse>;
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
+  removeUpdateListener: () => void;
 }

@@ -14,6 +14,7 @@ import { photoEnhancer } from '../core/photoEnhancer';
 import { ChildQualityAssessor } from '../core/childQualityAssessment';
 import { growthRecordManager } from './growthRecordManager';
 import { getModelStatus } from '../core/detector';
+import { autoUpdater } from 'electron-updater';
 
 let mainWindow: BrowserWindow | null = null;
 const referenceEmbeddings: Embedding[] = [];
@@ -21,6 +22,10 @@ const referenceEmbeddings: Embedding[] = [];
 // LRU cache for photo embeddings with max size to prevent memory leaks
 const MAX_EMBEDDING_CACHE_SIZE = 50000; // ~200MB for 1024-dim float64
 const photoEmbeddings = new Map<string, Embedding>();
+
+// Scan control state
+let scanCancelled = false;
+let scanPaused = false;
 
 function evictOldestEmbeddings(count: number) {
   const keys = photoEmbeddings.keys();
@@ -97,10 +102,99 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
   return acc;
 }
 
+// ==================== Auto-Update ====================
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    logger.info('Checking for update...');
+    mainWindow?.webContents.send('update:status', { status: 'checking' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    logger.info(`Update available: v${info.version}`);
+    mainWindow?.webContents.send('update:status', {
+      status: 'available',
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    logger.info('No update available');
+    mainWindow?.webContents.send('update:status', { status: 'not-available' });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update:status', {
+      status: 'downloading',
+      percent: Math.round(progress.percent),
+    });
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    logger.info('Update downloaded, ready to install');
+    mainWindow?.webContents.send('update:status', { status: 'downloaded' });
+  });
+
+  autoUpdater.on('error', (err) => {
+    logger.warn('Auto-updater error:', err?.message);
+    mainWindow?.webContents.send('update:status', {
+      status: 'error',
+      error: err?.message || 'Unknown error',
+    });
+  });
+}
+
 function wireIpc() {
   // 模型狀態查詢 — 讓 UI 知道 face detection 是否可用
   ipcMain.handle('model:status', async () => {
     return getModelStatus();
+  });
+
+  // ==================== Auto-Update IPC ====================
+  ipcMain.handle('update:check', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return { ok: true, data: result?.updateInfo };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Check failed' };
+    }
+  });
+
+  ipcMain.handle('update:download', async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Download failed' };
+    }
+  });
+
+  ipcMain.handle('update:install', async () => {
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  });
+
+  // ==================== Scan Control IPC ====================
+  ipcMain.handle('scan:cancel', async () => {
+    scanCancelled = true;
+    scanPaused = false;
+    logger.info('Scan cancel requested');
+    return { ok: true };
+  });
+
+  ipcMain.handle('scan:pause', async () => {
+    scanPaused = true;
+    logger.info('Scan paused');
+    return { ok: true };
+  });
+
+  ipcMain.handle('scan:resume', async () => {
+    scanPaused = false;
+    logger.info('Scan resumed');
+    return { ok: true };
   });
 
   ipcMain.handle('app:about', async () => ({
@@ -190,6 +284,10 @@ function wireIpc() {
   });
 
   ipcMain.handle('embed:batch', async (_e, dir: string, clearCache?: boolean) => {
+    // Reset scan control flags
+    scanCancelled = false;
+    scanPaused = false;
+
     try {
       logger.info(`Starting batch embedding for directory: ${dir}`);
       const files = await listImagesRecursively(dir);
@@ -200,13 +298,13 @@ function wireIpc() {
       let faceCount = 0;
       let deterministicCount = 0;
       let thumbnailErrors = 0;
-      
+
       // 如果要求清除快取，清除相關的記憶體 embeddings
       if (clearCache) {
         logger.info('Clearing embedding cache as requested');
         photoEmbeddings.clear();
       }
-      
+
       logger.info(`Found ${total} images to process`);
 
       // Evict old embeddings if cache is getting too large
@@ -216,15 +314,38 @@ function wireIpc() {
         evictOldestEmbeddings(toEvict);
       }
 
-      // Process files in batches for better performance
-      const processFile = async (filePath: string) => {
+      // Process files one by one to support cancel/pause
+      for (const filePath of files) {
+        // Check cancel
+        if (scanCancelled) {
+          logger.info(`Scan cancelled at ${scanned}/${total}`);
+          mainWindow?.webContents.send('scan:progress', {
+            current: scanned, total, path: '', cancelled: true,
+          });
+          return {
+            ok: true,
+            data: { scanned, processed, cached, faceDetected: faceCount, deterministicFallback: deterministicCount, thumbnailErrors, cancelled: true },
+          };
+        }
+
+        // Check pause — spin-wait until resumed or cancelled
+        while (scanPaused && !scanCancelled) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        if (scanCancelled) {
+          logger.info(`Scan cancelled while paused at ${scanned}/${total}`);
+          return {
+            ok: true,
+            data: { scanned, processed, cached, faceDetected: faceCount, deterministicFallback: deterministicCount, thumbnailErrors, cancelled: true },
+          };
+        }
+
         const s = await fsStat(filePath);
         const mtime = Math.floor(s.mtimeMs);
         const existing = getPhoto(filePath);
         let faceAnalysis: FaceAnalysis | undefined;
 
         if (clearCache || !existing || existing.mtime !== mtime) {
-          // File changed, not cached, or cache cleared — compute embedding
           logger.debug(`Processing new/modified file: ${filePath}`);
           const result = await fileToEmbeddingWithSource(filePath);
           faceAnalysis = result.faceAnalysis;
@@ -246,14 +367,11 @@ function wireIpc() {
 
           processed++;
         } else if (!photoEmbeddings.has(filePath)) {
-          // File exists in cache, load embedding from database
           const cachedFaces = getFacesByPath(filePath);
           if (cachedFaces.length > 0) {
-            // Use first face embedding from cache
             photoEmbeddings.set(filePath, cachedFaces[0]);
             cached++;
           } else {
-            // No cached embedding, compute it
             logger.debug(`No cached embedding found for: ${filePath}`);
             const result = await fileToEmbeddingWithSource(filePath);
             faceAnalysis = result.faceAnalysis;
@@ -269,9 +387,7 @@ function wireIpc() {
 
         scanned += 1;
 
-        // 發送進度更新（含 AI 分析結果）
         if (mainWindow) {
-          // 取得縮圖路徑
           const photo = getPhoto(filePath);
           mainWindow.webContents.send('scan:progress', {
             current: scanned,
@@ -282,26 +398,17 @@ function wireIpc() {
           });
         }
 
-        return { filePath, processed: true };
-      };
-
-      // Use performance manager for batch processing
-      await performanceManager.processBatch(
-        files,
-        processFile,
-        {
-          batchSize: 20, // Smaller batches for better responsiveness
-          onProgress: (completed, totalFiles) => {
-            logger.debug(`Progress: ${completed}/${totalFiles} files processed`);
-          }
+        // Yield to event loop every 5 files for UI responsiveness
+        if (scanned % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
-      );
-      
+      }
+
       logger.info(`Batch embedding completed: ${processed} processed, ${cached} from cache, ${faceCount} face, ${deterministicCount} deterministic`);
       if (thumbnailErrors > 0) {
         logger.warn(`⚠️ ${thumbnailErrors} photos failed thumbnail generation`);
       }
-      
+
       return {
         ok: true,
         data: {
@@ -684,7 +791,17 @@ app.whenReady().then(async () => {
     version: app.getVersion(),
   });
   wireIpc();
+  setupAutoUpdater();
   await createWindow();
+
+  // Check for updates after window is ready (non-blocking)
+  if (!isDev) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err) => {
+        logger.warn('Auto-update check failed:', err?.message);
+      });
+    }, 5000);
+  }
 });
 
 

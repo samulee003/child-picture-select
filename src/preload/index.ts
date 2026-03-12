@@ -22,6 +22,22 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   getModelStatus: () => ipcRenderer.invoke('model:status'),
 
+  // 掃描控制
+  cancelScan: () => ipcRenderer.invoke('scan:cancel'),
+  pauseScan: () => ipcRenderer.invoke('scan:pause'),
+  resumeScan: () => ipcRenderer.invoke('scan:resume'),
+
+  // 自動更新
+  checkForUpdate: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (callback: (status: any) => void) => {
+    ipcRenderer.on('update:status', (_event, status) => callback(status));
+  },
+  removeUpdateListener: () => {
+    ipcRenderer.removeAllListeners('update:status');
+  },
+
   // 照片质量评估
   assessPhotoQuality: (filePath: string) => ipcRenderer.invoke('assess:photo-quality', filePath),
   enhancePhoto: (filePath: string) => ipcRenderer.invoke('enhance:photo', filePath),
