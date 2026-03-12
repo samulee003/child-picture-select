@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
-import { fileToEmbeddingWithSource, Embedding } from '../core/embeddings';
+import { fileToEmbeddingWithSource, Embedding, type FaceAnalysis } from '../core/embeddings';
 import { cosineSimilarity } from '../core/similarity';
 import { getPhoto, upsertPhoto, upsertFace, getFacesByPath, getDb } from '../core/db';
 import { ensureThumbnailFor } from '../core/thumbs';
@@ -221,12 +221,14 @@ function wireIpc() {
         const s = await fsStat(filePath);
         const mtime = Math.floor(s.mtimeMs);
         const existing = getPhoto(filePath);
-        
+        let faceAnalysis: FaceAnalysis | undefined;
+
         if (clearCache || !existing || existing.mtime !== mtime) {
           // File changed, not cached, or cache cleared — compute embedding
           logger.debug(`Processing new/modified file: ${filePath}`);
           const result = await fileToEmbeddingWithSource(filePath);
-          
+          faceAnalysis = result.faceAnalysis;
+
           let thumb: string | null = null;
           try {
             thumb = await ensureThumbnailFor(filePath);
@@ -234,14 +236,14 @@ function wireIpc() {
             thumbnailErrors++;
             logger.warn(`Thumbnail generation failed for ${filePath}: ${thumbErr?.message || thumbErr}`);
           }
-          
+
           upsertPhoto(filePath, mtime, thumb);
           upsertFace(filePath, result.embedding);
           photoEmbeddings.set(filePath, result.embedding);
-          
+
           if (result.source === 'face') faceCount++;
           else deterministicCount++;
-          
+
           processed++;
         } else if (!photoEmbeddings.has(filePath)) {
           // File exists in cache, load embedding from database
@@ -254,6 +256,7 @@ function wireIpc() {
             // No cached embedding, compute it
             logger.debug(`No cached embedding found for: ${filePath}`);
             const result = await fileToEmbeddingWithSource(filePath);
+            faceAnalysis = result.faceAnalysis;
             upsertFace(filePath, result.embedding);
             photoEmbeddings.set(filePath, result.embedding);
             if (result.source === 'face') faceCount++;
@@ -263,18 +266,22 @@ function wireIpc() {
         } else {
           cached++;
         }
-        
+
         scanned += 1;
-        
-        // 發送進度更新
+
+        // 發送進度更新（含 AI 分析結果）
         if (mainWindow) {
-          mainWindow.webContents.send('scan:progress', { 
-            current: scanned, 
-            total, 
-            path: filePath 
+          // 取得縮圖路徑
+          const photo = getPhoto(filePath);
+          mainWindow.webContents.send('scan:progress', {
+            current: scanned,
+            total,
+            path: filePath,
+            thumbPath: photo?.thumbPath || null,
+            faceAnalysis: faceAnalysis || null,
           });
         }
-        
+
         return { filePath, processed: true };
       };
 

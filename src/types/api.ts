@@ -9,10 +9,19 @@ export interface MatchResult {
   thumbPath?: string;
 }
 
+export interface ScanProgressFaceAnalysis {
+  confidence: number;
+  age?: number;
+  gender?: 'male' | 'female';
+  faceCount: number;
+}
+
 export interface ScanProgress {
   current: number;
   total: number;
   path: string;
+  thumbPath?: string | null;
+  faceAnalysis?: ScanProgressFaceAnalysis | null;
 }
 
 export interface ApiResponse<T = any> {

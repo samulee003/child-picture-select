@@ -203,7 +203,7 @@ export async function detectFaces(
     tensor.dispose(); // 釋放記憶體
 
     const detections: FaceDetection[] = [];
-    const { enableAgeGender = false, minConfidence = 0.3 } = options;
+    const { enableAgeGender = true, minConfidence = 0.3 } = options;
 
     if (result.face && result.face.length > 0) {
       logger.debug(`Found ${result.face.length} face(s) in ${imagePath}`);
@@ -234,12 +234,13 @@ export async function detectFaces(
           confidence: face.score,
         };
 
-        // 可選的年齡和性別
-        if (enableAgeGender && face.age) {
-          detection.age = face.age;
+        // 年齡和性別
+        if (enableAgeGender && face.age != null) {
+          detection.age = Math.round(face.age);
         }
-        if (enableAgeGender && face.gender !== undefined) {
-          detection.gender = face.gender === 0 ? 'female' : 'male';
+        if (enableAgeGender && face.gender != null) {
+          // @vladmandic/human returns gender as string 'male'/'female'
+          detection.gender = typeof face.gender === 'string' ? face.gender : (face.gender === 0 ? 'female' : 'male');
         }
 
         detections.push(detection);
