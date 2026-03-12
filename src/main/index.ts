@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
 import { fileToEmbeddingWithSource, Embedding, type FaceAnalysis } from '../core/embeddings';
 import { cosineSimilarity } from '../core/similarity';
-import { getPhoto, upsertPhoto, upsertFace, getFacesByPath, getDb } from '../core/db';
+import { getPhoto, upsertPhoto, upsertFace, getFacesByPath, getDb, closeDb } from '../core/db';
 import { ensureThumbnailFor } from '../core/thumbs';
 import { stat as fsStat } from 'fs/promises';
 import { logger } from '../utils/logger';
@@ -26,6 +26,8 @@ const photoEmbeddings = new Map<string, Embedding>();
 // Scan control state
 let scanCancelled = false;
 let scanPaused = false;
+let scanInProgress = false;
+let resolveScanPause: (() => void) | null = null;
 
 function evictOldestEmbeddings(count: number) {
   const keys = photoEmbeddings.keys();
@@ -34,6 +36,50 @@ function evictOldestEmbeddings(count: number) {
     if (next.done) break;
     photoEmbeddings.delete(next.value);
   }
+}
+
+function setPhotoEmbedding(path: string, embedding: Embedding) {
+  if (photoEmbeddings.has(path)) {
+    photoEmbeddings.delete(path);
+  }
+  photoEmbeddings.set(path, embedding);
+  const overflow = photoEmbeddings.size - MAX_EMBEDDING_CACHE_SIZE;
+  if (overflow > 0) {
+    evictOldestEmbeddings(overflow);
+  }
+}
+
+function wakePausedScan() {
+  if (resolveScanPause) {
+    const resolve = resolveScanPause;
+    resolveScanPause = null;
+    resolve();
+  }
+}
+
+function waitForScanResumeOrCancel(): Promise<void> {
+  if (!scanPaused || scanCancelled) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    resolveScanPause = resolve;
+  });
+}
+
+function cosineSimilarityWithDimensionHandling(embedding: Embedding, reference: Embedding): { score: number; dimensionAdjusted: boolean } {
+  if (embedding.length === reference.length) {
+    return { score: cosineSimilarity(embedding, reference), dimensionAdjusted: false };
+  }
+
+  const minDim = Math.min(embedding.length, reference.length);
+  if (minDim === 0) {
+    return { score: -1, dimensionAdjusted: true };
+  }
+
+  return {
+    score: cosineSimilarity(embedding.slice(0, minDim), reference.slice(0, minDim)),
+    dimensionAdjusted: true,
+  };
 }
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
@@ -181,6 +227,7 @@ function wireIpc() {
   ipcMain.handle('scan:cancel', async () => {
     scanCancelled = true;
     scanPaused = false;
+    wakePausedScan();
     logger.info('Scan cancel requested');
     return { ok: true };
   });
@@ -193,6 +240,7 @@ function wireIpc() {
 
   ipcMain.handle('scan:resume', async () => {
     scanPaused = false;
+    wakePausedScan();
     logger.info('Scan resumed');
     return { ok: true };
   });
@@ -284,6 +332,11 @@ function wireIpc() {
   });
 
   ipcMain.handle('embed:batch', async (_e, dir: string, clearCache?: boolean) => {
+    if (scanInProgress) {
+      return { ok: false, error: '已有掃描正在進行中，請先等待完成或先取消目前掃描。' };
+    }
+    scanInProgress = true;
+
     // Reset scan control flags
     scanCancelled = false;
     scanPaused = false;
@@ -307,13 +360,6 @@ function wireIpc() {
 
       logger.info(`Found ${total} images to process`);
 
-      // Evict old embeddings if cache is getting too large
-      if (photoEmbeddings.size + total > MAX_EMBEDDING_CACHE_SIZE) {
-        const toEvict = Math.min(photoEmbeddings.size, photoEmbeddings.size + total - MAX_EMBEDDING_CACHE_SIZE);
-        logger.info(`Evicting ${toEvict} old embeddings to stay within cache limit`);
-        evictOldestEmbeddings(toEvict);
-      }
-
       // Process files one by one to support cancel/pause
       for (const filePath of files) {
         // Check cancel
@@ -330,7 +376,7 @@ function wireIpc() {
 
         // Check pause — spin-wait until resumed or cancelled
         while (scanPaused && !scanCancelled) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await waitForScanResumeOrCancel();
         }
         if (scanCancelled) {
           logger.info(`Scan cancelled while paused at ${scanned}/${total}`);
@@ -360,7 +406,7 @@ function wireIpc() {
 
           upsertPhoto(filePath, mtime, thumb);
           upsertFace(filePath, result.embedding);
-          photoEmbeddings.set(filePath, result.embedding);
+          setPhotoEmbedding(filePath, result.embedding);
 
           if (result.source === 'face') faceCount++;
           else deterministicCount++;
@@ -369,19 +415,23 @@ function wireIpc() {
         } else if (!photoEmbeddings.has(filePath)) {
           const cachedFaces = getFacesByPath(filePath);
           if (cachedFaces.length > 0) {
-            photoEmbeddings.set(filePath, cachedFaces[0]);
+            setPhotoEmbedding(filePath, cachedFaces[0]);
             cached++;
           } else {
             logger.debug(`No cached embedding found for: ${filePath}`);
             const result = await fileToEmbeddingWithSource(filePath);
             faceAnalysis = result.faceAnalysis;
             upsertFace(filePath, result.embedding);
-            photoEmbeddings.set(filePath, result.embedding);
+            setPhotoEmbedding(filePath, result.embedding);
             if (result.source === 'face') faceCount++;
             else deterministicCount++;
             processed++;
           }
         } else {
+          const existingEmbedding = photoEmbeddings.get(filePath);
+          if (existingEmbedding) {
+            setPhotoEmbedding(filePath, existingEmbedding);
+          }
           cached++;
         }
 
@@ -424,6 +474,9 @@ function wireIpc() {
       const errorInfo = createErrorInfo(err);
       logger.error('Batch embedding failed:', errorInfo);
       return { ok: false, error: errorInfo.message };
+    } finally {
+      scanInProgress = false;
+      resolveScanPause = null;
     }
   });
 
@@ -434,7 +487,7 @@ function wireIpc() {
       return results;
     }
     
-    let dimensionMismatchCount = 0;
+    let dimensionAdjustedCount = 0;
     let totalComparisons = 0;
     let maxScoreOverall = -1;
     
@@ -446,11 +499,10 @@ function wireIpc() {
       let best = -1;
       for (const ref of referenceEmbeddings) {
         totalComparisons++;
-        if (emb.length !== ref.length) {
-          dimensionMismatchCount++;
-          continue; // 跳過維度不匹配的比較
+        const { score: s, dimensionAdjusted } = cosineSimilarityWithDimensionHandling(emb, ref);
+        if (dimensionAdjusted) {
+          dimensionAdjustedCount++;
         }
-        const s = cosineSimilarity(emb, ref);
         if (s > best) best = s;
       }
       if (best > maxScoreOverall) maxScoreOverall = best;
@@ -462,8 +514,8 @@ function wireIpc() {
       }
     }
     
-    if (dimensionMismatchCount > 0) {
-      logger.warn(`⚠️ match:run: ${dimensionMismatchCount}/${totalComparisons} comparisons skipped due to dimension mismatch`);
+    if (dimensionAdjustedCount > 0) {
+      logger.warn(`⚠️ match:run: ${dimensionAdjustedCount}/${totalComparisons} comparisons used adjusted dimensions`);
     }
     logger.info(`match:run: ${results.length} matches found (best score: ${maxScoreOverall.toFixed(4)}, threshold: ${opts?.threshold ?? 0})`);
     if (results.length === 0 && maxScoreOverall > -1) {
@@ -784,6 +836,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+app.on('before-quit', () => {
+  wakePausedScan();
+  closeDb();
+});
+
 app.whenReady().then(async () => {
   app.setName('大海撈「B」');
   app.setAboutPanelOptions({
@@ -803,5 +860,4 @@ app.whenReady().then(async () => {
     }, 5000);
   }
 });
-
 

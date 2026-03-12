@@ -3,30 +3,64 @@
  */
 
 import crypto from 'crypto';
+import { app, safeStorage } from 'electron';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { logger } from '../utils/logger';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
+const KEY_FILE_NAME = 'find-my-kid-encryption-key.bin';
+
+function getKeyFilePath(): string {
+  const userData = app.getPath('userData');
+  if (!existsSync(userData)) {
+    mkdirSync(userData, { recursive: true });
+  }
+  return join(userData, KEY_FILE_NAME);
+}
+
+function readKeyFromDisk(): Buffer | null {
+  const keyFilePath = getKeyFilePath();
+  if (!existsSync(keyFilePath)) return null;
+  const raw = readFileSync(keyFilePath);
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const decryptedHex = safeStorage.decryptString(raw);
+      return Buffer.from(decryptedHex, 'hex');
+    }
+    return Buffer.from(raw.toString('utf8'), 'hex');
+  } catch (error) {
+    logger.warn(`Failed to read encryption key from disk: ${(error as Error)?.message || error}`);
+    return null;
+  }
+}
+
+function writeKeyToDisk(key: Buffer): void {
+  const keyFilePath = getKeyFilePath();
+  const keyHex = key.toString('hex');
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(keyHex);
+    writeFileSync(keyFilePath, encrypted);
+    return;
+  }
+  logger.warn('safeStorage unavailable; storing key without OS keychain encryption');
+  writeFileSync(keyFilePath, keyHex, 'utf8');
+}
 
 /**
  * 從系統產生或取得加密金鑰
  */
 function getEncryptionKey(): Buffer {
-  const keyPath = 'find-my-kid-encryption-key';
-  
-  try {
-    // 嘗試從環境變數或本機設定值取得
-    const storedKey = process.env.FIND_MY_KID_ENCRYPTION_KEY;
-    if (storedKey) {
-      return Buffer.from(storedKey, 'hex');
-    }
-  } catch (e) {
-    // 忽略错误，生成新密钥
+  const existingKey = readKeyFromDisk();
+  if (existingKey && existingKey.length === 32) {
+    return existingKey;
   }
 
-  // 生成新密钥并存储
+  // 生成新密钥并存储（優先使用 safeStorage）
   const newKey = crypto.randomBytes(32);
-  process.env.FIND_MY_KID_ENCRYPTION_KEY = newKey.toString('hex');
+  writeKeyToDisk(newKey);
   return newKey;
 }
 

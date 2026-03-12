@@ -256,7 +256,8 @@ export function App() {
       return;
     }
     try {
-      const result = await window.api!.embedReferences(files);
+      const api = window.api;
+      const result = await api.embedReferences(files);
       if (!result.ok) {
         setError(`嵌入參考照片失敗: ${(result as any).error || '未知錯誤'}`);
         setStatus('idle');
@@ -303,7 +304,8 @@ export function App() {
     }
     
     try {
-      const scanResult = await window.api!.runScan(folder);
+      const api = window.api;
+      const scanResult = await api.runScan(folder);
       if (!scanResult.ok) {
         setError(`掃描失敗: ${scanResult.error || '未知錯誤'}`);
         setStatus('idle');
@@ -332,7 +334,7 @@ export function App() {
       setStatus('matching...');
       setProgress(null);
       
-      const matched = await window.api!.runMatch({ topN, threshold });
+      const matched = await api.runMatch({ topN, threshold });
       const initialReviewScores = matched.reduce<Record<string, number>>((acc, item) => {
         acc[item.path] = Math.round(item.score * 100);
         return acc;
@@ -450,7 +452,8 @@ export function App() {
       };
     }
     try {
-      const result = await window.api!.exportCopy(targets, out);
+      const api = window.api;
+      const result = await api.exportCopy(targets, out);
       const copied = result.data?.copied || 0;
       const failed = result.data?.failed ?? Math.max(0, targets.length - copied);
       const failedPaths = result.data?.failedPaths || [];

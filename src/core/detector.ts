@@ -27,6 +27,23 @@ let humanInstance: any = null;
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
 let hasTfjsNodeBackend = false;
+const FACE_DETECTION_TIMEOUT_MS = 30000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCode: string, timeoutMessage: string): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new AppError(timeoutMessage, timeoutCode));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /**
  * 設置 Node.js canvas polyfill（Electron main process 沒有 DOM）
@@ -252,15 +269,34 @@ export async function detectFaces(
       }
     }
 
-    const imageBuffer = await sharpInstance
-      .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
-      .toBuffer();
+    const imageBuffer = await withTimeout<Buffer>(
+      sharpInstance
+        .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer(),
+      FACE_DETECTION_TIMEOUT_MS,
+      'FACE_DETECTION_TIMEOUT',
+      `Image preprocessing timed out for ${imagePath}`
+    );
 
     // 將圖片轉換為 tensor（自動選擇 tfjs-node 或 CPU fallback）
-    const tensor = await bufferToTensor(human, imageBuffer);
-    const result = await human.detect(tensor);
-    tensor.dispose(); // 釋放記憶體
+    const tensor = await withTimeout<any>(
+      bufferToTensor(human, imageBuffer),
+      FACE_DETECTION_TIMEOUT_MS,
+      'FACE_DETECTION_TIMEOUT',
+      `Tensor conversion timed out for ${imagePath}`
+    );
+    let result: any;
+    try {
+      result = await withTimeout(
+        human.detect(tensor),
+        FACE_DETECTION_TIMEOUT_MS,
+        'FACE_DETECTION_TIMEOUT',
+        `Face detection timed out for ${imagePath}`
+      );
+    } finally {
+      tensor.dispose(); // 釋放記憶體
+    }
 
     const detections: FaceDetection[] = [];
     const { enableAgeGender = true, minConfidence = 0.3 } = options;
@@ -311,6 +347,10 @@ export async function detectFaces(
 
     return detections;
   } catch (err) {
+    if (err instanceof AppError && err.code === 'FACE_DETECTION_TIMEOUT') {
+      logger.warn(`${err.message}; skipping face detection for this image`);
+      return [];
+    }
     logger.error(`Face detection failed for ${imagePath}:`, err);
     throw new AppError(
       `Face detection failed for ${imagePath}`,
