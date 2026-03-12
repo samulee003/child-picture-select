@@ -48,8 +48,24 @@ function ensureCanvasPolyfill() {
       };
     }
     logger.info('✅ Canvas polyfill installed for Node.js environment');
-  } catch (err) {
-    logger.warn('⚠️ canvas package not available, face detection may not work in Node.js');
+  } catch (err: any) {
+    logger.error(`❌ canvas package failed to load: ${err?.message || err}`);
+    logger.warn('⚠️ Face detection may not work without canvas polyfill');
+  }
+}
+
+/**
+ * 驗證 tfjs-node 是否可用
+ */
+function checkTfjsNode(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('@tensorflow/tfjs-node');
+    logger.info('✅ @tensorflow/tfjs-node loaded successfully');
+    return true;
+  } catch (err: any) {
+    logger.error(`❌ @tensorflow/tfjs-node failed to load: ${err?.message || err}`);
+    return false;
   }
 }
 
@@ -60,28 +76,37 @@ function resolveModelBasePath(): string {
   const { join } = require('path');
   const { existsSync } = require('fs');
 
-  // 1. 嘗試 node_modules 中的模型（開發模式）
+  // 1. 開發模式：node_modules 中的模型
   const nodeModulesPath = join(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
   if (existsSync(nodeModulesPath)) {
     logger.info(`✅ Using local models from: ${nodeModulesPath}`);
     return `file://${nodeModulesPath.replace(/\\/g, '/')}/`;
   }
 
-  // 2. 嘗試打包後的 Electron app 路徑
+  // 2. 打包後的 Electron app 路徑
   try {
     const { app } = require('electron');
-    // extraResources 中的 models 目錄
-    const resourcesModelsPath = join(process.resourcesPath || app.getAppPath(), 'models');
+    const appPath = app.getAppPath();
+
+    // 2a. asarUnpack 路徑 (app.asar.unpacked/node_modules/...)
+    const unpackedPath = join(appPath.replace('app.asar', 'app.asar.unpacked'), 'node_modules', '@vladmandic', 'human', 'models');
+    if (existsSync(unpackedPath)) {
+      logger.info(`✅ Using unpacked models from: ${unpackedPath}`);
+      return `file://${unpackedPath.replace(/\\/g, '/')}/`;
+    }
+
+    // 2b. extraResources 中的 models 目錄
+    const resourcesModelsPath = join(process.resourcesPath || appPath, 'models');
     if (existsSync(resourcesModelsPath)) {
       logger.info(`✅ Using packaged models from: ${resourcesModelsPath}`);
       return `file://${resourcesModelsPath.replace(/\\/g, '/')}/`;
     }
 
-    // app.asar 旁邊的 node_modules
-    const appModulesPath = join(app.getAppPath(), 'node_modules', '@vladmandic', 'human', 'models');
-    if (existsSync(appModulesPath)) {
-      logger.info(`✅ Using app models from: ${appModulesPath}`);
-      return `file://${appModulesPath.replace(/\\/g, '/')}/`;
+    // 2c. asar 內的 node_modules（JSON/bin 可從 asar 讀取）
+    const asarModulesPath = join(appPath, 'node_modules', '@vladmandic', 'human', 'models');
+    if (existsSync(asarModulesPath)) {
+      logger.info(`✅ Using asar models from: ${asarModulesPath}`);
+      return `file://${asarModulesPath.replace(/\\/g, '/')}/`;
     }
   } catch {
     // Not running inside Electron
@@ -106,6 +131,13 @@ async function getHuman() {
     // 安裝 canvas polyfill
     ensureCanvasPolyfill();
 
+    // 預先檢查 tfjs-node
+    const hasTfjsNode = checkTfjsNode();
+    const backend = hasTfjsNode ? 'tensorflow' : 'cpu';
+    if (!hasTfjsNode) {
+      logger.warn('⚠️ Falling back to CPU backend (slower but works without native modules)');
+    }
+
     // 動態載入
     const { Human } = await import('@vladmandic/human');
 
@@ -113,7 +145,7 @@ async function getHuman() {
 
     humanInstance = new Human({
       modelBasePath,
-      backend: 'tensorflow',
+      backend,
       cacheSensitivity: 0,
       filter: { enabled: false }, // 不使用 canvas filter（Node.js 環境不需要）
       face: {

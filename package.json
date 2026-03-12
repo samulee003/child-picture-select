@@ -56,14 +56,14 @@
       "!tests/**"
     ],
     "asar": true,
+    "asarUnpack": [
+      "node_modules/@tensorflow/**",
+      "node_modules/canvas/**",
+      "node_modules/better-sqlite3/**",
+      "node_modules/sharp/**",
+      "node_modules/@vladmandic/human/models/**"
+    ],
     "extraResources": [
-      {
-        "from": "resources/models",
-        "to": "models",
-        "filter": [
-          "**/*"
-        ]
-      },
       {
         "from": "resources/logo_new.png",
         "to": "logo_new.png"
