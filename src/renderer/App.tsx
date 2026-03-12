@@ -345,11 +345,17 @@ export function App() {
       setStatus('matching...');
       setProgress(null);
       
-      const matched = await api.runMatch({ topN, threshold });
+      const matchResponse = await api.runMatch({ topN, threshold });
+      const matched = matchResponse.results;
       const initialReviewScores = matched.reduce<Record<string, number>>((acc, item) => {
         acc[item.path] = Math.round(item.score * 100);
         return acc;
       }, {});
+      if (matchResponse.dimensionAdjustedCount > 0) {
+        console.warn(
+          `[match] ${matchResponse.dimensionAdjustedCount}/${matchResponse.totalComparisons} comparisons used adjusted embedding dimensions`
+        );
+      }
       const elapsedMs = scanStartTimeRef.current ? Date.now() - scanStartTimeRef.current : 0;
       const scannedCount = typeof scanData?.scanned === 'number'
         ? scanData.scanned

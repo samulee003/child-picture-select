@@ -27,7 +27,8 @@ const photoEmbeddings = new Map<string, Embedding>();
 let scanCancelled = false;
 let scanPaused = false;
 let scanInProgress = false;
-let resolveScanPause: (() => void) | null = null;
+let currentScanSessionId = 0;
+let resolveScanPause: { sessionId: number; resolve: () => void } | null = null;
 
 function evictOldestEmbeddings(count: number) {
   const keys = photoEmbeddings.keys();
@@ -49,20 +50,20 @@ function setPhotoEmbedding(path: string, embedding: Embedding) {
   }
 }
 
-function wakePausedScan() {
-  if (resolveScanPause) {
-    const resolve = resolveScanPause;
+function wakePausedScan(sessionId: number) {
+  if (resolveScanPause && resolveScanPause.sessionId === sessionId) {
+    const { resolve } = resolveScanPause;
     resolveScanPause = null;
     resolve();
   }
 }
 
-function waitForScanResumeOrCancel(): Promise<void> {
-  if (!scanPaused || scanCancelled) {
+function waitForScanResumeOrCancel(sessionId: number): Promise<void> {
+  if (sessionId !== currentScanSessionId || !scanPaused || scanCancelled) {
     return Promise.resolve();
   }
   return new Promise((resolve) => {
-    resolveScanPause = resolve;
+    resolveScanPause = { sessionId, resolve };
   });
 }
 
@@ -225,22 +226,25 @@ function wireIpc() {
 
   // ==================== Scan Control IPC ====================
   ipcMain.handle('scan:cancel', async () => {
+    if (!scanInProgress) return { ok: true };
     scanCancelled = true;
     scanPaused = false;
-    wakePausedScan();
+    wakePausedScan(currentScanSessionId);
     logger.info('Scan cancel requested');
     return { ok: true };
   });
 
   ipcMain.handle('scan:pause', async () => {
+    if (!scanInProgress || scanCancelled) return { ok: true };
     scanPaused = true;
     logger.info('Scan paused');
     return { ok: true };
   });
 
   ipcMain.handle('scan:resume', async () => {
+    if (!scanInProgress) return { ok: true };
     scanPaused = false;
-    wakePausedScan();
+    wakePausedScan(currentScanSessionId);
     logger.info('Scan resumed');
     return { ok: true };
   });
@@ -336,10 +340,13 @@ function wireIpc() {
       return { ok: false, error: '已有掃描正在進行中，請先等待完成或先取消目前掃描。' };
     }
     scanInProgress = true;
+    currentScanSessionId += 1;
+    const scanSessionId = currentScanSessionId;
 
     // Reset scan control flags
     scanCancelled = false;
     scanPaused = false;
+    resolveScanPause = null;
 
     try {
       logger.info(`Starting batch embedding for directory: ${dir}`);
@@ -375,8 +382,8 @@ function wireIpc() {
         }
 
         // Check pause — spin-wait until resumed or cancelled
-        while (scanPaused && !scanCancelled) {
-          await waitForScanResumeOrCancel();
+        if (scanPaused && !scanCancelled) {
+          await waitForScanResumeOrCancel(scanSessionId);
         }
         if (scanCancelled) {
           logger.info(`Scan cancelled while paused at ${scanned}/${total}`);
@@ -484,7 +491,7 @@ function wireIpc() {
     const results: Array<{ path: string; score: number; thumbPath?: string }> = [];
     if (referenceEmbeddings.length === 0) {
       logger.warn('match:run called with 0 reference embeddings');
-      return results;
+      return { results, dimensionAdjustedCount: 0, totalComparisons: 0 };
     }
     
     let dimensionAdjustedCount = 0;
@@ -524,7 +531,11 @@ function wireIpc() {
     
     results.sort((a, b) => b.score - a.score);
     const topN = Math.max(1, Math.min(1000, opts?.topN ?? 100));
-    return results.slice(0, topN);
+    return {
+      results: results.slice(0, topN),
+      dimensionAdjustedCount,
+      totalComparisons,
+    };
   });
 
   // 清除 embedding 快取
@@ -837,7 +848,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  wakePausedScan();
+  wakePausedScan(currentScanSessionId);
   closeDb();
 });
 
@@ -860,4 +871,3 @@ app.whenReady().then(async () => {
     }, 5000);
   }
 });
-
