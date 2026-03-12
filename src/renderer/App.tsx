@@ -13,6 +13,7 @@ import { DragDropZone } from './components/DragDropZone';
 import { HelpModal } from './components/HelpModal';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { MatchResultCard } from './components/MatchResultCard';
+import { AIAnalysisPanel } from './components/AIAnalysisPanel';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme, animations, modernStyles } from './styles/theme';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../types/api';
@@ -492,8 +493,21 @@ export function App() {
   const confirmExport = useCallback(async (openAfter = false) => {
     setIsExportPreviewOpen(false);
     const paths = exportPreviewTargets.map((item) => item.path);
-    const outDir = folder ? folder + '_matched_export' : 'matched_export';
-    const result = await handleExportResults(paths);
+
+    // 讓使用者選擇匯出資料夾
+    let outDir: string | null = null;
+    if (window.api?.selectFolder) {
+      outDir = await window.api.selectFolder();
+      if (!outDir) {
+        // 使用者取消了選擇
+        return;
+      }
+    }
+    if (!outDir) {
+      outDir = folder ? folder + '_matched_export' : 'matched_export';
+    }
+
+    const result = await handleExportResults(paths, outDir);
     if (openAfter && result?.ok && result.data && window.api) {
       await window.api.openFolder(outDir);
     }
@@ -1414,30 +1428,11 @@ C:\Photos\child\photo3.jpg
             </div>
           )}
 
-          {/* Progress Bar inside Right Content */}
+          {/* AI Analysis Panel during scanning */}
           {progress && (
-            <GlassCard padding="lg" style={{ animation: 'slideIn 0.3s ease-out' }}>
-              <ModernProgress
-                value={progress.current}
-                max={progress.total}
-                label="掃描進度"
-                showPercentage={true}
-                color="primary"
-                size="lg"
-                animated={true}
-              />
-              {progress.path && (
-                <div style={{
-                  fontSize: theme.typography.fontSize.sm,
-                  color: theme.colors.neutral[500],
-                  marginTop: theme.spacing[3],
-                  textAlign: 'center',
-                  wordBreak: 'break-all',
-                }}>
-                  正在處理: {progress.path.split(/[/\\]/).pop()}
-                </div>
-              )}
-            </GlassCard>
+            <div style={{ animation: 'slideIn 0.3s ease-out' }}>
+              <AIAnalysisPanel progress={progress} />
+            </div>
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing[6] }}>
@@ -2002,7 +1997,7 @@ C:\Photos\child\photo3.jpg
                   cursor: 'pointer',
                 }}
               >
-                確認匯出
+                選擇資料夾並匯出
               </button>
               <button
                 onClick={() => confirmExport(true)}
@@ -2015,7 +2010,7 @@ C:\Photos\child\photo3.jpg
                   cursor: 'pointer',
                 }}
               >
-                匯出並直接打開資料夾
+                選擇資料夾匯出並打開
               </button>
             </div>
           </div>

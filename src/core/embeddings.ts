@@ -1,15 +1,23 @@
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
-import { extractFaceEmbedding } from './detector';
+import { detectFaces } from './detector';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 
 export type Embedding = number[];
 
+export interface FaceAnalysis {
+  confidence: number;
+  age?: number;
+  gender?: 'male' | 'female';
+  faceCount: number;
+}
+
 export interface EmbeddingResult {
   embedding: Embedding;
   source: 'face' | 'deterministic';
   dimensions: number;
+  faceAnalysis?: FaceAnalysis;
 }
 
 /**
@@ -59,21 +67,34 @@ export async function fileToEmbeddingWithSource(filePath: string): Promise<Embed
   try {
     logger.debug(`Attempting face detection for: ${filePath}`);
 
-    // 嘗試使用真正的臉部偵測
-    const faceEmbedding = await extractFaceEmbedding(filePath);
-    if (faceEmbedding && faceEmbedding.length > 0) {
-      // 確保向量已正規化
-      let norm = 0;
-      for (let i = 0; i < faceEmbedding.length; i++) norm += faceEmbedding[i] * faceEmbedding[i];
-      norm = Math.sqrt(norm) + 1e-12;
-      const normalized = faceEmbedding.map(v => v / norm);
+    // 嘗試使用真正的臉部偵測（含年齡/性別分析）
+    const faces = await detectFaces(filePath, { enableAgeGender: true });
+    if (faces.length > 0) {
+      // 使用信心度最高的臉部
+      const bestFace = faces.reduce((best, current) =>
+        current.confidence > best.confidence ? current : best
+      );
 
-      logger.info(`✅ Face detection successful for: ${filePath} (${normalized.length} dims)`);
-      return {
-        embedding: normalized,
-        source: 'face',
-        dimensions: normalized.length,
-      };
+      if (bestFace.embedding && bestFace.embedding.length > 0) {
+        // 確保向量已正規化
+        let norm = 0;
+        for (let i = 0; i < bestFace.embedding.length; i++) norm += bestFace.embedding[i] * bestFace.embedding[i];
+        norm = Math.sqrt(norm) + 1e-12;
+        const normalized = bestFace.embedding.map(v => v / norm);
+
+        logger.info(`✅ Face detection successful for: ${filePath} (${normalized.length} dims)`);
+        return {
+          embedding: normalized,
+          source: 'face' as const,
+          dimensions: normalized.length,
+          faceAnalysis: {
+            confidence: bestFace.confidence,
+            age: bestFace.age,
+            gender: bestFace.gender,
+            faceCount: faces.length,
+          },
+        };
+      }
     }
 
     logger.warn(`⚠️ No face detected in: ${filePath}, using deterministic embedding (NOT a face embedding!)`);
