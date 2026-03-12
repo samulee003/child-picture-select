@@ -188,7 +188,7 @@ export function SetupWizard({ isOpen, onComplete, onCancel }: SetupWizardProps) 
     <div style={setupWizardStyles.container}>
       <div style={setupWizardStyles.modal}>
         <div style={setupWizardStyles.header}>
-          <h1 style={setupWizardStyles.title}>🚀 歡迎使用 大海撈「B」</h1>
+          <h1 style={setupWizardStyles.title}>🚀 歡迎使用 大海撈Ｂ</h1>
           <p style={setupWizardStyles.subtitle}>讓我們幫助您快速配置最佳設置</p>
         </div>
 
