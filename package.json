@@ -84,13 +84,18 @@
     },
     "mac": {
       "icon": "resources/logo_new.png",
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.photography",
       "artifactName": "${productName}-${version}.${ext}"
     },
     "linux": {
       "icon": "resources/logo_new.png",
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Graphics",
       "artifactName": "${productName}-${version}.${ext}"
     },
@@ -106,9 +111,13 @@
     }
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
     "@types/uuid": "^10.0.0",
     "@vladmandic/human": "^2.10.0",
     "better-sqlite3": "^11.7.0",
+    "canvas": "^3.2.1",
     "fs-extra": "^11.3.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
