@@ -45,7 +45,7 @@ function writeKeyToDisk(key: Buffer): void {
     writeFileSync(keyFilePath, encrypted);
     return;
   }
-  logger.warn('safeStorage unavailable; storing key without OS keychain encryption');
+  logger.warn('safeStorage 無法使用，將以未經系統金鑰圈保護的方式儲存金鑰');
   writeFileSync(keyFilePath, keyHex, 'utf8');
 }
 
@@ -58,7 +58,7 @@ function getEncryptionKey(): Buffer {
     return existingKey;
   }
 
-  // 生成新密钥并存储（優先使用 safeStorage）
+  // 生成新金鑰並存儲（優先使用 safeStorage）
   const newKey = crypto.randomBytes(32);
   writeKeyToDisk(newKey);
   return newKey;

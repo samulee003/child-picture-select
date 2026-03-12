@@ -28,6 +28,7 @@ let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
 let hasTfjsNodeBackend = false;
 const FACE_DETECTION_TIMEOUT_MS = 30000;
+type DisposableTensor = { dispose: () => void };
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCode: string, timeoutMessage: string): Promise<T> {
   let timer: NodeJS.Timeout | null = null;
@@ -280,7 +281,7 @@ export async function detectFaces(
     );
 
     // 將圖片轉換為 tensor（自動選擇 tfjs-node 或 CPU fallback）
-    const tensor = await withTimeout<any>(
+    const tensor = await withTimeout<DisposableTensor>(
       bufferToTensor(human, imageBuffer),
       FACE_DETECTION_TIMEOUT_MS,
       'FACE_DETECTION_TIMEOUT',
