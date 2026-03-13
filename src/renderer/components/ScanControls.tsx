@@ -12,18 +12,26 @@ export function ScanControls({ onCancelled }: ScanControlsProps) {
 
   const handlePause = async () => {
     if (!window.api) return;
-    if (paused) {
-      await window.api.resumeScan();
-      setPaused(false);
-    } else {
-      await window.api.pauseScan();
-      setPaused(true);
+    try {
+      if (paused) {
+        await window.api.resumeScan();
+        setPaused(false);
+      } else {
+        await window.api.pauseScan();
+        setPaused(true);
+      }
+    } catch (err) {
+      console.warn('Scan pause/resume failed:', err);
     }
   };
 
   const handleCancel = async () => {
     if (!window.api) return;
-    await window.api.cancelScan();
+    try {
+      await window.api.cancelScan();
+    } catch (err) {
+      console.warn('Scan cancel failed:', err);
+    }
     setPaused(false);
     onCancelled();
   };

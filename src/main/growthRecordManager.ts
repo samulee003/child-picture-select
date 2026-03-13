@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { randomUUID } from 'node:crypto';
 import os from 'os';
+import { logger } from '../utils/logger';
 
 import type {
   GrowthRecord,
@@ -81,7 +82,7 @@ export class GrowthRecordManager {
           const record = await fs.readJson(path.join(this.paths.recordsDir, file));
           records.push(record);
         } catch (error) {
-          console.error(`Failed to read record ${file}:`, error);
+          logger.error('Failed to read growth record', { file, error: String(error) });
         }
       }
     }
@@ -170,7 +171,7 @@ export class GrowthRecordManager {
           const session = await fs.readJson(path.join(this.paths.sessionsDir, file));
           sessions.push(session);
         } catch (error) {
-          console.error(`Failed to read session ${file}:`, error);
+          logger.error('Failed to read scan session', { file, error: String(error) });
         }
       }
     }
@@ -372,7 +373,7 @@ export class GrowthRecordManager {
       
       await this.saveGrowthRecord(record.record);
     } catch (error) {
-      console.error('Failed to update record from session:', error);
+      logger.error('Failed to update record from session', { error: String(error) });
     }
   }
 }

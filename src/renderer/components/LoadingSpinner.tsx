@@ -30,6 +30,6 @@ export function LoadingSpinner({
   };
 
   return (
-    <div className={className} style={spinnerStyle} />
+    <div className={className} style={spinnerStyle} role="status" aria-label="載入中" />
   );
 }
