@@ -300,12 +300,26 @@ function wireIpc() {
 
   ipcMain.handle('embed:references', async (_e, files: string[]) => {
     try {
+      // 檢查模型是否已載入，未載入則先嘗試載入
+      const status = getModelStatus();
+      if (!status.loaded) {
+        logger.warn('Model not loaded when embedding references, attempting to load...');
+        await preloadModel();
+        const retryStatus = getModelStatus();
+        if (!retryStatus.loaded) {
+          return {
+            ok: false,
+            error: `AI 模型載入失敗，無法進行臉部辨識。${retryStatus.error ? `\n錯誤：${retryStatus.error}` : ''}\n\n請嘗試重新啟動應用程式。`,
+          };
+        }
+      }
+
       logger.info(`Embedding ${files.length} reference files`);
       referenceEmbeddings.length = 0;
-      
+
       let faceCount = 0;
       let deterministicCount = 0;
-      
+
       for (const f of files) {
         logger.debug(`Processing reference file: ${f}`);
         const result = await fileToEmbeddingWithSource(f);
@@ -316,15 +330,22 @@ function wireIpc() {
           deterministicCount++;
         }
       }
-      
+
       if (deterministicCount > 0) {
         logger.warn(`⚠️ ${deterministicCount}/${files.length} reference photos used DETERMINISTIC embedding (no face detected)`);
       }
       if (faceCount > 0) {
         logger.info(`✅ ${faceCount}/${files.length} reference photos had faces detected`);
       }
+
+      // 如果沒有任何參考照偵測到人臉，回傳錯誤不允許繼續
       if (faceCount === 0) {
-        logger.error(`❌ NO reference photos had faces detected! Matching will NOT work correctly.`);
+        logger.error(`❌ NO reference photos had faces detected! Blocking scan.`);
+        referenceEmbeddings.length = 0; // 清空，不允許用假 embedding 進行比對
+        return {
+          ok: false,
+          error: '所有參考照片都無法偵測到人臉。\n\n請確認：\n1. 照片中有清晰的正面人臉\n2. 照片不是太暗、太模糊或太小\n3. 建議使用 3-10 張不同角度的清晰臉部照片',
+        };
       }
       
       logger.info(`Successfully embedded ${referenceEmbeddings.length} reference files`);
@@ -352,6 +373,13 @@ function wireIpc() {
     if (scanInProgress) {
       return { ok: false, error: '已有掃描正在進行中，請先等待完成或先取消目前掃描。' };
     }
+
+    // 確認模型已載入才允許掃描
+    const modelCheck = getModelStatus();
+    if (!modelCheck.loaded) {
+      return { ok: false, error: `AI 模型未載入，無法掃描。${modelCheck.error ? `\n錯誤：${modelCheck.error}` : ''}\n\n請重新啟動應用程式。` };
+    }
+
     scanInProgress = true;
     currentScanSessionId += 1;
     const scanSessionId = currentScanSessionId;
