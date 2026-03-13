@@ -40,14 +40,17 @@ export interface EnhancedPhoto {
  * 照片智能增强器
  */
 export class PhotoEnhancer {
-  private tempDir: string;
+  private tempDir: string | null = null;
 
-  constructor() {
-    this.tempDir = join(getThumbsDir(), 'enhanced');
-    if (!existsSync(this.tempDir)) {
-      mkdirSync(this.tempDir, { recursive: true });
-      logger.info(`Created enhanced photos temp directory: ${this.tempDir}`);
+  private ensureTempDir(): string {
+    if (!this.tempDir) {
+      this.tempDir = join(getThumbsDir(), 'enhanced');
+      if (!existsSync(this.tempDir)) {
+        mkdirSync(this.tempDir, { recursive: true });
+        logger.info(`Created enhanced photos temp directory: ${this.tempDir}`);
+      }
     }
+    return this.tempDir;
   }
 
   /**
@@ -125,7 +128,7 @@ export class PhotoEnhancer {
 
       // 6. 输出增强后的图片
       const basename = `enhanced_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
-      const outputPath = join(this.tempDir, basename);
+      const outputPath = join(this.ensureTempDir(), basename);
       
       await enhancedImage
         .jpeg({
@@ -185,9 +188,11 @@ export class PhotoEnhancer {
    */
   clearTempFiles(): void {
     try {
-      if (existsSync(this.tempDir)) {
-        rmSync(this.tempDir, { recursive: true });
-        logger.info(`Cleaned up enhanced photos temp directory: ${this.tempDir}`);
+      const dir = this.tempDir;
+      if (dir && existsSync(dir)) {
+        rmSync(dir, { recursive: true });
+        this.tempDir = null;
+        logger.info(`Cleaned up enhanced photos temp directory: ${dir}`);
       }
     } catch (error) {
       logger.warn(`Failed to clean up temp files:`, error);
@@ -223,5 +228,11 @@ export class PhotoEnhancer {
   }
 }
 
-// 全局实例
-export const photoEnhancer = new PhotoEnhancer();
+// 延遲初始化全域實例，避免在 app ready 前呼叫 app.getPath()
+let _photoEnhancer: PhotoEnhancer | null = null;
+export function getPhotoEnhancer(): PhotoEnhancer {
+  if (!_photoEnhancer) {
+    _photoEnhancer = new PhotoEnhancer();
+  }
+  return _photoEnhancer;
+}

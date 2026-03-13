@@ -159,8 +159,17 @@ async function getHuman() {
         join(appPath, 'node_modules', '@vladmandic', 'human', humanWasmFile),
       );
     } catch { /* not in Electron */ }
+
+    // 記錄所有候選路徑以便除錯
+    for (const c of candidates) {
+      const found = existsSync(c);
+      logger.info(`Model candidate: ${c} → ${found ? 'FOUND' : 'NOT FOUND'}`);
+    }
+
     const wasmEntry = candidates.find(c => existsSync(c));
-    if (!wasmEntry) throw new Error('Cannot find @vladmandic/human WASM build');
+    if (!wasmEntry) {
+      throw new Error(`Cannot find @vladmandic/human WASM build. Searched: ${candidates.join(', ')}`);
+    }
     const humanModule = require(wasmEntry);
     const Human = humanModule.Human || humanModule.default?.Human || humanModule.default;
 
@@ -202,6 +211,23 @@ async function getHuman() {
     logger.error(`Failed to load @vladmandic/human: ${message}`);
     logger.error('Face detection will NOT work. Photos will get deterministic embeddings.');
     return null;
+  }
+}
+
+/**
+ * 預先載入模型（在 app ready 後呼叫，讓 UI 不會顯示「AI 未載入」）
+ * 允許重試：如果之前失敗，會重置狀態再嘗試一次
+ */
+export async function preloadModel(): Promise<void> {
+  try {
+    // 如果之前嘗試失敗了，重置狀態允許重試
+    if (modelLoadAttempted && !humanInstance) {
+      modelLoadAttempted = false;
+      modelLoadError = null;
+    }
+    await getHuman();
+  } catch (err) {
+    logger.error('Failed to preload face detection model:', err);
   }
 }
 

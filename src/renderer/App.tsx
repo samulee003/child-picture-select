@@ -156,14 +156,26 @@ export function App() {
     });
   }, []);
 
-  // Check AI model status on mount and after first reference embedding
+  // Check AI model status on mount, after refs loaded, and poll until loaded
   useEffect(() => {
     if (!window.api?.getModelStatus) return;
-    window.api.getModelStatus().then((status: { loaded: boolean; error: string | null }) => {
-      setModelStatus(status);
-    }).catch(() => {
-      // Model status API not available
-    });
+    let cancelled = false;
+
+    const checkStatus = () => {
+      window.api?.getModelStatus().then((status: { loaded: boolean; error: string | null }) => {
+        if (cancelled) return;
+        setModelStatus(status);
+        // Keep polling every 2s until model is loaded or has error
+        if (!status.loaded && !status.error) {
+          setTimeout(checkStatus, 2000);
+        }
+      }).catch(() => {
+        // Model status API not available
+      });
+    };
+    checkStatus();
+
+    return () => { cancelled = true; };
   }, [refsLoaded]);
 
   useEffect(() => {
@@ -987,15 +999,26 @@ export function App() {
           {/* Model Not Loaded Warning */}
           {modelStatus && !modelStatus.loaded && (
             <GlassCard padding="md" style={{
-              background: 'rgba(245, 158, 11, 0.15)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
+              background: modelStatus.error ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              border: modelStatus.error ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
             }}>
-              <div style={{ color: '#f59e0b', fontSize: theme.typography.fontSize.sm }}>
-                <strong>AI 模型尚未載入</strong> — 首次啟動可能需要 10~30 秒載入模型。
-                {modelStatus.error && <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>錯誤：{modelStatus.error}</div>}
-                <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
-                  如果長時間未載入，請嘗試重新開啟程式。載入參考照片時會自動觸發模型載入。
-                </div>
+              <div style={{ color: modelStatus.error ? '#ef4444' : '#f59e0b', fontSize: theme.typography.fontSize.sm }}>
+                {modelStatus.error ? (
+                  <>
+                    <strong>AI 模型載入失敗</strong> — 臉部辨識無法運作。
+                    <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>錯誤：{modelStatus.error}</div>
+                    <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
+                      請嘗試重新啟動應用程式。如果問題持續，可能是安裝檔損壞，請重新下載安裝。
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong>AI 模型載入中...</strong> — 首次啟動可能需要 10~30 秒。
+                    <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
+                      請稍候，載入完成後即可開始使用。
+                    </div>
+                  </>
+                )}
               </div>
             </GlassCard>
           )}

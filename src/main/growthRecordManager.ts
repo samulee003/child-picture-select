@@ -378,5 +378,11 @@ export class GrowthRecordManager {
   }
 }
 
-// 建立全域實例
-export const growthRecordManager = new GrowthRecordManager();
+// 延遲初始化全域實例，避免在 app ready 前呼叫 app.getPath()
+let _growthRecordManager: GrowthRecordManager | null = null;
+export function getGrowthRecordManager(): GrowthRecordManager {
+  if (!_growthRecordManager) {
+    _growthRecordManager = new GrowthRecordManager();
+  }
+  return _growthRecordManager;
+}
