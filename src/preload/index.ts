@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { GrowthRecord, GrowthEvent, ScanSession, FamilyMember, SharedAlbum } from '../types/api';
 
 contextBridge.exposeInMainWorld('api', {
   getAppInfo: () => ipcRenderer.invoke('app:about'),
@@ -32,7 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
-  onUpdateStatus: (callback: (status: any) => void) => {
+  onUpdateStatus: (callback: (status: { status: string; version?: string; progress?: number; error?: string }) => void) => {
     ipcRenderer.on('update:status', (_event, status) => callback(status));
   },
   removeUpdateListener: () => {
@@ -44,14 +45,14 @@ contextBridge.exposeInMainWorld('api', {
   enhancePhoto: (filePath: string) => ipcRenderer.invoke('enhance:photo', filePath),
 
   // 成長記錄管理
-  saveGrowthRecord: (record: any) => ipcRenderer.invoke('growth:save-record', record),
+  saveGrowthRecord: (record: GrowthRecord) => ipcRenderer.invoke('growth:save-record', record),
   getGrowthRecords: () => ipcRenderer.invoke('growth:get-records'),
   getGrowthRecord: (id: string) => ipcRenderer.invoke('growth:get-record', id),
   deleteGrowthRecord: (id: string) => ipcRenderer.invoke('growth:delete-record', id),
-  addGrowthEvent: (recordId: string, event: any) => ipcRenderer.invoke('growth:add-event', recordId, event),
+  addGrowthEvent: (recordId: string, event: GrowthEvent) => ipcRenderer.invoke('growth:add-event', recordId, event),
 
   // 扫描会话管理
-  saveScanSession: (session: any) => ipcRenderer.invoke('growth:save-session', session),
+  saveScanSession: (session: ScanSession) => ipcRenderer.invoke('growth:save-session', session),
   getScanSessions: () => ipcRenderer.invoke('growth:get-sessions'),
 
   // 提醒管理
@@ -62,9 +63,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // 家庭共享
   getFamilyMembers: () => ipcRenderer.invoke('growth:get-family-members'),
-  addFamilyMember: (member: any) => ipcRenderer.invoke('growth:add-family-member', member),
+  addFamilyMember: (member: Omit<FamilyMember, 'id' | 'photosAdded' | 'lastActive'>) => ipcRenderer.invoke('growth:add-family-member', member),
   getSharedAlbums: () => ipcRenderer.invoke('growth:get-shared-albums'),
-  createSharedAlbum: (album: any) => ipcRenderer.invoke('growth:create-shared-album', album),
+  createSharedAlbum: (album: Omit<SharedAlbum, 'id' | 'createdAt' | 'lastUpdated'>) => ipcRenderer.invoke('growth:create-shared-album', album),
 });
 
 export {};

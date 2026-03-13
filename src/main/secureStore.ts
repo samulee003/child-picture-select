@@ -131,7 +131,7 @@ export class SecureStore {
         fs.writeFileSync(filePath, encrypted);
       }
     } catch (error) {
-      console.error('SecureStore.set error:', error);
+      logger.error('SecureStore.set error', { error: String(error) });
       throw error;
     }
   }
@@ -162,7 +162,7 @@ export class SecureStore {
         }
       }
     } catch (error) {
-      console.error('SecureStore.get error:', error);
+      logger.error('SecureStore.get error', { error: String(error) });
     }
 
     return undefined;
@@ -186,7 +186,7 @@ export class SecureStore {
         }
       }
     } catch (error) {
-      console.error('SecureStore.delete error:', error);
+      logger.error('SecureStore.delete error', { error: String(error) });
     }
 
     return false;
@@ -211,7 +211,7 @@ export class SecureStore {
         });
       }
     } catch (error) {
-      console.error('SecureStore.clear error:', error);
+      logger.error('SecureStore.clear error', { error: String(error) });
     }
   }
 
