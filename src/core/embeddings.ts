@@ -21,6 +21,12 @@ export interface EmbeddingResult {
 }
 
 /**
+ * deterministic fallback 不是人臉特徵，對匹配分數做保守折減可降低誤判。
+ * 實際套用位置在 match 流程。
+ */
+export const DETERMINISTIC_SCORE_PENALTY = 0.12;
+
+/**
  * FaceRes 模型輸出的 embedding 維度為 1024
  * 確定性 fallback 必須使用相同維度以保持 cosine similarity 可計算
  */
@@ -97,7 +103,7 @@ export async function fileToEmbeddingWithSource(filePath: string): Promise<Embed
       }
     }
 
-    logger.warn(`⚠️ No face detected in: ${filePath}, using deterministic embedding (NOT a face embedding!)`);
+    logger.warn(`⚠️ No face detected in: ${filePath}, using deterministic embedding (NOT a face embedding; keep this result for fallback only)`);
   } catch (err) {
     // 臉部偵測失敗，降級到 deterministic embedding
     logger.warn(`⚠️ Face detection failed for ${filePath}, using deterministic embedding:`, err);
@@ -107,7 +113,7 @@ export async function fileToEmbeddingWithSource(filePath: string): Promise<Embed
   // 使用 EMBEDDING_DIMS (1024) 以匹配 faceres 模型的輸出維度
   try {
     const deterministicEmbedding = await fileToDeterministicEmbedding(filePath, EMBEDDING_DIMS);
-    logger.warn(`🔶 Generated DETERMINISTIC embedding for: ${filePath} — this is a FILE HASH, not a face embedding!`);
+    logger.warn(`🔶 Generated DETERMINISTIC embedding for: ${filePath} — this is a FILE HASH, not a face embedding; UI should suggest manual review`);
     return {
       embedding: deterministicEmbedding,
       source: 'deterministic',

@@ -7,6 +7,7 @@ export interface MatchResult {
   path: string;
   score: number;
   thumbPath?: string;
+  source?: 'face' | 'deterministic' | 'unknown';
 }
 
 export interface MatchRunResponse {
@@ -29,6 +30,9 @@ export interface ScanProgress {
   thumbPath?: string | null;
   faceAnalysis?: ScanProgressFaceAnalysis | null;
   cancelled?: boolean;
+  photosPerSec?: number;
+  etaSeconds?: number;
+  warnings?: string[];
 }
 
 export type UpdateStatus =
@@ -66,7 +70,13 @@ export interface RunScanResponse extends ApiResponse {
     faceDetected?: number;
     deterministicFallback?: number;
     thumbnailErrors?: number;
+    readErrors?: number;
+    embeddingErrors?: number;
+    skippedErrors?: number;
     cancelled?: boolean;
+    avgPhotosPerSec?: number;
+    durationMs?: number;
+    warnings?: string[];
   };
 }
 
@@ -238,6 +248,7 @@ export interface ElectronAPI extends GrowthApi {
   onScanProgress: (callback: (progress: ScanProgress) => void) => void;
   removeScanProgressListener: () => void;
   clearEmbeddingCache: () => Promise<{ ok: boolean; error?: string }>;
+  setPerformanceMode: (mode: 'default' | 'eco') => Promise<{ ok: boolean; data?: { mode: 'default' | 'eco' }; error?: string }>;
   openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
   getModelStatus: () => Promise<{ loaded: boolean; error: string | null }>;
   assessPhotoQuality: (filePath: string) => Promise<QualityMetrics>;

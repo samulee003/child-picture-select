@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('scan:progress');
   },
   clearEmbeddingCache: () => ipcRenderer.invoke('scan:clear-cache'),
+  setPerformanceMode: (mode: 'default' | 'eco') => ipcRenderer.invoke('scan:performance-mode', mode),
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   getModelStatus: () => ipcRenderer.invoke('model:status'),
 

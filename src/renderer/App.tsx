@@ -16,6 +16,8 @@ import { MatchResultCard } from './components/MatchResultCard';
 import { AIAnalysisPanel } from './components/AIAnalysisPanel';
 import { ScanControls } from './components/ScanControls';
 import { UpdateBanner } from './components/UpdateBanner';
+import { TaskReadinessCard } from './components/TaskReadinessCard';
+import { ScanWarningsPanel } from './components/ScanWarningsPanel';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { theme, animations, modernStyles } from './styles/theme';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../types/api';
@@ -67,10 +69,25 @@ export function App() {
   const [lastExportTargets, setLastExportTargets] = useState<string[]>([]);
   const [exportPreviewTargets, setExportPreviewTargets] = useState<MatchResult[]>([]);
   const [isTopTwentyView, setIsTopTwentyView] = useState(false);
+  const [scanWarnings, setScanWarnings] = useState<string[]>([]);
   const isProcessing = status.includes('ing...');
   const hasLastRunConfig = settings.lastFolder.trim().length > 0 && settings.lastReferencePaths.length > 0;
   const lastFolderDisplay = settings.lastFolder ? settings.lastFolder.split(/[/\\]/).pop() : '';
   const refPathsTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const onboardingChecklist = {
+    hasRefs: refsLoaded > 0 || refPaths.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).length >= 3,
+    hasFolder: folder.trim().length > 0,
+    modelLoaded: modelStatus ? modelStatus.loaded : null,
+  };
+  const readinessItems = [
+    { label: '參考照（建議 3 張以上）', ok: onboardingChecklist.hasRefs, pending: '先載入或貼上參考照路徑' },
+    { label: '照片資料夾', ok: onboardingChecklist.hasFolder, pending: '先選擇一個資料夾' },
+    {
+      label: 'AI 模型',
+      ok: onboardingChecklist.modelLoaded === true,
+      pending: onboardingChecklist.modelLoaded === null ? '初始化中' : '載入參考照時會自動啟用',
+    },
+  ];
 
   const formatElapsed = (ms: number) => {
     const seconds = Math.max(0, Math.round(ms / 1000));
@@ -149,6 +166,13 @@ export function App() {
     });
   }, [refsLoaded]);
 
+  useEffect(() => {
+    if (!window.api?.setPerformanceMode) return;
+    window.api.setPerformanceMode('default').catch(() => {
+      // Keep default behavior when unavailable
+    });
+  }, []);
+
   // Save settings when they change
   useEffect(() => {
     const newSettings = {
@@ -222,6 +246,7 @@ export function App() {
     setResults([]);
     setError(null);
     setLastRunSummary(null);
+    setScanWarnings([]);
     setReviewDecisions({});
     setReviewScores({});
     setIsExportPreviewOpen(false);
@@ -301,6 +326,7 @@ export function App() {
     setStatus('scanning...');
     setProgress(null);
     setLastRunSummary(null);
+    setScanWarnings([]);
     scanStartTimeRef.current = Date.now();
     
     if (!window.api) {
@@ -326,6 +352,9 @@ export function App() {
       
       // 顯示掃描診斷
       const scanData = scanResult.data;
+      if (Array.isArray(scanData?.warnings) && scanData.warnings.length > 0) {
+        setScanWarnings(scanData.warnings);
+      }
 
       // Handle cancelled scan
       if (scanData?.cancelled) {
@@ -378,6 +407,9 @@ export function App() {
         } else {
           setError('未找到匹配的照片，請嘗試降低門檻值或增加參考照片數量');
         }
+      }
+      if (scanData?.skippedErrors && scanData.skippedErrors > 0) {
+        setError(`已略過 ${scanData.skippedErrors} 張處理失敗照片，建議先看掃描摘要中的提醒後再重試。`);
       }
     } catch (err: any) {
       setError(`錯誤: ${err?.message || '未知錯誤'}`);
@@ -998,6 +1030,7 @@ export function App() {
 
           {/* Left Column - Input Section */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing[4] }}>
+          <TaskReadinessCard items={readinessItems} />
           {/* Step 1: Load Reference Photos */}
           <ModernSection
             title={
@@ -1852,6 +1885,7 @@ C:\Photos\child\photo3.jpg
                 用時：{formatElapsed(lastRunSummary.elapsedMs)}<br />
                 {results.length > 0 && `最佳相似度：${getBestScoreText()}`}
               </div>
+              <ScanWarningsPanel warnings={scanWarnings} />
             </ModernSection>
           )}
 
@@ -2220,6 +2254,7 @@ C:\Photos\child\photo3.jpg
         <OnboardingWizard
           onComplete={handleOnboardingComplete}
           onSkip={handleOnboardingSkip}
+          checklist={onboardingChecklist}
         />
       )}
 

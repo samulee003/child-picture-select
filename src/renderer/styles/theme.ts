@@ -95,7 +95,7 @@ export const theme = {
   // Typography scale (unchanged)
   typography: {
     fontFamily: {
-      sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      sans: ['Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'monospace'],
     },
     fontSize: {

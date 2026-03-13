@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
-import { fileToEmbeddingWithSource, Embedding, type FaceAnalysis } from '../core/embeddings';
+import { fileToEmbeddingWithSource, Embedding, DETERMINISTIC_SCORE_PENALTY, type FaceAnalysis } from '../core/embeddings';
 import { cosineSimilarity } from '../core/similarity';
 import { getPhoto, upsertPhoto, upsertFace, getFacesByPath, getDb, closeDb } from '../core/db';
 import { ensureThumbnailFor } from '../core/thumbs';
@@ -22,6 +22,7 @@ const referenceEmbeddings: Embedding[] = [];
 // LRU cache for photo embeddings with max size to prevent memory leaks
 const MAX_EMBEDDING_CACHE_SIZE = 50000; // ~200MB for 1024-dim float64
 const photoEmbeddings = new Map<string, Embedding>();
+const photoEmbeddingSources = new Map<string, 'face' | 'deterministic' | 'unknown'>();
 
 // Scan control state
 let scanCancelled = false;
@@ -39,11 +40,12 @@ function evictOldestEmbeddings(count: number) {
   }
 }
 
-function setPhotoEmbedding(path: string, embedding: Embedding) {
+function setPhotoEmbedding(path: string, embedding: Embedding, source: 'face' | 'deterministic' | 'unknown' = 'unknown') {
   if (photoEmbeddings.has(path)) {
     photoEmbeddings.delete(path);
   }
   photoEmbeddings.set(path, embedding);
+  photoEmbeddingSources.set(path, source);
   const overflow = photoEmbeddings.size - MAX_EMBEDDING_CACHE_SIZE;
   if (overflow > 0) {
     evictOldestEmbeddings(overflow);
@@ -249,6 +251,17 @@ function wireIpc() {
     return { ok: true };
   });
 
+  ipcMain.handle('scan:performance-mode', async (_e, mode: 'default' | 'eco') => {
+    const normalized = mode === 'eco' ? 'eco' : 'default';
+    if (normalized === 'eco') {
+      performanceManager.updateConfig({ batchSize: 20, maxConcurrency: 2 });
+    } else {
+      performanceManager.updateConfig({ batchSize: 50, maxConcurrency: 4 });
+    }
+    logger.info(`Scan performance mode updated: ${normalized}`);
+    return { ok: true, data: { mode: normalized } };
+  });
+
   ipcMain.handle('app:about', async () => ({
     appName: '大海撈Ｂ',
     version: app.getVersion(),
@@ -358,17 +371,26 @@ function wireIpc() {
       let faceCount = 0;
       let deterministicCount = 0;
       let thumbnailErrors = 0;
+      let readErrors = 0;
+      let embeddingErrors = 0;
+      let skippedErrors = 0;
+      const warnings: string[] = [];
+      const scanStartTs = Date.now();
 
       // 如果要求清除快取，清除相關的記憶體 embeddings
       if (clearCache) {
         logger.info('Clearing embedding cache as requested');
         photoEmbeddings.clear();
+        photoEmbeddingSources.clear();
       }
 
       logger.info(`Found ${total} images to process`);
 
-      // Process files one by one to support cancel/pause
-      for (const filePath of files) {
+      const perfBatchSize = Math.max(5, performanceManager.getMetrics().maxConcurrency * 10);
+
+      // Process files in small batches for better responsiveness and ETA updates
+      for (let offset = 0; offset < files.length; offset += perfBatchSize) {
+        const batch = files.slice(offset, offset + perfBatchSize);
         // Check cancel
         if (scanCancelled) {
           logger.info(`Scan cancelled at ${scanned}/${total}`);
@@ -381,84 +403,124 @@ function wireIpc() {
           };
         }
 
-        // Check pause — spin-wait until resumed or cancelled
-        if (scanPaused && !scanCancelled) {
-          await waitForScanResumeOrCancel(scanSessionId);
-        }
-        if (scanCancelled) {
-          logger.info(`Scan cancelled while paused at ${scanned}/${total}`);
-          return {
-            ok: true,
-            data: { scanned, processed, cached, faceDetected: faceCount, deterministicFallback: deterministicCount, thumbnailErrors, cancelled: true },
-          };
-        }
+        for (const filePath of batch) {
+          // Check pause — spin-wait until resumed or cancelled
+          if (scanPaused && !scanCancelled) {
+            await waitForScanResumeOrCancel(scanSessionId);
+          }
+          if (scanCancelled) {
+            logger.info(`Scan cancelled while paused at ${scanned}/${total}`);
+            return {
+              ok: true,
+              data: {
+                scanned,
+                processed,
+                cached,
+                faceDetected: faceCount,
+                deterministicFallback: deterministicCount,
+                thumbnailErrors,
+                readErrors,
+                embeddingErrors,
+                skippedErrors,
+                avgPhotosPerSec: scanned > 0 ? scanned / Math.max(1, (Date.now() - scanStartTs) / 1000) : 0,
+                durationMs: Date.now() - scanStartTs,
+                warnings,
+                cancelled: true,
+              },
+            };
+          }
 
-        const s = await fsStat(filePath);
-        const mtime = Math.floor(s.mtimeMs);
-        const existing = getPhoto(filePath);
-        let faceAnalysis: FaceAnalysis | undefined;
-
-        if (clearCache || !existing || existing.mtime !== mtime) {
-          logger.debug(`Processing new/modified file: ${filePath}`);
-          const result = await fileToEmbeddingWithSource(filePath);
-          faceAnalysis = result.faceAnalysis;
-
-          let thumb: string | null = null;
+          let faceAnalysis: FaceAnalysis | undefined;
           try {
-            thumb = await ensureThumbnailFor(filePath);
-          } catch (thumbErr: any) {
-            thumbnailErrors++;
-            logger.warn(`Thumbnail generation failed for ${filePath}: ${thumbErr?.message || thumbErr}`);
+            const s = await fsStat(filePath);
+            const mtime = Math.floor(s.mtimeMs);
+            const existing = getPhoto(filePath);
+
+            if (clearCache || !existing || existing.mtime !== mtime) {
+              logger.debug(`Processing new/modified file: ${filePath}`);
+              const result = await fileToEmbeddingWithSource(filePath);
+              faceAnalysis = result.faceAnalysis;
+
+              let thumb: string | null = null;
+              try {
+                thumb = await ensureThumbnailFor(filePath);
+              } catch (thumbErr: any) {
+                thumbnailErrors++;
+                logger.warn(`Thumbnail generation failed for ${filePath}: ${thumbErr?.message || thumbErr}`);
+              }
+
+              upsertPhoto(filePath, mtime, thumb);
+              upsertFace(filePath, result.embedding);
+              setPhotoEmbedding(filePath, result.embedding, result.source);
+
+              if (result.source === 'face') faceCount++;
+              else deterministicCount++;
+
+              processed++;
+            } else if (!photoEmbeddings.has(filePath)) {
+              const cachedFaces = getFacesByPath(filePath);
+              if (cachedFaces.length > 0) {
+                setPhotoEmbedding(filePath, cachedFaces[0], 'unknown');
+                cached++;
+              } else {
+                logger.debug(`No cached embedding found for: ${filePath}`);
+                const result = await fileToEmbeddingWithSource(filePath);
+                faceAnalysis = result.faceAnalysis;
+                upsertFace(filePath, result.embedding);
+                setPhotoEmbedding(filePath, result.embedding, result.source);
+                if (result.source === 'face') faceCount++;
+                else deterministicCount++;
+                processed++;
+              }
+            } else {
+              const existingEmbedding = photoEmbeddings.get(filePath);
+              const existingSource = photoEmbeddingSources.get(filePath) || 'unknown';
+              if (existingEmbedding) {
+                setPhotoEmbedding(filePath, existingEmbedding, existingSource);
+              }
+              cached++;
+            }
+          } catch (itemErr: any) {
+            const msg = itemErr?.message || 'unknown';
+            if (msg.toLowerCase().includes('enoent') || msg.toLowerCase().includes('permission')) {
+              readErrors++;
+            } else {
+              embeddingErrors++;
+            }
+            skippedErrors++;
+            logger.warn(`Skipping file due to processing error: ${filePath}`, msg);
           }
 
-          upsertPhoto(filePath, mtime, thumb);
-          upsertFace(filePath, result.embedding);
-          setPhotoEmbedding(filePath, result.embedding);
+          scanned += 1;
+          const elapsedSec = Math.max(1, (Date.now() - scanStartTs) / 1000);
+          const photosPerSec = scanned / elapsedSec;
+          const etaSeconds = Math.max(0, Math.round((total - scanned) / Math.max(0.01, photosPerSec)));
 
-          if (result.source === 'face') faceCount++;
-          else deterministicCount++;
-
-          processed++;
-        } else if (!photoEmbeddings.has(filePath)) {
-          const cachedFaces = getFacesByPath(filePath);
-          if (cachedFaces.length > 0) {
-            setPhotoEmbedding(filePath, cachedFaces[0]);
-            cached++;
-          } else {
-            logger.debug(`No cached embedding found for: ${filePath}`);
-            const result = await fileToEmbeddingWithSource(filePath);
-            faceAnalysis = result.faceAnalysis;
-            upsertFace(filePath, result.embedding);
-            setPhotoEmbedding(filePath, result.embedding);
-            if (result.source === 'face') faceCount++;
-            else deterministicCount++;
-            processed++;
+          if (mainWindow) {
+            const photo = getPhoto(filePath);
+            mainWindow.webContents.send('scan:progress', {
+              current: scanned,
+              total,
+              path: filePath,
+              thumbPath: photo?.thumbPath || null,
+              faceAnalysis: faceAnalysis || null,
+              photosPerSec: Number(photosPerSec.toFixed(2)),
+              etaSeconds,
+            });
           }
-        } else {
-          const existingEmbedding = photoEmbeddings.get(filePath);
-          if (existingEmbedding) {
-            setPhotoEmbedding(filePath, existingEmbedding);
-          }
-          cached++;
         }
 
-        scanned += 1;
+        // Yield to event loop between batches
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
 
-        if (mainWindow) {
-          const photo = getPhoto(filePath);
-          mainWindow.webContents.send('scan:progress', {
-            current: scanned,
-            total,
-            path: filePath,
-            thumbPath: photo?.thumbPath || null,
-            faceAnalysis: faceAnalysis || null,
-          });
-        }
-
-        // Yield to event loop every 5 files for UI responsiveness
-        if (scanned % 5 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
+      if (deterministicCount > 0 && faceCount === 0) {
+        warnings.push('本次掃描沒有偵測到可用人臉，結果可能偏低，建議補充清晰正面參考照。');
+      } else if (deterministicCount > 0) {
+        warnings.push('部分照片未偵測到人臉，已使用保底特徵，請優先複核低信心結果。');
+      }
+      if (skippedErrors > 0) {
+        warnings.push(`有 ${skippedErrors} 張照片處理失敗（讀檔 ${readErrors}、嵌入 ${embeddingErrors}）。`);
       }
 
       logger.info(`Batch embedding completed: ${processed} processed, ${cached} from cache, ${faceCount} face, ${deterministicCount} deterministic`);
@@ -475,6 +537,12 @@ function wireIpc() {
           faceDetected: faceCount,
           deterministicFallback: deterministicCount,
           thumbnailErrors,
+          readErrors,
+          embeddingErrors,
+          skippedErrors,
+          avgPhotosPerSec: scanned > 0 ? Number((scanned / Math.max(1, (Date.now() - scanStartTs) / 1000)).toFixed(2)) : 0,
+          durationMs: Date.now() - scanStartTs,
+          warnings,
         },
       };
     } catch (err: any) {
@@ -488,7 +556,7 @@ function wireIpc() {
   });
 
   ipcMain.handle('match:run', async (_e, opts: { topN: number; threshold: number }) => {
-    const results: Array<{ path: string; score: number; thumbPath?: string }> = [];
+    const results: Array<{ path: string; score: number; thumbPath?: string; source?: 'face' | 'deterministic' | 'unknown' }> = [];
     if (referenceEmbeddings.length === 0) {
       logger.warn('match:run called with 0 reference embeddings');
       return { results, dimensionAdjustedCount: 0, totalComparisons: 0 };
@@ -512,12 +580,17 @@ function wireIpc() {
         }
         if (s > best) best = s;
       }
+      const source = photoEmbeddingSources.get(path) || 'unknown';
+      // Deterministic vectors are only a fallback signal, reduce score to lower false positives.
+      if (source === 'deterministic' && best > 0) {
+        best = Math.max(0, best - DETERMINISTIC_SCORE_PENALTY);
+      }
       if (best > maxScoreOverall) maxScoreOverall = best;
       if (best >= (opts?.threshold ?? 0)) {
         // 獲取縮圖路徑
         const photo = getPhoto(path);
         const thumbPath = photo?.thumbPath || null;
-        results.push({ path, score: best, thumbPath: thumbPath || undefined });
+        results.push({ path, score: best, thumbPath: thumbPath || undefined, source });
       }
     }
     
@@ -543,6 +616,7 @@ function wireIpc() {
     try {
       logger.info('Clearing all embedding caches...');
       photoEmbeddings.clear();
+      photoEmbeddingSources.clear();
       // 也清除資料庫中的 faces
       const d = getDb();
       d.exec('DELETE FROM faces');

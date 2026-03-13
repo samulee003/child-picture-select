@@ -1,93 +1,98 @@
-## Cursor Agents 設定 – Find My Kid (Offline)
+## Find My Kid (Offline) Cursor Agents 規範
 
-這個專案已經可以給「一般家長」直接安裝使用，以下是之後在 Cursor 內協作時，建議給各個 Agent 的工作方式。
+這個專案是給家長直接安裝使用的桌面工具，目標是讓爸媽在大量照片中，快速且安心地找出自己小孩的照片。  
+以下規範用於後續所有 Cursor / Agent 協作，請直接遵循，不另行協商。
 
-### 專案角色與目標
+### 專案定位與核心原則
 
-- **產品定位**：離線、隱私優先的桌面工具，幫爸媽在一大堆班級 / 活動照片中，快速找出自己小孩的照片。
-- **核心原則**
-  - 所有 AI 計算都在本機完成，不上傳照片。
-  - UI 語言以繁體中文為主，文案要像在跟爸媽說話。
-  - 「可安心使用」優先，再追求進階功能。
+- 離線優先：所有 AI 運算都在本機完成，不得上傳使用者照片或臉部資料。
+- 家長導向：UI 與文案使用繁體中文，語氣友善、安心，避免工程術語和嚇人的字眼。
+- 安全優先：比華麗功能更重要的是「可安心使用」與穩定性。
+- 可維運優先：能快速交付、容易回溯與維修，優先保留簡潔可讀的實作。
 
-### 專案結構與重點檔案
+### 專案結構（高頻關係）
 
 - 主程式 / 打包
-  - `src/main/index.ts`：Electron 主程序入口，負責視窗建立、IPC、路徑處理與 app branding。
-  - `src/preload/index.ts`：Expose `window.api`，僅允許安全 IPC。
-  - `package.json`：
-    - `scripts.release:win`、`scripts.dist:win`：Windows 打包流程。
-    - `build` 區塊：`electron-builder` 設定（`icon`、`extraResources`、`nsis` 等）。
-  - `vite.renderer.config.ts`：renderer 使用 `base: './'`，確保打包後不會白屏。
-
+  - `src/main/index.ts`：Electron 主程序、視窗建立、IPC、路徑、啟動資訊。
+  - `src/preload/index.ts`：`window.api` 安全橋接，僅露出必要 IPC。
+  - `package.json`：Windows 打包腳本與 `electron-builder` 設定。
+  - `vite.renderer.config.ts`：前端打包入口（`base: './'` 為關鍵設定）。
 - Renderer（React）
-  - `src/renderer/App.tsx`：主畫面與家長流程（快選入口、3 步驟流程、結果檢視、匯出）。
-  - `src/renderer/components/*`：共用 UI（按鈕、卡片、Onboarding、MatchResultCard 等）。
-  - `src/renderer/styles/theme.ts`：
-    - `theme.colors` / `theme.gradients` / `modernStyles`：整體色彩與玻璃風格設定。
-    - 如要換整體視覺，**優先改這裡**，再調整個別元件。
-
+  - `src/renderer/App.tsx`：主要流程主畫面。
+  - `src/renderer/components/*`：共用 UI 與流程元件。
+  - `src/renderer/styles/theme.ts`：視覺主題與色彩系統（想改風格先改此檔）。
 - Core / Domain
-  - `src/core/embeddings.ts`、`similarity.ts`、`db.ts`、`thumbs.ts`：AI 與快取核心。
-  - `src/core/performance.ts`：批次處理與資源控管。
-  - `src/main/growthRecordManager.ts`：成長紀錄與掃描歷史（本機 JSON）。
-  - `src/core/childQualityAssessment.ts`、`photoEnhancer.ts`：照片品質與加強。
+  - `src/core/embeddings.ts`、`src/core/similarity.ts`：比對核心邏輯。
+  - `src/core/db.ts`、`src/core/thumbs.ts`：快取與縮圖管理。
+  - `src/core/performance.ts`：批次與資源控管。
+  - `src/main/growthRecordManager.ts`：掃描歷史與成長紀錄儲存（本機）。
+  - `src/core/childQualityAssessment.ts`、`src/core/photoEnhancer.ts`：照片品質與品質加強。
 
-### 對 Agent 的具體指引
+### UI / UX Agent 指引（強制）
 
-#### 1. UI / UX 調整 Agent
+- 語氣與文案
+  - 一律使用繁體中文，句子短、清楚、溫和。
+  - 像跟爸媽說話，優先「可以先試一次、再微調」的陪伴感。
+- 視覺
+  - 以柔和淺色調為主，避免大型霓虹或高刺激色塊。
+  - 主要按鈕要一眼可辨識、對比明確，不刺眼。
+- 流程保留
+  - 保持「三步驟」主流程：參考照 → 照片資料夾 → 門檻與數量。
+  - 快速入口需保留，按鈕附近加簡短提示（例：建議先載入參考照再開始掃描）。
+- 介面變更限制
+  - 不得重寫導覽核心邏輯與狀態管理，除非需求明確要求。
+  - 允許調整文案、文案順序、視覺排版，但要維持原有使用路徑一致。
 
-- **語氣與文案**
-  - 一律使用繁體中文。
-  - 用「爸媽聽得懂」的語言，不要工程術語。
-  - 避免嚇人的字眼，多使用「放心」「可以之後再調整」等安心理解。
+### 後端 / 效能 / 打包 Agent 指引
 
-- **配色與風格**
-  - 背景：以柔和的淺色（淺灰、淡藍、淡綠）為主，避免大面積霓虹漸層。
-  - 主要按鈕：清楚、高對比，但不要刺眼。
-  - 如果使用 Stitch MCP：
-    - 先用 `create_project` / `generate_screen_from_text` 做概念稿，再手動翻成 `App.tsx` + `theme.ts` 的實作。
-    - 把產出的 HTML 當「視覺參考」，**不要直接整頁貼進 React**。
+- 修改主程序、preload、打包流程時，必須先確認：
+  - `src/main/index.ts` 的 `getAppRoot()` 邏輯不受破壞（打包後以 `app.getAppPath()` 為準）。
+  - `preload` 與 `index.html` 仍指向 `dist/...` 資源路徑。
+  - 不要修改 `node_modules` 檔案，透過設定、封裝或 wrapper 解決。
+- 變更打包設定後至少執行一次：
+  - `npm run build`
+  - `npm run dist:win` 或 `npm run release:win`
+- 發佈簽章
+  - 正式版測試建議順序：`npm run release:check-sign` → `npm run release:win:with-sign`。
+  - 無簽章憑證時允許先用 `release:win` 做驗證版。
 
-- **Layout 原則**
-  - 優先保持「三步驟」結構不變：1 參考照 → 2 照片資料夾 → 3 門檻與數量。
-  - 快速入口區（爸媽常用）要保留，並保持文字非常清楚。
-  - 在行為按鈕附近，多給一行短提示（例如「建議先載入參考照再開始搜尋」）。
+### 測試與穩定性 Agent 指引
 
-#### 2. 後端 / 效能 / 打包 Agent
-
-- 修改主程序或打包相關檔案時：
-  - 調整 `src/main/index.ts` 時，務必確認：
-    - `getAppRoot()` 邏輯不被破壞（打包後依賴 `app.getAppPath()`）。
-    - `preload` 與 `index.html` 的路徑仍然指向 `dist/...` 之下。
-  - 變更打包設定後，建議至少執行：
-    - `npm run build`
-    - `npm run dist:win` 或 `npm run release:win`
-  - 不要修改 `node_modules` 內的檔案；優先透過設定或 wrapper 修正。
-
-- Windows 簽章
-  - 正式對外版本請使用：
-    - `npm run release:check-sign`
-    - `npm run release:win:with-sign`
-  - 如環境沒有憑證，允許只用 `release:win` 做測試版。
-
-#### 3. 測試與穩定性 Agent
-
-- 優先確保：
+- 開發修改至少保證：
   - `npm run build` 可通過。
-  - `npm run start` 在開發模式能啟動並顯示畫面。
-  - 若修改核心邏輯，必要時補 `vitest` 單元測試，但**不要為了追求 100% coverage 而拖慢爸媽體驗改善**。
+  - `npm run start` 可啟動並正常顯示畫面。
+- 改核心邏輯時優先補 `vitest` 測試，聚焦關鍵路徑，不以高覆蓋率為目標。
+- 有風險高的流程（檔案輸入、模型載入、快取寫入）要先做回歸思考，避免破壞既有操作流程。
 
-### Stitch MCP 使用備忘
+### Stitch MCP 使用規範
 
-- MCP server：`user-stitch`
-- 典型流程：
-  1. 如需全新設計概念，呼叫 `create_project` 建立專案（title 包含「Find My Kid」）。
-  2. 使用 `generate_screen_from_text` 產生主畫面 / 結果畫面等變化。
-  3. 若需要微調（例如改成更中性配色），以 `edit_screens` 搭配 `prompt` 做細部修正。
-  4. 根據回傳的 `htmlCode.downloadUrl` 在瀏覽器中預覽，將合適的結構翻譯成 React + CSS-in-JS（或 inline style）。
+- MCP：`user-stitch`
+- 建議流程
+  - 有新版面概念先 `create_project`（title 含 Find My Kid）。
+  - 使用 `generate_screen_from_text` 產生概念稿後，先在瀏覽器確認再實作。
+  - 如需修正，改用 `edit_screens`，由文字描述指定調整重點。
+- 邊界條件
+  - 只轉換「結構與樣式」，不得改 IPC 名稱、資料欄位、核心流程邏輯。
+  - 任何從 HTML 來的成果，皆需轉為 `App.tsx` 與 `theme.ts` 可維護的實作，不可直接貼整頁進專案。
 
-- 任何從 Stitch 來的 UI 修改，最後都要：
-  - 保持現有 React component 邏輯與狀態管理不被破壞。
-  - 只替換結構和樣式，避免改變 IPC 呼叫 / 資料模型。
+### Do / Don't
+
+- Do
+  - 先理解既有流程再改 UI 或核心邏輯。
+  - 用小步驟提交，保留可回滾空間。
+  - 明確標示修改目的與預期影響。
+- Don't
+  - 不改壞 `dist` 路徑、IPC 契約或核心資料流程。
+  - 不在未經確認下全面重構 `src/main/*` 與 `src/renderer/App.tsx`。
+  - 不新增會讓隱私風險上升的上傳或遠端呼叫行為。
+
+### 變更前後檢核清單
+
+- 事前
+  - 確認任務是否改動 UI、核心、或打包邏輯，並選對對應 Agent 流程。
+  - 確認是否涉及檔案路徑、IPC、或打包流程的敏感區域。
+- 事後
+  - 檢查三步驟流程與快速入口是否仍可操作。
+  - 再次確認 build / start 的基本可用性條件成立。
+  - 檢視文案是否仍為繁中且對家長友善。
 

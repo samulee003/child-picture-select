@@ -15,6 +15,7 @@ describe('MatchResultCard Accessibility', () => {
     path: '/test/photo.jpg',
     score: 0.85,
     thumbPath: '/test/thumb.jpg',
+    source: 'face' as const,
   };
 
   it('should have proper ARIA label', () => {
@@ -72,7 +73,7 @@ describe('MatchResultCard Accessibility', () => {
     fireEvent.click(explainButton);
 
     expect(screen.getByRole('heading', { name: '🔍 匹配原因' })).toBeInTheDocument();
-    expect(screen.getByText('面部特征高度相似')).toBeInTheDocument();
+    expect(screen.getByText('臉部特徵高度相似')).toBeInTheDocument();
   });
 
   it('should display score with proper formatting', () => {
@@ -85,5 +86,16 @@ describe('MatchResultCard Accessibility', () => {
     );
 
     expect(screen.getByText('85.0%')).toBeInTheDocument();
+  });
+
+  it('should display source hint badge', () => {
+    render(
+      <MatchResultCard
+        result={mockResult}
+        index={0}
+        onPreview={() => {}}
+      />
+    );
+    expect(screen.getByText('來源：臉部特徵')).toBeInTheDocument();
   });
 });

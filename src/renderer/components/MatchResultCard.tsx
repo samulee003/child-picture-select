@@ -29,15 +29,15 @@ function getExplanation(result: MatchResult): MatchExplanation {
   const reasons: string[] = [];
 
   if (score >= 80) {
-    reasons.push('面部特征高度相似');
+    reasons.push('臉部特徵高度相似');
   } else if (score >= 60) {
-    reasons.push('面部特征中度相似');
+    reasons.push('臉部特徵中度相似');
   } else {
-    reasons.push('部分特征匹配');
+    reasons.push('僅部分特徵匹配');
   }
 
   if (score >= 70) {
-    reasons.push('轮廓匹配良好');
+    reasons.push('輪廓匹配度良好');
   }
 
   return {
@@ -85,6 +85,11 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
     medium: '有機會是同班其他小孩，建議先看大圖再決定',
     low: '可能是誤判，建議先標記待複核',
   }[explanation.confidenceLevel];
+  const sourceHint = result.source === 'face'
+    ? { label: '來源：臉部特徵', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' }
+    : result.source === 'deterministic'
+      ? { label: '來源：保底特徵（建議複核）', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' }
+      : { label: '來源：未標記', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)' };
 
   return (
     <div style={{
@@ -139,6 +144,21 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
 
       {/* Score Bar */}
       <div style={{ marginBottom: theme.spacing[3] }}>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
+            background: sourceHint.bg,
+            color: sourceHint.color,
+            borderRadius: theme.borderRadius.full,
+            fontSize: theme.typography.fontSize.xs,
+            marginBottom: theme.spacing[2],
+          }}
+        >
+          {sourceHint.label}
+        </div>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',

@@ -13,9 +13,9 @@ describe('OnboardingWizard', () => {
   it('should render first step correctly', () => {
     render(<OnboardingWizard />);
 
-    expect(screen.getByText('歡迎使用 大海撈Ｂ')).toBeInTheDocument();
-    expect(screen.getByText('👋')).toBeInTheDocument();
-    expect(screen.getByText('步驟 1 / 5')).toBeInTheDocument();
+    expect(screen.getByText('先準備參考照')).toBeInTheDocument();
+    expect(screen.getByText('📸')).toBeInTheDocument();
+    expect(screen.getByText('步驟 1 / 4')).toBeInTheDocument();
   });
 
   it('should navigate to next step', () => {
@@ -24,9 +24,9 @@ describe('OnboardingWizard', () => {
     const nextButton = screen.getByText('下一步');
     fireEvent.click(nextButton);
 
-    expect(screen.getByText('準備參考照片')).toBeInTheDocument();
-    expect(screen.getByText('📸')).toBeInTheDocument();
-    expect(screen.getByText('步驟 2 / 5')).toBeInTheDocument();
+    expect(screen.getByText('再選照片資料夾')).toBeInTheDocument();
+    expect(screen.getByText('📁')).toBeInTheDocument();
+    expect(screen.getByText('步驟 2 / 4')).toBeInTheDocument();
   });
 
   it('should navigate through all steps', () => {
@@ -38,11 +38,10 @@ describe('OnboardingWizard', () => {
     fireEvent.click(nextButton); // Step 2
     fireEvent.click(nextButton); // Step 3
     fireEvent.click(nextButton); // Step 4
-    fireEvent.click(nextButton); // Step 5
 
-    expect(screen.getByText('完成！')).toBeInTheDocument();
-    expect(screen.getByText('🎉')).toBeInTheDocument();
-    expect(screen.getByText('步驟 5 / 5')).toBeInTheDocument();
+    expect(screen.getByText('匯出與補救')).toBeInTheDocument();
+    expect(screen.getByText('📦')).toBeInTheDocument();
+    expect(screen.getByText('步驟 4 / 4')).toBeInTheDocument();
   });
 
   it('should call onComplete on final step', () => {
@@ -55,10 +54,9 @@ describe('OnboardingWizard', () => {
     fireEvent.click(nextButton);
     fireEvent.click(nextButton);
     fireEvent.click(nextButton);
-    fireEvent.click(nextButton);
 
-    // Click "開始使用" on final step
-    const startButton = screen.getByText('開始使用');
+    // Click final CTA
+    const startButton = screen.getByText('完成，開始使用');
     fireEvent.click(startButton);
 
     expect(onComplete).toHaveBeenCalledTimes(1);
@@ -69,7 +67,7 @@ describe('OnboardingWizard', () => {
     const onSkip = vi.fn();
     render(<OnboardingWizard onSkip={onSkip} />);
 
-    const skipButton = screen.getByText('跳過引導');
+    const skipButton = screen.getByText('跳過，先直接使用');
     fireEvent.click(skipButton);
 
     expect(onSkip).toHaveBeenCalledTimes(1);
@@ -86,7 +84,7 @@ describe('OnboardingWizard', () => {
     const prevButton = screen.getByText('上一步');
     fireEvent.click(prevButton);
 
-    expect(screen.getByText('步驟 1 / 5')).toBeInTheDocument();
+    expect(screen.getByText('步驟 1 / 4')).toBeInTheDocument();
   });
 
   it('should not show previous button on first step', () => {
@@ -98,20 +96,38 @@ describe('OnboardingWizard', () => {
   it('should display tips for each step', () => {
     render(<OnboardingWizard />);
 
-    expect(screen.getByText('💡 小提示')).toBeInTheDocument();
-    expect(screen.getByText('完全離線處理，照片不會上傳到雲端')).toBeInTheDocument();
+    expect(screen.getByText('小提醒')).toBeInTheDocument();
+    expect(screen.getByText('建議使用光線好、臉部清楚的照片')).toBeInTheDocument();
   });
 
   it('should update progress bar correctly', () => {
     render(<OnboardingWizard />);
 
-    // Initial progress: 20% (1/5)
-    expect(screen.getByText('20%')).toBeInTheDocument();
+    // Initial progress: 25% (1/4)
+    expect(screen.getByText('25%')).toBeInTheDocument();
 
     const nextButton = screen.getByText('下一步');
     fireEvent.click(nextButton);
 
-    // Progress: 40% (2/5)
-    expect(screen.getByText('40%')).toBeInTheDocument();
+    // Progress: 50% (2/4)
+    expect(screen.getByText('50%')).toBeInTheDocument();
+  });
+
+  it('should render readiness checklist on final step', () => {
+    render(
+      <OnboardingWizard
+        checklist={{ hasRefs: true, hasFolder: false, modelLoaded: true }}
+      />
+    );
+
+    const nextButton = screen.getByText('下一步');
+    fireEvent.click(nextButton);
+    fireEvent.click(nextButton);
+    fireEvent.click(nextButton);
+
+    expect(screen.getByText('啟動前檢查')).toBeInTheDocument();
+    expect(screen.getByText('已準備參考照')).toBeInTheDocument();
+    expect(screen.getByText('已選擇照片資料夾')).toBeInTheDocument();
+    expect(screen.getByText('模型狀態')).toBeInTheDocument();
   });
 });

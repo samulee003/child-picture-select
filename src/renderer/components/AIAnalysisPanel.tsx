@@ -96,7 +96,7 @@ function AnimatedCounter({ target, label }: { target: number; label: string }) {
 }
 
 export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
-  const { current, total, path, thumbPath, faceAnalysis } = progress;
+  const { current, total, path, thumbPath, faceAnalysis, photosPerSec, etaSeconds } = progress;
   const [totalFacesFound, setTotalFacesFound] = useState(0);
   const [totalNoFace, setTotalNoFace] = useState(0);
   const prevCurrent = useRef(0);
@@ -364,6 +364,16 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
         <AnimatedCounter target={total} label="總照片" />
         <AnimatedCounter target={totalFacesFound} label="偵測到人臉" />
         <AnimatedCounter target={totalNoFace} label="無人臉" />
+      </div>
+      <div style={{
+        marginTop: '8px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        color: 'rgba(255,255,255,0.62)',
+        fontSize: '11px',
+      }}>
+        <span>速度：{photosPerSec ? `${photosPerSec.toFixed(2)} 張/秒` : '計算中'}</span>
+        <span>預估剩餘：{typeof etaSeconds === 'number' ? `${etaSeconds} 秒` : '計算中'}</span>
       </div>
 
       {/* CSS animations */}
