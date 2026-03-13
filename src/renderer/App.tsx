@@ -156,14 +156,26 @@ export function App() {
     });
   }, []);
 
-  // Check AI model status on mount and after first reference embedding
+  // Check AI model status on mount, after refs loaded, and poll until loaded
   useEffect(() => {
     if (!window.api?.getModelStatus) return;
-    window.api.getModelStatus().then((status: { loaded: boolean; error: string | null }) => {
-      setModelStatus(status);
-    }).catch(() => {
-      // Model status API not available
-    });
+    let cancelled = false;
+
+    const checkStatus = () => {
+      window.api?.getModelStatus().then((status: { loaded: boolean; error: string | null }) => {
+        if (cancelled) return;
+        setModelStatus(status);
+        // Keep polling every 2s until model is loaded or has error
+        if (!status.loaded && !status.error) {
+          setTimeout(checkStatus, 2000);
+        }
+      }).catch(() => {
+        // Model status API not available
+      });
+    };
+    checkStatus();
+
+    return () => { cancelled = true; };
   }, [refsLoaded]);
 
   useEffect(() => {

@@ -10,10 +10,10 @@ import { stat as fsStat } from 'fs/promises';
 import { logger } from '../utils/logger';
 import { createErrorInfo } from '../utils/error-handler';
 import { performanceManager } from '../core/performance';
-import { photoEnhancer } from '../core/photoEnhancer';
+import { getPhotoEnhancer } from '../core/photoEnhancer';
 import { ChildQualityAssessor } from '../core/childQualityAssessment';
-import { growthRecordManager } from './growthRecordManager';
-import { getModelStatus } from '../core/detector';
+import { getGrowthRecordManager } from './growthRecordManager';
+import { getModelStatus, preloadModel } from '../core/detector';
 import { autoUpdater } from 'electron-updater';
 
 let mainWindow: BrowserWindow | null = null;
@@ -724,7 +724,7 @@ function wireIpc() {
   ipcMain.handle('enhance:photo', async (_e, filePath: string) => {
     try {
       logger.info(`Enhancing photo: ${filePath}`);
-      const result = await photoEnhancer.enhancePhoto(filePath);
+      const result = await getPhotoEnhancer().enhancePhoto(filePath);
       logger.info(`Photo enhanced successfully: ${result.enhancedPath}`);
       return { ok: true, data: result };
     } catch (err: any) {
@@ -739,7 +739,7 @@ function wireIpc() {
   // 儲存成長紀錄
   ipcMain.handle('growth:save-record', async (_e, record) => {
     try {
-      const result = await growthRecordManager.saveGrowthRecord(record);
+      const result = await getGrowthRecordManager().saveGrowthRecord(record);
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -751,7 +751,7 @@ function wireIpc() {
   // 取得所有成長紀錄
   ipcMain.handle('growth:get-records', async () => {
     try {
-      const result = await growthRecordManager.getGrowthRecords();
+      const result = await getGrowthRecordManager().getGrowthRecords();
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -763,7 +763,7 @@ function wireIpc() {
   // 取得單筆成長紀錄
   ipcMain.handle('growth:get-record', async (_e, id: string) => {
     try {
-      const result = await growthRecordManager.getGrowthRecord(id);
+      const result = await getGrowthRecordManager().getGrowthRecord(id);
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -775,7 +775,7 @@ function wireIpc() {
   // 刪除成長紀錄
   ipcMain.handle('growth:delete-record', async (_e, id: string) => {
     try {
-      await growthRecordManager.deleteGrowthRecord(id);
+      await getGrowthRecordManager().deleteGrowthRecord(id);
       return { ok: true };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -787,7 +787,7 @@ function wireIpc() {
   // 新增成長事件
   ipcMain.handle('growth:add-event', async (_e, recordId: string, event) => {
     try {
-      await growthRecordManager.addGrowthEvent(recordId, event);
+      await getGrowthRecordManager().addGrowthEvent(recordId, event);
       return { ok: true };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -799,7 +799,7 @@ function wireIpc() {
   // 儲存掃描工作階段
   ipcMain.handle('growth:save-session', async (_e, session) => {
     try {
-      const result = await growthRecordManager.saveScanSession(session);
+      const result = await getGrowthRecordManager().saveScanSession(session);
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -811,7 +811,7 @@ function wireIpc() {
   // 取得所有掃描工作階段
   ipcMain.handle('growth:get-sessions', async () => {
     try {
-      const result = await growthRecordManager.getScanSessions();
+      const result = await getGrowthRecordManager().getScanSessions();
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -823,7 +823,7 @@ function wireIpc() {
   // 取得提醒
   ipcMain.handle('growth:get-reminders', async () => {
     try {
-      const result = await growthRecordManager.getReminders();
+      const result = await getGrowthRecordManager().getReminders();
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -835,7 +835,7 @@ function wireIpc() {
   // 標記提醒已讀
   ipcMain.handle('growth:mark-reminder-read', async (_e, id: string) => {
     try {
-      await growthRecordManager.markReminderRead(id);
+      await getGrowthRecordManager().markReminderRead(id);
       return { ok: true };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -847,7 +847,7 @@ function wireIpc() {
   // 刪除提醒
   ipcMain.handle('growth:dismiss-reminder', async (_e, id: string) => {
     try {
-      await growthRecordManager.dismissReminder(id);
+      await getGrowthRecordManager().dismissReminder(id);
       return { ok: true };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -859,7 +859,7 @@ function wireIpc() {
   // 檢查新提醒
   ipcMain.handle('growth:check-reminders', async () => {
     try {
-      const result = await growthRecordManager.checkReminders();
+      const result = await getGrowthRecordManager().checkReminders();
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -871,7 +871,7 @@ function wireIpc() {
   // 取得家庭成員
   ipcMain.handle('growth:get-family-members', async () => {
     try {
-      const result = await growthRecordManager.getFamilyMembers();
+      const result = await getGrowthRecordManager().getFamilyMembers();
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -883,7 +883,7 @@ function wireIpc() {
   // 新增家庭成員
   ipcMain.handle('growth:add-family-member', async (_e, member) => {
     try {
-      const result = await growthRecordManager.addFamilyMember(member);
+      const result = await getGrowthRecordManager().addFamilyMember(member);
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -895,7 +895,7 @@ function wireIpc() {
   // 取得共享相簿
   ipcMain.handle('growth:get-shared-albums', async () => {
     try {
-      const result = await growthRecordManager.getSharedAlbums();
+      const result = await getGrowthRecordManager().getSharedAlbums();
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -907,7 +907,7 @@ function wireIpc() {
   // 建立共享相簿
   ipcMain.handle('growth:create-shared-album', async (_e, album) => {
     try {
-      const result = await growthRecordManager.createSharedAlbum(album);
+      const result = await getGrowthRecordManager().createSharedAlbum(album);
       return { ok: true, data: result };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -935,6 +935,11 @@ app.whenReady().then(async () => {
   wireIpc();
   setupAutoUpdater();
   await createWindow();
+
+  // 預先載入 AI 模型，讓 UI 不會顯示「AI 未載入」
+  preloadModel().catch((err) => {
+    logger.warn('Model preload failed:', err);
+  });
 
   // Check for updates after window is ready (non-blocking)
   if (!isDev) {

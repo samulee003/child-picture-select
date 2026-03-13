@@ -206,6 +206,17 @@ async function getHuman() {
 }
 
 /**
+ * 預先載入模型（在 app ready 後呼叫，讓 UI 不會顯示「AI 未載入」）
+ */
+export async function preloadModel(): Promise<void> {
+  try {
+    await getHuman();
+  } catch (err) {
+    logger.error('Failed to preload face detection model:', err);
+  }
+}
+
+/**
  * 取得模型載入狀態（供 UI 顯示）
  */
 export function getModelStatus(): { loaded: boolean; error: string | null } {
