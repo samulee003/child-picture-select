@@ -1,5 +1,16 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.1 – 上線品質強化（2026-03-13）
+
+- **生產品質改善**
+  - 主進程日誌統一：`secureStore` 和 `growthRecordManager` 的 `console.error` 遷移至集中式 logger，方便追蹤線上問題。
+  - Preload IPC bridge 型別安全：6 處 `any` 替換為具體 TypeScript 介面。
+  - LoadingSpinner 加入 ARIA 無障礙屬性（`role="status"`、`aria-label`）。
+  - ScanControls 暫停/取消掃描加入 try/catch 錯誤處理，避免 IPC 失敗時 UI 卡住。
+
+- **CI/CD 修復**
+  - 修復 GitHub Actions Release step 因 asset 已存在而失敗的問題。
+
 ### v0.1.0 – 可安心上線版（2026-03-10）
 
 - **核心功能**
