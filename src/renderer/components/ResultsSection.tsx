@@ -1,5 +1,5 @@
-import React, { useRef, useCallback, useEffect, useState } from 'react';
-import { Grid } from 'react-window';
+import React, { useRef, useEffect, useState } from 'react';
+import { Grid, type CellComponentProps } from 'react-window';
 import { ModernSection } from './ModernLayout';
 import { MatchResultCard } from './MatchResultCard';
 import { ScanWarningsPanel } from './ScanWarningsPanel';
@@ -88,26 +88,39 @@ export function ResultsSection(props: ResultsSectionProps) {
     cursor: 'pointer' as const,
   });
 
-  const Cell = useCallback(({ columnIndex, rowIndex, style }: { columnIndex: number; rowIndex: number; style: React.CSSProperties }) => {
-    const index = rowIndex * columnCount + columnIndex;
-    if (index >= displayedResults.length) return null;
-    const r = displayedResults[index];
+  interface VirtualCellProps {
+    items: MatchResult[];
+    cols: number;
+    compact: boolean;
+    revMode: boolean;
+    revDecisions: Record<string, 'accepted' | 'rejected'>;
+    revScores: Record<string, number>;
+    onDec: (path: string, decision: 'accepted' | 'rejected' | null) => void;
+    onScore: (path: string, score: number) => void;
+    onFav: (path: string) => void;
+    isFav: (path: string) => boolean;
+  }
+
+  function VirtualCell({ columnIndex, rowIndex, style, ...cellProps }: CellComponentProps<VirtualCellProps>) {
+    const index = rowIndex * cellProps.cols + columnIndex;
+    if (index >= cellProps.items.length) return null;
+    const r = cellProps.items[index];
     return (
       <div style={{ ...style, padding: '8px' }}>
         <MatchResultCard
           result={r}
           index={index}
-          compact={compactView}
-          onFavorite={onFavorite}
-          isFavorite={isFavorite(r.path)}
-          onDecision={reviewMode ? onDecision : undefined}
-          onReviewScore={reviewMode ? onReviewScore : undefined}
-          reviewDecision={reviewMode ? reviewDecisions[r.path] : undefined}
-          reviewScore={reviewMode ? reviewScores[r.path] : undefined}
+          compact={cellProps.compact}
+          onFavorite={cellProps.onFav}
+          isFavorite={cellProps.isFav(r.path)}
+          onDecision={cellProps.revMode ? cellProps.onDec : undefined}
+          onReviewScore={cellProps.revMode ? cellProps.onScore : undefined}
+          reviewDecision={cellProps.revMode ? cellProps.revDecisions[r.path] : undefined}
+          reviewScore={cellProps.revMode ? cellProps.revScores[r.path] : undefined}
         />
       </div>
     );
-  }, [displayedResults, columnCount, compactView, onFavorite, isFavorite, reviewMode, onDecision, onReviewScore, reviewDecisions, reviewScores]);
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing[6] }}>
@@ -258,17 +271,28 @@ export function ResultsSection(props: ResultsSectionProps) {
           {/* Results grid — virtualized when many results */}
           <div ref={containerRef}>
             {useVirtualization ? (
-              <Grid
-                columnCount={columnCount}
-                columnWidth={columnWidth}
-                height={Math.min(rowCount * rowHeight, 720)}
-                rowCount={rowCount}
-                rowHeight={rowHeight}
-                width={containerWidth}
-                style={{ overflowX: 'hidden' }}
-              >
-                {Cell}
-              </Grid>
+              <div style={{ height: `${Math.min(rowCount * rowHeight, 720)}px`, overflow: 'hidden' }}>
+                <Grid
+                  columnCount={columnCount}
+                  columnWidth={columnWidth}
+                  rowCount={rowCount}
+                  rowHeight={rowHeight}
+                  cellComponent={VirtualCell}
+                  cellProps={{
+                    items: displayedResults,
+                    cols: columnCount,
+                    compact: compactView,
+                    revMode: reviewMode,
+                    revDecisions: reviewDecisions,
+                    revScores: reviewScores,
+                    onDec: onDecision,
+                    onScore: onReviewScore,
+                    onFav: onFavorite,
+                    isFav: isFavorite,
+                  }}
+                  style={{ height: '100%', overflowX: 'hidden' }}
+                />
+              </div>
             ) : (
               <div style={{
                 display: 'grid',
