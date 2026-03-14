@@ -9,6 +9,7 @@ import type { MatchResult } from '../../types/api';
 interface MatchResultCardProps {
   result: MatchResult;
   index: number;
+  compact?: boolean;
   onPreview?: (path: string) => void;
   reviewDecision?: 'accepted' | 'rejected';
   reviewScore?: number;
@@ -74,7 +75,7 @@ function ConfidenceBadge({ level }: { level: MatchExplanation['confidenceLevel']
   );
 }
 
-export function MatchResultCard({ result, index, onPreview, reviewDecision, reviewScore, onDecision, onReviewScore, onFavorite, isFavorite = false }: MatchResultCardProps) {
+export function MatchResultCard({ result, index, compact = false, onPreview, reviewDecision, reviewScore, onDecision, onReviewScore, onFavorite, isFavorite = false }: MatchResultCardProps) {
   const [showExplain, setShowExplain] = useState(false);
   const explanation = getExplanation(result);
   const fileName = result.path.split(/[/\\]/).pop() || '';
@@ -144,45 +145,49 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
 
       {/* Score Bar */}
       <div style={{ marginBottom: theme.spacing[3] }}>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
-            background: sourceHint.bg,
-            color: sourceHint.color,
-            borderRadius: theme.borderRadius.full,
-            fontSize: theme.typography.fontSize.xs,
-            marginBottom: theme.spacing[2],
-          }}
-        >
-          {sourceHint.label}
-        </div>
+        {!compact && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
+              background: sourceHint.bg,
+              color: sourceHint.color,
+              borderRadius: theme.borderRadius.full,
+              fontSize: theme.typography.fontSize.xs,
+              marginBottom: theme.spacing[2],
+            }}
+          >
+            {sourceHint.label}
+          </div>
+        )}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: theme.spacing[2],
+          marginBottom: theme.spacing[compact ? 1 : 2],
         }}>
+          {!compact && (
+            <span style={{
+              fontSize: theme.typography.fontSize.sm,
+              fontWeight: theme.typography.fontWeight.medium,
+              color: theme.colors.neutral[700],
+            }}>
+              相似度
+            </span>
+          )}
           <span style={{
-            fontSize: theme.typography.fontSize.sm,
-            fontWeight: theme.typography.fontWeight.medium,
-            color: theme.colors.neutral[700],
-          }}>
-            相似度
-          </span>
-          <span style={{
-            fontSize: theme.typography.fontSize.lg,
+            fontSize: compact ? theme.typography.fontSize.base : theme.typography.fontSize.lg,
             fontWeight: theme.typography.fontWeight.bold,
-            color: explanation.confidenceLevel === 'high' ? '#10b981' : 
+            color: explanation.confidenceLevel === 'high' ? '#10b981' :
                    explanation.confidenceLevel === 'medium' ? '#f59e0b' : '#ef4444',
           }}>
             {(result.score * 100).toFixed(1)}%
           </span>
         </div>
         <div style={{
-          height: '8px',
+          height: compact ? '4px' : '8px',
           background: 'rgba(0, 0, 0, 0.1)',
           borderRadius: theme.borderRadius.full,
           overflow: 'hidden',
@@ -190,7 +195,7 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
           <div style={{
             height: '100%',
             width: `${Math.min(result.score * 100, 100)}%`,
-            background: explanation.confidenceLevel === 'high' 
+            background: explanation.confidenceLevel === 'high'
               ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'
               : explanation.confidenceLevel === 'medium'
               ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'
@@ -199,18 +204,20 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
             transition: 'width 0.5s ease-out',
           }} />
         </div>
-        <div style={{
-          marginTop: theme.spacing[1],
-          fontSize: theme.typography.fontSize.xs,
-          color: theme.colors.neutral[600],
-          lineHeight: 1.5,
-        }}>
-          {confidenceHint}
-        </div>
+        {!compact && (
+          <div style={{
+            marginTop: theme.spacing[1],
+            fontSize: theme.typography.fontSize.xs,
+            color: theme.colors.neutral[600],
+            lineHeight: 1.5,
+          }}>
+            {confidenceHint}
+          </div>
+        )}
       </div>
 
-      {/* Human Review Score */}
-      {typeof onReviewScore === 'function' && (
+      {/* Human Review Score (hidden in compact mode) */}
+      {!compact && typeof onReviewScore === 'function' && (
         <div style={{ marginBottom: theme.spacing[3] }}>
           <label style={{
             display: 'block',
@@ -321,8 +328,8 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
         </button>
       )}
 
-      {/* Why Match Button */}
-      <button
+      {/* Why Match Button (hidden in compact mode) */}
+      {!compact && <button
         onClick={(e) => {
           e.stopPropagation();
           setShowExplain(!showExplain);
@@ -353,7 +360,7 @@ export function MatchResultCard({ result, index, onPreview, reviewDecision, revi
           <path fillRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2c0-1.5.45-2.1 1.17-2.83l1.24-1.26c.59-.58.98-1.1.98-2.21 0-2.58-1.41-4.7-4-4.7s-4 2.12-4 4.7c0 1.11.39 1.63.98 2.21l1.24 1.26C9.55 11.9 10 12.5 10 14h2c0-1.5-.45-2.1-1.17-2.83l-.9-.92z" clipRule="evenodd" />
         </svg>
         {showExplain ? '隱藏說明' : '為何匹配？'}
-      </button>
+      </button>}
 
       {/* Explanation Panel */}
       {showExplain && (

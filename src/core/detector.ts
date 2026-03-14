@@ -203,6 +203,23 @@ async function getHuman() {
       object: { enabled: false },
     });
 
+    // Fix: Electron main process 沒有 DOM，但 human 會誤判為瀏覽器環境
+    // 強制設定為非瀏覽器模式，並提供 canvas npm package 作為 Canvas 實作
+    humanInstance.env.browser = false;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const nodeCanvas = require('canvas');
+      humanInstance.env.Canvas = nodeCanvas.Canvas;
+      humanInstance.env.Image = nodeCanvas.Image;
+      humanInstance.env.ImageData = nodeCanvas.ImageData;
+      logger.info('Node.js canvas package loaded for face detection support');
+    } catch (canvasErr) {
+      logger.warn('canvas npm package not available, face detection may be limited:', canvasErr);
+    }
+
+    // 預先載入模型權重（確保 model 可用）
+    await humanInstance.load();
+
     logger.info('@vladmandic/human model loaded and ready (WASM backend)');
     return humanInstance;
   } catch (err: unknown) {
