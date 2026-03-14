@@ -866,705 +866,398 @@ export function App() {
     }}>
       {/* Left Sidebar */}
       <div style={{
-        width: '420px',
+        width: '380px',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        borderRight: `1px solid rgba(0,0,0,0.05)`,
-        background: 'rgba(255, 255, 255, 0.65)',
+        borderRight: `1px solid rgba(0,0,0,0.06)`,
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.95) 100%)',
         backdropFilter: 'blur(20px)',
-        overflowY: 'auto',
       }}>
-        <div style={{ padding: theme.spacing[5], display: 'flex', flexDirection: 'column', gap: theme.spacing[5] }}>
-          {/* Header */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing[3],
-            marginBottom: theme.spacing[2],
-          }}>
-            <img
-              src="logo.png"
-              alt="大海撈Ｂ Logo"
-              style={{ width: '56px', height: '56px', borderRadius: theme.borderRadius.base }}
-            />
-            <div>
-              <h1 style={{
-                margin: 0,
-                fontSize: theme.typography.fontSize['2xl'],
-                fontWeight: theme.typography.fontWeight.bold,
-                background: theme.gradients.primary,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}>
-                大海撈Ｂ
-              </h1>
-              <div style={{ marginTop: theme.spacing[1], display: 'flex', gap: theme.spacing[2], alignItems: 'center' }}>
-                <StatusBadge status={getStatusType()} size="sm">
-                  {getStatusText()}
-                </StatusBadge>
-                {modelStatus && (
-                  <span style={{
-                    fontSize: theme.typography.fontSize.xs,
-                    color: modelStatus.loaded ? (theme.colors.success as Record<string, string>)[500] : (theme.colors.error as Record<string, string>)[500],
-                    opacity: 0.8,
-                  }}>
-                    {modelStatus.loaded ? 'AI 就緒' : 'AI 未載入'}
-                  </span>
-                )}
-              </div>
-            </div>
+        {/* Compact Header — always visible */}
+        <div style={{
+          padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
+          borderBottom: '1px solid rgba(0,0,0,0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: theme.spacing[3],
+          flexShrink: 0,
+        }}>
+          <img src="logo.png" alt="Logo" style={{ width: '36px', height: '36px', borderRadius: '8px' }} />
+          <div style={{ flex: 1 }}>
+            <h1 style={{
+              margin: 0,
+              fontSize: theme.typography.fontSize.lg,
+              fontWeight: theme.typography.fontWeight.bold,
+              background: theme.gradients.primary,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>大海撈Ｂ</h1>
           </div>
-          <div style={{ display: 'flex', gap: theme.spacing[2], alignItems: 'center' }}>
-            <ModernButton variant="ghost" size="sm" onClick={handleHelp}>
-              說明
-            </ModernButton>
-            <ModernButton variant="ghost" size="sm" onClick={() => setIsHelpOpen(true)}>
-              {appInfo?.version ? `版本 ${appInfo.version}` : '關於'}
-            </ModernButton>
-            <ModernButton
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                window.api?.openExternal?.('https://buymeacoffee.com/samulee003');
-              }}
-              style={{
-                background: 'linear-gradient(135deg, #FF813F 0%, #FFDD00 100%)',
-                color: '#000',
-                fontWeight: 700,
-                border: 'none',
-                borderRadius: '8px',
-                padding: '4px 12px',
-                fontSize: '13px',
-              }}
-            >
-              Buy me a coffee
-            </ModernButton>
-          </div>
-
-          {/* Fast Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing[3] }}>
-            <ModernButton
-              variant="secondary"
-              size="md"
-              fullWidth
-              onClick={handleLoadLastSettings}
-              disabled={isProcessing || !hasLastRunConfig}
-              icon={
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
-                </svg>
-              }
-            >
-              載入上次設定
-            </ModernButton>
-            <ModernButton
-              variant="secondary"
-              size="md"
-              fullWidth
-              onClick={() => {
-                const path = settings.lastFolder || folder;
-                if (!path) {
-                  setError('請先選擇照片資料夾');
-                  return;
-                }
-                setFolder(path);
-                setError(path === folder ? null : '已切換到上次使用的資料夾');
-              }}
-              disabled={isProcessing || (!settings.lastFolder && !folder)}
-              icon={
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-              }
-            >
-              快速回到相簿資料夾
-            </ModernButton>
-            <ModernButton
-              variant="success"
-              size="md"
-              fullWidth
-              onClick={() => {
-                if (!folder) {
-                  setError('請先指定照片資料夾');
-                  return;
-                }
-                if (refsLoaded === 0 && refPaths.trim() === '') {
-                  setError('請先載入參考照片，才能開始搜尋');
-                  return;
-                }
-                handleRunScan();
-              }}
-              disabled={isProcessing || !folder || (refsLoaded === 0 && refPaths.trim() === '')}
-              icon={
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-              }
-            >
-              一鍵開始搜尋
-            </ModernButton>
-          </div>
-          {hasLastRunConfig && (
-            <div style={{
-              fontSize: theme.typography.fontSize.xs,
-              color: theme.colors.neutral[500],
-              textAlign: 'center'
+          <StatusBadge status={getStatusType()} size="sm">{getStatusText()}</StatusBadge>
+          {modelStatus && (
+            <span style={{
+              fontSize: '10px',
+              color: modelStatus.loaded ? '#10b981' : '#ef4444',
+              fontWeight: 600,
             }}>
-              上次：{settings.lastReferencePaths.length} 參考照 / {lastFolderDisplay}
-            </div>
+              {modelStatus.loaded ? 'AI' : '!'}
+            </span>
           )}
+        </div>
 
-          {/* Model Not Loaded Warning */}
+        {/* Scrollable content area */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: `${theme.spacing[4]} ${theme.spacing[4]}`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: theme.spacing[4],
+        }}>
+          {/* Model warning (conditional) */}
           {modelStatus && !modelStatus.loaded && (
-            <GlassCard padding="md" style={{
-              background: modelStatus.error ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-              border: modelStatus.error ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
+            <div style={{
+              padding: theme.spacing[3],
+              borderRadius: theme.borderRadius.md,
+              background: modelStatus.error ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+              border: `1px solid ${modelStatus.error ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+              fontSize: theme.typography.fontSize.xs,
+              color: modelStatus.error ? '#ef4444' : '#f59e0b',
             }}>
-              <div style={{ color: modelStatus.error ? '#ef4444' : '#f59e0b', fontSize: theme.typography.fontSize.sm }}>
-                {modelStatus.error ? (
-                  <>
-                    <strong>AI 模型載入失敗</strong> — 臉部辨識無法運作。
-                    <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>錯誤：{modelStatus.error}</div>
-                    <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
-                      請嘗試重新啟動應用程式。如果問題持續，可能是安裝檔損壞，請重新下載安裝。
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <strong>AI 模型載入中...</strong> — 首次啟動可能需要 10~30 秒。
-                    <div style={{ marginTop: 4, opacity: 0.8, fontSize: theme.typography.fontSize.xs }}>
-                      請稍候，載入完成後即可開始使用。
-                    </div>
-                  </>
-                )}
-              </div>
-            </GlassCard>
+              <strong>{modelStatus.error ? 'AI 載入失敗' : 'AI 載入中...'}</strong>
+              {modelStatus.error && <div style={{ marginTop: 2, opacity: 0.8 }}>請重新啟動應用程式</div>}
+            </div>
           )}
 
-          {/* Error Alert */}
+          {/* Error Alert (conditional) */}
           {error && (
-            <GlassCard padding="md" style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
-              animation: 'slideIn 0.3s ease-out',
+            <div style={{
+              padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
+              borderRadius: theme.borderRadius.md,
+              background: error.startsWith('✅') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)',
+              border: `1px solid ${error.startsWith('✅') ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: theme.spacing[2],
             }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                color: theme.colors.error[600],
-              }}>
-                <span style={{ fontSize: theme.typography.fontSize.sm, fontWeight: theme.typography.fontWeight.medium }}>
-                  {error}
-                </span>
-                <ModernButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setError(null)}
-                  style={{ color: theme.colors.error[600], padding: `${theme.spacing[1]} ${theme.spacing[2]}` }}
-                >
-                  ×
-                </ModernButton>
-              </div>
-            </GlassCard>
+              <span style={{
+                fontSize: theme.typography.fontSize.xs,
+                color: error.startsWith('✅') ? '#10b981' : theme.colors.error[600],
+                lineHeight: 1.5,
+                flex: 1,
+              }}>{error}</span>
+              <button onClick={() => setError(null)} style={{
+                background: 'none', border: 'none', color: theme.colors.neutral[400],
+                cursor: 'pointer', fontSize: '16px', lineHeight: 1, flexShrink: 0,
+              }}>×</button>
+            </div>
           )}
 
-          {/* Left Column - Input Section */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing[4] }}>
-          <TaskReadinessCard items={readinessItems} />
-          {/* Step 1: Load Reference Photos */}
-          <ModernSection
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: theme.colors.primary[100],
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: theme.colors.primary[600],
-                  fontWeight: theme.typography.fontWeight.bold,
-                  fontSize: theme.typography.fontSize.sm,
-                }}>
-                  1
-                </div>
-                載入參考照片
-              </div>
-            }
-            description="提供 3-10 張清晰的小孩照片作為參考"
-          >
-            <DragDropZone
-              onFilesDrop={handleRefFilesDrop}
-              accept="files"
-              disabled={isProcessing}
-            >
+          {/* ① Reference Photos — collapsible */}
+          <div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing[2],
+              marginBottom: theme.spacing[2],
+            }}>
               <div style={{
-                border: `2px dashed ${refPaths.trim() ? theme.colors.primary[400] : theme.colors.neutral[300]}`,
-                borderRadius: theme.borderRadius.lg,
-                padding: theme.spacing[5],
-                textAlign: 'center',
-                background: refPaths.trim() ? 'rgba(58, 123, 170, 0.06)' : 'rgba(255, 255, 255, 0.5)',
-                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s',
-              }}
-              onClick={() => !isProcessing && handleBrowseFiles()}
+                width: '24px', height: '24px', borderRadius: '50%',
+                background: refPaths.trim() ? '#10b981' : theme.colors.primary[500],
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 700, fontSize: '12px', flexShrink: 0,
+              }}>{refPaths.trim() ? '✓' : '1'}</div>
+              <span style={{
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.semibold,
+                color: theme.colors.neutral[800],
+              }}>參考照片</span>
+              {refsLoaded > 0 && (
+                <span style={{ fontSize: theme.typography.fontSize.xs, color: '#10b981', marginLeft: 'auto' }}>
+                  {refsLoaded} 張已載入
+                </span>
+              )}
+            </div>
+            <DragDropZone onFilesDrop={handleRefFilesDrop} accept="files" disabled={isProcessing}>
+              <div
+                style={{
+                  border: `2px dashed ${refPaths.trim() ? theme.colors.primary[300] : theme.colors.neutral[300]}`,
+                  borderRadius: theme.borderRadius.md,
+                  padding: refPaths.trim() ? theme.spacing[3] : theme.spacing[4],
+                  textAlign: 'center',
+                  background: refPaths.trim() ? 'rgba(58,123,170,0.04)' : 'rgba(255,255,255,0.5)',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onClick={() => !isProcessing && handleBrowseFiles()}
               >
                 {refPaths.trim() ? (
-                  <div>
-                    <div style={{
-                      fontSize: theme.typography.fontSize['2xl'],
-                      marginBottom: theme.spacing[2],
-                    }}>
-                      {refsLoaded > 0 ? '✅' : '📸'}
-                    </div>
-                    <div style={{
-                      fontSize: theme.typography.fontSize.sm,
-                      color: theme.colors.primary[600],
-                      fontWeight: theme.typography.fontWeight.semibold,
-                      marginBottom: theme.spacing[1],
-                    }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[2], justifyContent: 'center' }}>
+                    <span style={{ fontSize: theme.typography.fontSize.lg }}>{refsLoaded > 0 ? '✅' : '📸'}</span>
+                    <span style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.primary[600], fontWeight: 600 }}>
                       {refsLoaded > 0
-                        ? `已載入 ${refsLoaded} 張參考照片`
-                        : `已選擇 ${refPaths.split(/\r?\n/).filter(s => s.trim()).length} 張（點擊搜尋時自動載入）`}
-                    </div>
-                    <div style={{
-                      fontSize: theme.typography.fontSize.xs,
-                      color: theme.colors.neutral[500],
-                    }}>
-                      點擊可新增更多 / 拖放照片到此處
-                    </div>
+                        ? `已載入 ${refsLoaded} 張`
+                        : `已選 ${refPaths.split(/\r?\n/).filter(s => s.trim()).length} 張`}
+                    </span>
+                    <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400] }}>點擊新增</span>
                   </div>
                 ) : (
                   <div>
-                    <div style={{
-                      fontSize: theme.typography.fontSize['3xl'],
-                      marginBottom: theme.spacing[3],
-                      opacity: 0.7,
-                    }}>
-                      📸
-                    </div>
-                    <div style={{
-                      fontSize: theme.typography.fontSize.base,
-                      color: theme.colors.primary[600],
-                      fontWeight: theme.typography.fontWeight.semibold,
-                      marginBottom: theme.spacing[2],
-                    }}>
+                    <div style={{ fontSize: '28px', marginBottom: theme.spacing[2], opacity: 0.6 }}>📸</div>
+                    <div style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.primary[600], fontWeight: 600 }}>
                       點擊選擇小孩的照片
                     </div>
-                    <div style={{
-                      fontSize: theme.typography.fontSize.xs,
-                      color: theme.colors.neutral[500],
-                      lineHeight: 1.6,
-                    }}>
-                      建議 3-10 張清晰正面照<br />
-                      也可以直接拖放照片到此處
+                    <div style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
+                      建議 3-10 張清晰正面照 / 可拖放
                     </div>
                   </div>
                 )}
               </div>
             </DragDropZone>
             {refPaths.trim() && (
-              <div style={{
-                display: 'flex',
-                gap: theme.spacing[2],
-                marginTop: theme.spacing[3],
-              }}>
-                <ModernButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleBrowseFiles}
-                  disabled={isProcessing}
-                >
-                  新增照片
-                </ModernButton>
-                <ModernButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setRefPaths(''); setRefsLoaded(0); }}
-                  disabled={isProcessing}
-                >
-                  清除全部
-                </ModernButton>
+              <div style={{ display: 'flex', gap: theme.spacing[2], marginTop: theme.spacing[2] }}>
+                <ModernButton variant="secondary" size="sm" onClick={handleBrowseFiles} disabled={isProcessing}>新增</ModernButton>
+                <ModernButton variant="ghost" size="sm" onClick={() => { setRefPaths(''); setRefsLoaded(0); }} disabled={isProcessing}>清除</ModernButton>
                 {refsLoaded > 0 && (
-                  <ModernButton
-                    variant="primary"
-                    size="sm"
-                    loading={status === 'embedding refs...'}
-                    disabled={isProcessing}
-                    onClick={handleEmbedRefs}
-                  >
-                    重新載入
-                  </ModernButton>
+                  <ModernButton variant="primary" size="sm" loading={status === 'embedding refs...'} disabled={isProcessing} onClick={handleEmbedRefs}>重新載入</ModernButton>
                 )}
               </div>
             )}
-            {/* 隱藏的 textarea ref 保持鍵盤快捷鍵相容 */}
-            <textarea
-              ref={refPathsTextareaRef}
-              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
-              value={refPaths}
-              onChange={(e) => setRefPaths(e.target.value)}
-              tabIndex={-1}
-            />
-          </ModernSection>
+            <textarea ref={refPathsTextareaRef} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} value={refPaths} onChange={(e) => setRefPaths(e.target.value)} tabIndex={-1} />
+          </div>
 
-          {/* Step 2: Select Folder */}
-          <ModernSection
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: theme.colors.secondary[100],
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: theme.colors.secondary[600],
-                  fontWeight: theme.typography.fontWeight.bold,
-                  fontSize: theme.typography.fontSize.sm,
-                }}>
-                  2
-                </div>
-                選擇照片資料夾
-              </div>
-            }
-            description="選擇包含要搜尋照片的資料夾"
-          >
-            <div style={{ marginBottom: theme.spacing[4] }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: theme.spacing[2],
-              }}>
-                <label style={{
-                  fontSize: theme.typography.fontSize.sm,
-                  fontWeight: theme.typography.fontWeight.medium,
-                  color: theme.colors.neutral[700],
-                }}>
-                  要搜尋的照片資料夾路徑
-                </label>
-                <ModernButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleBrowseFolder}
-                  disabled={isProcessing}
-                >
-                  選擇資料夾
-                </ModernButton>
-              </div>
-              <DragDropZone
-                onFilesDrop={() => {}}
-                onFolderDrop={handleFolderDrop}
-                accept="folders"
-                disabled={isProcessing}
-                style={{ marginBottom: theme.spacing[3] }}
-              >
-                <input
-                  type="text"
-                  style={{
-                    ...modernStyles.input.base,
-                    border: `2px dashed ${theme.colors.secondary[300]}`,
-                    background: 'rgba(255, 255, 255, 0.6)',
-                  }}
-                  placeholder="例如：C:\Photos\Family\2024   ( 或直接拖放資料夾到這裡 )"
-                  value={folder}
-                  onChange={(e) => setFolder(e.target.value)}
-                  disabled={isProcessing}
-                />
-              </DragDropZone>
-            </div>
-          </ModernSection>
-
-          {/* Step 3: Adjust Settings */}
-          <ModernSection
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[3] }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: theme.colors.success[100],
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: theme.colors.success[600],
-                  fontWeight: theme.typography.fontWeight.bold,
-                  fontSize: theme.typography.fontSize.sm,
-                }}>
-                  3
-                </div>
-                調整搜尋參數
-              </div>
-            }
-            description="調整相似度門檻和顯示數量以獲得最佳結果"
-          >
-            <div style={{ marginBottom: theme.spacing[4] }}>
-              <label style={{
-                display: 'block',
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-                color: theme.colors.neutral[700],
-                marginBottom: theme.spacing[2],
-              }}>
-                搜尋模式：<span style={{
-                  color: getThresholdGuide().color,
-                  fontWeight: theme.typography.fontWeight.bold,
-                  fontSize: theme.typography.fontSize.base,
-                }}>{getThresholdGuide().label}</span>
-                <span style={{
-                  color: theme.colors.neutral[500],
-                  fontWeight: theme.typography.fontWeight.normal,
-                  fontSize: theme.typography.fontSize.xs,
-                  marginLeft: theme.spacing[2],
-                }}>({threshold.toFixed(2)})</span>
-              </label>
-              {/* 快捷預設按鈕 */}
-              <div style={{
-                display: 'flex',
-                gap: theme.spacing[2],
-                marginBottom: theme.spacing[3],
-              }}>
-                {[
-                  { label: '寬鬆', value: 0.45, color: '#3b82f6' },
-                  { label: '平衡', value: 0.6, color: '#f59e0b', recommended: true },
-                  { label: '精確', value: 0.75, color: '#ef4444' },
-                ].map(preset => (
-                  <button
-                    key={preset.label}
-                    onClick={() => setThreshold(preset.value)}
-                    disabled={isProcessing}
-                    style={{
-                      flex: 1,
-                      padding: `${theme.spacing[2]} ${theme.spacing[2]}`,
-                      borderRadius: theme.borderRadius.md,
-                      border: `2px solid ${Math.abs(threshold - preset.value) < 0.08 ? preset.color : 'rgba(0,0,0,0.1)'}`,
-                      background: Math.abs(threshold - preset.value) < 0.08 ? `${preset.color}15` : 'rgba(255,255,255,0.5)',
-                      color: Math.abs(threshold - preset.value) < 0.08 ? preset.color : theme.colors.neutral[600],
-                      cursor: isProcessing ? 'not-allowed' : 'pointer',
-                      fontWeight: Math.abs(threshold - preset.value) < 0.08 ? 700 : 500,
-                      fontSize: theme.typography.fontSize.sm,
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {preset.label}{preset.recommended ? ' *' : ''}
-                  </button>
-                ))}
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing[3],
-              }}>
-                <span style={{
-                  fontSize: theme.typography.fontSize.xs,
-                  color: '#10b981',
-                  whiteSpace: 'nowrap',
-                }}>多找</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={threshold}
-                  onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                  style={{
-                    flex: 1,
-                    height: '8px',
-                    borderRadius: theme.borderRadius.full,
-                    outline: 'none',
-                    appearance: 'none',
-                    background: `linear-gradient(to right, #10b981 0%, #3b82f6 35%, #f59e0b 60%, #ef4444 100%)`,
-                  }}
-                  disabled={isProcessing}
-                />
-                <span style={{
-                  fontSize: theme.typography.fontSize.xs,
-                  color: '#ef4444',
-                  whiteSpace: 'nowrap',
-                }}>精準</span>
-              </div>
-              <div style={{
-                marginTop: theme.spacing[2],
-                fontSize: theme.typography.fontSize.xs,
-                color: theme.colors.neutral[500],
-                lineHeight: 1.5,
-              }}>
-                {getThresholdGuide().desc}
-              </div>
-            </div>
-            
-            <div style={{ marginBottom: theme.spacing[6] }}>
-              <label style={{
-                display: 'block',
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.medium,
-                color: theme.colors.neutral[700],
-                marginBottom: theme.spacing[2],
-              }}>
-                顯示數量 (Top-N)：
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={1000}
-                value={topN}
-                onChange={(e) => setTopN(parseInt(e.target.value, 10) || 50)}
-                style={{
-                  ...modernStyles.input.base,
-                  width: '150px',
-                }}
-                disabled={isProcessing}
-              />
-              <div style={{
-                marginTop: theme.spacing[2],
-                fontSize: theme.typography.fontSize.xs,
-                color: theme.colors.neutral[600],
-              }}>
-                小提示：首次使用建議用「平衡」模式，結果太少再切「寬鬆」
-              </div>
-                <div style={{
-                  marginTop: theme.spacing[3],
-                  height: '10px',
-                  borderRadius: theme.borderRadius.full,
-                  background: 'rgba(0, 0, 0, 0.05)',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{
-                    width: thresholdIntensity,
-                    height: '100%',
-                    background: 'linear-gradient(90deg, #10b981 0%, #f59e0b 50%, #ef4444 100%)',
-                    borderRadius: theme.borderRadius.full,
-                    transition: 'width 0.2s ease-out',
-                  }} />
-                </div>
-                <div style={{
-                  marginTop: theme.spacing[1],
-                  fontSize: theme.typography.fontSize.xs,
-                  color: theme.colors.neutral[600],
-                }}>
-                  門檻值位置：{thresholdIntensity}
-                </div>
-            </div>
-
+          {/* ② Folder — collapsible */}
+          <div>
             <div style={{
               display: 'flex',
-              gap: theme.spacing[3],
+              alignItems: 'center',
+              gap: theme.spacing[2],
+              marginBottom: theme.spacing[2],
             }}>
-              <ModernButton
-                variant="success"
-                size="lg"
-                loading={isProcessing}
-                disabled={isProcessing || !folder.trim() || (refsLoaded === 0 && refPaths.trim() === '')}
-                onClick={handleRunScan}
-                icon={
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27v.79l5 4.99L20.49 19l-4.99-5zm-6.88-2.77c.59-.59 1.27-.91 2-.91s1.41.32 2 .91l.09.09L9.5 18.5l3.54-3.54-.09-.09z" />
-                  </svg>
-                }
-              >
-                {isProcessing ? '處理中...' : refsLoaded === 0 ? '載入照片並開始搜尋' : '開始搜尋'}
-              </ModernButton>
-              
-              {results.length > 0 && (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: theme.spacing[2],
-                  width: '100%',
-                }}>
-                  <div style={{
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '50%',
+                background: folder.trim() ? '#10b981' : theme.colors.secondary[500],
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 700, fontSize: '12px', flexShrink: 0,
+              }}>{folder.trim() ? '✓' : '2'}</div>
+              <span style={{
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.semibold,
+                color: theme.colors.neutral[800],
+              }}>搜尋資料夾</span>
+            </div>
+            <DragDropZone onFilesDrop={() => {}} onFolderDrop={handleFolderDrop} accept="folders" disabled={isProcessing}>
+              {folder.trim() ? (
+                <div
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: theme.spacing[2],
-                    flexWrap: 'wrap',
+                    padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
+                    borderRadius: theme.borderRadius.md,
+                    border: '1px solid rgba(16,185,129,0.3)',
+                    background: 'rgba(16,185,129,0.05)',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={() => !isProcessing && handleBrowseFolder()}
+                >
+                  <span style={{ color: '#10b981', fontSize: '16px' }}>📁</span>
+                  <span style={{
+                    flex: 1, fontSize: theme.typography.fontSize.xs,
+                    color: theme.colors.neutral[700],
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    <button
-                      onClick={() => setExportOnlyFavorites(false)}
-                      style={{
-                        borderRadius: theme.borderRadius.md,
-                        border: `1px solid ${!exportOnlyFavorites ? 'rgba(59, 130, 246, 0.5)' : 'rgba(0, 0, 0, 0.1)'}`,
-                        color: !exportOnlyFavorites ? '#60a5fa' : theme.colors.neutral[600],
-                        background: !exportOnlyFavorites ? 'rgba(96, 165, 250, 0.12)' : 'transparent',
-                        padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      全部結果
-                    </button>
-                    <button
-                      onClick={() => setExportOnlyFavorites(true)}
-                      style={{
-                        borderRadius: theme.borderRadius.md,
-                        border: `1px solid ${exportOnlyFavorites ? 'rgba(251, 191, 36, 0.5)' : 'rgba(0, 0, 0, 0.1)'}`,
-                        color: exportOnlyFavorites ? '#f59e0b' : theme.colors.neutral[600],
-                        background: exportOnlyFavorites ? 'rgba(251, 191, 36, 0.12)' : 'transparent',
-                        padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      只匯出收藏
-                    </button>
-                    <span style={{
-                      color: theme.colors.neutral[600],
-                      fontSize: theme.typography.fontSize.sm,
-                    }}>
-                      收藏可用 {favoriteCountInCurrent} 張
-                    </span>
+                    {folder.split(/[/\\]/).slice(-2).join('/')}
+                  </span>
+                  <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400] }}>換</span>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: `2px dashed ${theme.colors.neutral[300]}`,
+                    borderRadius: theme.borderRadius.md,
+                    padding: theme.spacing[3],
+                    textAlign: 'center',
+                    background: 'rgba(255,255,255,0.5)',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={() => !isProcessing && handleBrowseFolder()}
+                >
+                  <div style={{ fontSize: '24px', marginBottom: theme.spacing[1], opacity: 0.5 }}>📁</div>
+                  <div style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.secondary[600], fontWeight: 600 }}>
+                    點擊選擇照片資料夾
                   </div>
-                  <div style={{
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: theme.borderRadius.full,
-                    background: 'rgba(0, 0, 0, 0.05)',
-                    overflow: 'hidden',
-                    marginBottom: theme.spacing[1],
-                  }}>
-                    <div style={{
-                      height: '100%',
-                      width: exportPreviewRate,
-                      background: exportOnlyFavorites ? 'linear-gradient(90deg, #fbbf24 0%, #f472b6 100%)' : 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)',
-                      borderRadius: theme.borderRadius.full,
-                      transition: 'width 0.2s',
-                    }} />
+                  <div style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
+                    班級照、活動照的資料夾 / 可拖放
                   </div>
-                  <ModernButton
-                    variant="secondary"
-                    size="lg"
-                    disabled={isProcessing}
-                onClick={() => handlePrepareExport('default')}
-                    icon={
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19 9h-4V3H9v6H5l7 7 7-7V9zm-17 9l3 3v2h12v-2l3-3H2z" />
-                      </svg>
-                    }
-                  >
-                    匯出結果 ({exportTargets.length} 張)
-                  </ModernButton>
-              <ModernButton
-                variant="secondary"
-                size="md"
-                disabled={isProcessing || pendingCount === 0}
-                onClick={() => handlePrepareExport('pending')}
-                style={{ marginTop: theme.spacing[2] }}
-                icon={
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm8 6-3-2V9.2a5 5 0 1 0-10 0V14l-3 2H3v2a4 4 0 0 0 4 4h10a4 4 0 0 0 4-4V10h-1Zm-4-3.08V14h-4v-4.08A5.99 5.99 0 0 0 16 10Z"/>
-                  </svg>
-                }
-              >
-                只匯出待複核 ({pendingCount} 張)
-              </ModernButton>
                 </div>
               )}
+            </DragDropZone>
+          </div>
+
+          {/* ③ Search mode — always compact */}
+          <div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing[2],
+              marginBottom: theme.spacing[2],
+            }}>
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '50%',
+                background: theme.colors.neutral[400],
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 700, fontSize: '12px', flexShrink: 0,
+              }}>3</div>
+              <span style={{
+                fontSize: theme.typography.fontSize.sm,
+                fontWeight: theme.typography.fontWeight.semibold,
+                color: theme.colors.neutral[800],
+              }}>搜尋模式</span>
+              <span style={{
+                fontSize: theme.typography.fontSize.xs,
+                color: getThresholdGuide().color,
+                fontWeight: 700,
+                marginLeft: 'auto',
+              }}>{getThresholdGuide().label}</span>
             </div>
-          </ModernSection>
+            {/* Preset buttons */}
+            <div style={{ display: 'flex', gap: theme.spacing[1], marginBottom: theme.spacing[2] }}>
+              {[
+                { label: '寬鬆', value: 0.45, color: '#3b82f6' },
+                { label: '平衡 *', value: 0.6, color: '#f59e0b' },
+                { label: '精確', value: 0.75, color: '#ef4444' },
+              ].map(preset => (
+                <button
+                  key={preset.label}
+                  onClick={() => setThreshold(preset.value)}
+                  disabled={isProcessing}
+                  style={{
+                    flex: 1,
+                    padding: `6px 0`,
+                    borderRadius: theme.borderRadius.md,
+                    border: `2px solid ${Math.abs(threshold - preset.value) < 0.08 ? preset.color : 'rgba(0,0,0,0.08)'}`,
+                    background: Math.abs(threshold - preset.value) < 0.08 ? `${preset.color}12` : 'transparent',
+                    color: Math.abs(threshold - preset.value) < 0.08 ? preset.color : theme.colors.neutral[500],
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    fontWeight: Math.abs(threshold - preset.value) < 0.08 ? 700 : 500,
+                    fontSize: theme.typography.fontSize.xs,
+                    transition: 'all 0.15s',
+                  }}
+                >{preset.label}</button>
+              ))}
+            </div>
+            {/* Slider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[2] }}>
+              <span style={{ fontSize: '10px', color: '#10b981' }}>多找</span>
+              <input
+                type="range" min={0} max={1} step={0.01} value={threshold}
+                onChange={(e) => setThreshold(parseFloat(e.target.value))}
+                style={{
+                  flex: 1, height: '6px', borderRadius: theme.borderRadius.full,
+                  outline: 'none', appearance: 'none',
+                  background: 'linear-gradient(to right, #10b981, #3b82f6 35%, #f59e0b 60%, #ef4444)',
+                }}
+                disabled={isProcessing}
+              />
+              <span style={{ fontSize: '10px', color: '#ef4444' }}>精準</span>
+            </div>
+            <div style={{ fontSize: '11px', color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
+              {getThresholdGuide().desc}
+            </div>
+          </div>
+
+          {/* Export section (only when results exist) */}
+          {results.length > 0 && (
+            <div style={{
+              padding: theme.spacing[3],
+              borderRadius: theme.borderRadius.md,
+              background: 'rgba(59,130,246,0.05)',
+              border: '1px solid rgba(59,130,246,0.15)',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: theme.spacing[2],
+                marginBottom: theme.spacing[2], flexWrap: 'wrap',
+              }}>
+                <button
+                  onClick={() => setExportOnlyFavorites(false)}
+                  style={{
+                    borderRadius: theme.borderRadius.sm,
+                    border: `1px solid ${!exportOnlyFavorites ? 'rgba(59,130,246,0.5)' : 'rgba(0,0,0,0.1)'}`,
+                    color: !exportOnlyFavorites ? '#3b82f6' : theme.colors.neutral[500],
+                    background: !exportOnlyFavorites ? 'rgba(59,130,246,0.1)' : 'transparent',
+                    padding: '3px 8px', cursor: 'pointer', fontSize: theme.typography.fontSize.xs,
+                  }}
+                >全部</button>
+                <button
+                  onClick={() => setExportOnlyFavorites(true)}
+                  style={{
+                    borderRadius: theme.borderRadius.sm,
+                    border: `1px solid ${exportOnlyFavorites ? 'rgba(251,191,36,0.5)' : 'rgba(0,0,0,0.1)'}`,
+                    color: exportOnlyFavorites ? '#f59e0b' : theme.colors.neutral[500],
+                    background: exportOnlyFavorites ? 'rgba(251,191,36,0.1)' : 'transparent',
+                    padding: '3px 8px', cursor: 'pointer', fontSize: theme.typography.fontSize.xs,
+                  }}
+                >收藏 {favoriteCountInCurrent}</button>
+              </div>
+              <ModernButton
+                variant="secondary" size="md" fullWidth
+                disabled={isProcessing}
+                onClick={() => handlePrepareExport('default')}
+              >
+                匯出 {exportTargets.length} 張
+              </ModernButton>
+            </div>
+          )}
+
+          {/* Last run shortcut */}
+          {hasLastRunConfig && !refPaths.trim() && !folder.trim() && (
+            <button
+              onClick={handleLoadLastSettings}
+              disabled={isProcessing}
+              style={{
+                padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
+                borderRadius: theme.borderRadius.md,
+                border: '1px solid rgba(0,0,0,0.08)',
+                background: 'rgba(255,255,255,0.6)',
+                color: theme.colors.neutral[600],
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+                textAlign: 'left',
+              }}
+            >
+              載入上次設定：{settings.lastReferencePaths.length} 張參考照 / {lastFolderDisplay}
+            </button>
+          )}
+        </div>
+
+        {/* Sticky CTA at bottom */}
+        <div style={{
+          padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
+          borderTop: '1px solid rgba(0,0,0,0.06)',
+          background: 'rgba(255,255,255,0.95)',
+          flexShrink: 0,
+        }}>
+          <ModernButton
+            variant="success"
+            size="lg"
+            fullWidth
+            loading={isProcessing}
+            disabled={isProcessing || !folder.trim() || (refsLoaded === 0 && refPaths.trim() === '')}
+            onClick={handleRunScan}
+          >
+            {isProcessing ? '處理中...' : refsLoaded === 0 && refPaths.trim() ? '載入照片並搜尋' : '開始搜尋'}
+          </ModernButton>
+          <div style={{
+            display: 'flex', justifyContent: 'center', gap: theme.spacing[3],
+            marginTop: theme.spacing[2],
+          }}>
+            <button onClick={handleHelp} style={{ background: 'none', border: 'none', color: theme.colors.neutral[400], cursor: 'pointer', fontSize: theme.typography.fontSize.xs }}>說明</button>
+            <button onClick={() => setIsHelpOpen(true)} style={{ background: 'none', border: 'none', color: theme.colors.neutral[400], cursor: 'pointer', fontSize: theme.typography.fontSize.xs }}>{appInfo?.version ? `v${appInfo.version}` : '關於'}</button>
+            <button onClick={() => window.api?.openExternal?.('https://buymeacoffee.com/samulee003')} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: theme.typography.fontSize.xs, fontWeight: 600 }}>☕ 支持</button>
           </div>
         </div>
       </div>
