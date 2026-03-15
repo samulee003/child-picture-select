@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../../types/api';
 
+export interface RefFileResult {
+  path: string;
+  source: 'face' | 'deterministic';
+  faceAnalysis?: { confidence: number; age?: number; gender?: 'male' | 'female'; faceCount: number };
+}
+
 export interface ScanState {
   folder: string;
   setFolder: (folder: string) => void;
@@ -8,6 +14,7 @@ export interface ScanState {
   setRefPaths: React.Dispatch<React.SetStateAction<string>>;
   refsLoaded: number;
   setRefsLoaded: (n: number) => void;
+  refQualityResults: RefFileResult[];
   threshold: number;
   setThreshold: (n: number) => void;
   topN: number;
@@ -81,6 +88,7 @@ export function useScanState(): ScanState {
     elapsedMs: number;
   } | null>(null);
   const [scanWarnings, setScanWarnings] = useState<string[]>([]);
+  const [refQualityResults, setRefQualityResults] = useState<RefFileResult[]>([]);
   const scanStartTimeRef = useRef<number>();
   const refPathsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -277,6 +285,11 @@ export function useScanState(): ScanState {
         return;
       }
       setRefsLoaded(result.data?.count || files.length);
+
+      // Store per-file face detection results for quality feedback
+      if (result.data?.perFileResults) {
+        setRefQualityResults(result.data.perFileResults as RefFileResult[]);
+      }
 
       const faceDetected = result.data?.faceDetected ?? 0;
       const deterministicFallback = result.data?.deterministicFallback ?? 0;
@@ -492,6 +505,7 @@ export function useScanState(): ScanState {
     folder, setFolder,
     refPaths, setRefPaths,
     refsLoaded, setRefsLoaded,
+    refQualityResults,
     threshold, setThreshold,
     topN,
     results, setResults,

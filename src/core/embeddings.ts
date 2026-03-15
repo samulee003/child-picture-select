@@ -69,12 +69,23 @@ export async function fileToDeterministicEmbedding(filePath: string, dims = EMBE
  * 優先使用真正的臉部偵測，失敗時降級到 deterministic embedding
  * 回傳包含來源資訊的結果
  */
-export async function fileToEmbeddingWithSource(filePath: string): Promise<EmbeddingResult> {
+export interface EmbeddingOptions {
+  /** 圖片縮放最大邊長 — 用於團體照小臉偵測，預設 640 */
+  maxSize?: number;
+  /** 最小臉部信心度 */
+  minConfidence?: number;
+}
+
+export async function fileToEmbeddingWithSource(filePath: string, options: EmbeddingOptions = {}): Promise<EmbeddingResult> {
   try {
     logger.debug(`Attempting face detection for: ${filePath}`);
 
     // 嘗試使用真正的臉部偵測（含年齡/性別分析）
-    const faces = await detectFaces(filePath, { enableAgeGender: true });
+    const faces = await detectFaces(filePath, {
+      enableAgeGender: true,
+      maxSize: options.maxSize,
+      minConfidence: options.minConfidence,
+    });
     if (faces.length > 0) {
       // 使用信心度最高的臉部
       const bestFace = faces.reduce((best, current) =>
