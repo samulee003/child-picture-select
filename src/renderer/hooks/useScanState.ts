@@ -287,8 +287,9 @@ export function useScanState(): ScanState {
       setRefsLoaded(result.data?.count || files.length);
 
       // Store per-file face detection results for quality feedback
-      if (result.data?.perFileResults) {
-        setRefQualityResults(result.data.perFileResults as RefFileResult[]);
+      const resData = result.data as any;
+      if (resData?.perFileResults) {
+        setRefQualityResults(resData.perFileResults as RefFileResult[]);
       }
 
       const faceDetected = result.data?.faceDetected ?? 0;
