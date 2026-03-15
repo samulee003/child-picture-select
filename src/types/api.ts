@@ -55,6 +55,11 @@ export interface EmbedReferencesResponse extends ApiResponse {
     faceDetected?: number;
     deterministicFallback?: number;
     warning?: string;
+    perFileResults?: Array<{
+      path: string;
+      source: 'face' | 'deterministic';
+      faceAnalysis?: { confidence: number; age?: number; gender?: 'male' | 'female'; faceCount: number };
+    }>;
   };
 }
 
