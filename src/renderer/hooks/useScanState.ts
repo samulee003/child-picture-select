@@ -28,7 +28,7 @@ export interface ScanState {
   hasLastRunConfig: boolean;
   lastFolderDisplay: string;
   scanStartTimeRef: React.MutableRefObject<number | undefined>;
-  refPathsTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  refPathsTextareaRef: React.RefObject<HTMLTextAreaElement>;
 
   // Callbacks
   handleRefFilesDrop: (files: string[]) => void;
@@ -48,7 +48,7 @@ export interface ScanState {
   // Helpers
   getThresholdGuide: () => { label: string; desc: string; color: string };
   getStatusText: () => string;
-  getStatusType: () => string;
+  getStatusType: () => 'idle' | 'processing' | 'success' | 'warning' | 'error';
   formatElapsed: (ms: number) => string;
   getBestScoreText: () => string;
 
@@ -82,7 +82,7 @@ export function useScanState(): ScanState {
   } | null>(null);
   const [scanWarnings, setScanWarnings] = useState<string[]>([]);
   const scanStartTimeRef = useRef<number>();
-  const refPathsTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const refPathsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isProcessing = status.includes('ing...');
   const hasLastRunConfig = settings.lastFolder.trim().length > 0 && settings.lastReferencePaths.length > 0;
@@ -206,7 +206,7 @@ export function useScanState(): ScanState {
     }
   };
 
-  const getStatusType = () => {
+  const getStatusType = (): 'idle' | 'processing' | 'success' | 'warning' | 'error' => {
     if (status === 'idle') return 'idle';
     if (status.includes('ing...')) return 'processing';
     if (status.includes('ready') || status.includes('done') || status.includes('exported')) return 'success';
