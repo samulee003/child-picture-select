@@ -17,6 +17,8 @@ import { NoMatchesSection } from './components/NoMatchesSection';
 import { ResultsSection } from './components/ResultsSection';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ExportSuccessModal } from './components/ExportSuccessModal';
+import { RefPhotoFeedback } from './components/RefPhotoFeedback';
+import { SwipeReview } from './components/SwipeReview';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { useScanState } from './hooks/useScanState';
 import { useReviewState } from './hooks/useReviewState';
@@ -26,6 +28,7 @@ import { theme, animations } from './styles/theme';
 
 export function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSwipeReview, setIsSwipeReview] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('onboardingCompleted');
   });
@@ -286,6 +289,21 @@ export function App() {
               </div>
             )}
             <textarea ref={scan.refPathsTextareaRef} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} value={scan.refPaths} onChange={(e) => scan.setRefPaths(e.target.value)} tabIndex={-1} />
+
+            {/* Reference photo quality feedback */}
+            {scan.refQualityResults.length > 0 && scan.refsLoaded > 0 && (
+              <div style={{ marginTop: theme.spacing[2] }}>
+                <RefPhotoFeedback
+                  results={scan.refQualityResults}
+                  onRemove={(path) => {
+                    const lines = scan.refPaths.split('\n').filter(p => p.trim() !== path);
+                    scan.setRefPaths(lines.join('\n'));
+                    scan.setRefsLoaded(0);
+                    scan.setStatus('idle');
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* ② Folder */}
@@ -554,6 +572,30 @@ export function App() {
             </div>
           )}
 
+          {/* Swipe Review Button */}
+          {scan.results.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setIsSwipeReview(true)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: theme.borderRadius.md,
+                  border: '1px solid rgba(59,130,246,0.3)',
+                  background: 'rgba(59,130,246,0.05)',
+                  color: '#3b82f6',
+                  cursor: 'pointer',
+                  fontSize: theme.typography.fontSize.sm,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                👆 滑動快速審核
+              </button>
+            </div>
+          )}
+
           {/* Results, Favorites, Scan Summary */}
           <ResultsSection
             results={scan.results}
@@ -633,6 +675,15 @@ export function App() {
           onComplete={handleOnboardingDone}
           onSkip={handleOnboardingDone}
           checklist={scan.onboardingChecklist}
+        />
+      )}
+
+      {isSwipeReview && scan.results.length > 0 && (
+        <SwipeReview
+          results={scan.results}
+          reviewDecisions={review.reviewDecisions}
+          onDecision={review.handleDecision}
+          onClose={() => setIsSwipeReview(false)}
         />
       )}
 

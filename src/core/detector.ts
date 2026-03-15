@@ -21,6 +21,8 @@ export interface DetectorOptions {
   enableAgeGender?: boolean;
   /** 最小臉部偵測信心度 (0-1) */
   minConfidence?: number;
+  /** 圖片縮放最大邊長（越大越能偵測小臉，但越慢） */
+  maxSize?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -189,7 +191,7 @@ async function getHuman() {
       filter: { enabled: false },
       face: {
         enabled: true,
-        detector: { enabled: true, modelPath: 'blazeface.json', maxDetected: 10 },
+        detector: { enabled: true, modelPath: 'blazeface.json', maxDetected: 30 },
         mesh: { enabled: false },
         iris: { enabled: false },
         emotion: { enabled: false },
@@ -307,9 +309,10 @@ export async function detectFaces(
       }
     }
 
+    const maxEdge = options.maxSize || 640;
     const imageBuffer = await withTimeout<Buffer>(
       sharpInstance
-        .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
+        .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 85 })
         .toBuffer(),
       FACE_DETECTION_TIMEOUT_MS,

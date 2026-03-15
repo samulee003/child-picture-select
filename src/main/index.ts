@@ -319,11 +319,21 @@ function wireIpc() {
 
       let faceCount = 0;
       let deterministicCount = 0;
+      const perFileResults: Array<{
+        path: string;
+        source: 'face' | 'deterministic';
+        faceAnalysis?: { confidence: number; age?: number; gender?: 'male' | 'female'; faceCount: number };
+      }> = [];
 
       for (const f of files) {
         logger.debug(`Processing reference file: ${f}`);
         const result = await fileToEmbeddingWithSource(f);
         referenceEmbeddings.push(result.embedding);
+        perFileResults.push({
+          path: f,
+          source: result.source,
+          faceAnalysis: result.faceAnalysis,
+        });
         if (result.source === 'face') {
           faceCount++;
         } else {
@@ -355,6 +365,7 @@ function wireIpc() {
           count: referenceEmbeddings.length,
           faceDetected: faceCount,
           deterministicFallback: deterministicCount,
+          perFileResults,
           warning: faceCount === 0
             ? '所有參考照片都無法偵測到人臉，比對結果可能不準確。請確認參考照片是否為清晰的正面人臉照片。'
             : deterministicCount > 0
@@ -466,7 +477,7 @@ function wireIpc() {
 
             if (clearCache || !existing || existing.mtime !== mtime) {
               logger.debug(`Processing new/modified file: ${filePath}`);
-              const result = await fileToEmbeddingWithSource(filePath);
+              const result = await fileToEmbeddingWithSource(filePath, { maxSize: 1024, minConfidence: 0.15 });
               faceAnalysis = result.faceAnalysis;
 
               let thumb: string | null = null;
@@ -492,7 +503,7 @@ function wireIpc() {
                 cached++;
               } else {
                 logger.debug(`No cached embedding found for: ${filePath}`);
-                const result = await fileToEmbeddingWithSource(filePath);
+                const result = await fileToEmbeddingWithSource(filePath, { maxSize: 1024, minConfidence: 0.15 });
                 faceAnalysis = result.faceAnalysis;
                 upsertFace(filePath, result.embedding);
                 setPhotoEmbedding(filePath, result.embedding, result.source);
