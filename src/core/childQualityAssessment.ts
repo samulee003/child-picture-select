@@ -235,20 +235,34 @@ export class ChildQualityAssessor {
   }
   
   /**
-   * 計算邊緣方差
+   * 計算邊緣方差（以通道標準差作為邊緣強度的代理指標）
+   * 標準差越低 → 畫面越平滑 → 越模糊 → edgeVariance 越高
    */
   private calculateEdgeVariance(stats: SharpStats): number {
-    // 簡化的邊緣方差計算
-    return 0; // 這裡可以實現更複雜的邊緣檢測算法
+    const channels = stats.channels;
+    if (!channels || channels.length === 0) return 5;
+    const avgStdev = channels.reduce((sum, ch) => sum + ch.stdev, 0) / channels.length;
+    // avgStdev 範圍約 0–128；映射為 0–10（值越低 = 越模糊）
+    return Math.max(0, 10 - avgStdev / 12.8);
   }
-  
+
   /**
-   * 計算直方圖
+   * 從通道統計資料建構簡化直方圖
+   * 以第一通道的 mean/stdev 近似正態分佈
    */
   private async calculateHistogram(stats: SharpStats): Promise<number[]> {
-    // 這裡可以實現直方圖計算
-    // 目前返回簡單的亮度分佈
-    return new Array(256).fill(stats.mean || 128);
+    const channels = stats.channels;
+    if (!channels || channels.length === 0) {
+      return new Array(256).fill(0);
+    }
+    const ch = channels[0];
+    const center = Math.round(ch.mean);
+    const spread = Math.round(ch.stdev);
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < 256; i++) {
+      histogram[i] = Math.max(0, spread - Math.abs(i - center));
+    }
+    return histogram;
   }
   
   /**

@@ -182,6 +182,14 @@ export class GrowthRecordManager {
     return { sessions };
   }
 
+  /**
+   * 刪除單筆掃描工作階段
+   */
+  async deleteScanSession(id: string): Promise<void> {
+    const filePath = path.join(this.paths.sessionsDir, `${id}.json`);
+    await fs.remove(filePath);
+  }
+
   // ==================== 提醒管理 ====================
 
   /**
