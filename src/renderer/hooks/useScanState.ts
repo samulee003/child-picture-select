@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../../types/api';
 
+export type MultiRefStrategy = 'best' | 'average' | 'weighted';
+
 export interface RefFileResult {
   path: string;
   source: 'face' | 'deterministic';
@@ -37,6 +39,10 @@ export interface ScanState {
   scanStartTimeRef: React.MutableRefObject<number | undefined>;
   refPathsTextareaRef: React.RefObject<HTMLTextAreaElement>;
 
+  enhancingPath: string | null;
+  multiRefStrategy: MultiRefStrategy;
+  setMultiRefStrategy: (s: MultiRefStrategy) => void;
+
   // Callbacks
   handleRefFilesDrop: (files: string[]) => void;
   handleFolderDrop: (folderPath: string) => void;
@@ -51,6 +57,7 @@ export interface ScanState {
   handleNoMatchLowerThresholdAndRerun: () => void;
   handleNoMatchAddReference: () => void;
   handleNoMatchSwitchPendingView: () => void;
+  handleEnhanceRefPhoto: (path: string) => Promise<void>;
 
   // Helpers
   getThresholdGuide: () => { label: string; desc: string; color: string };
@@ -89,6 +96,8 @@ export function useScanState(): ScanState {
   } | null>(null);
   const [scanWarnings, setScanWarnings] = useState<string[]>([]);
   const [refQualityResults, setRefQualityResults] = useState<RefFileResult[]>([]);
+  const [enhancingPath, setEnhancingPath] = useState<string | null>(null);
+  const [multiRefStrategy, setMultiRefStrategy] = useState<MultiRefStrategy>('best');
   const scanStartTimeRef = useRef<number>();
   const refPathsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -385,7 +394,7 @@ export function useScanState(): ScanState {
       setStatus('matching...');
       setProgress(null);
 
-      const matchResponse = await api.runMatch({ topN, threshold });
+      const matchResponse = await api.runMatch({ topN, threshold, strategy: multiRefStrategy });
       const matched = matchResponse.results;
       const initialReviewScores = matched.reduce<Record<string, number>>((acc, item) => {
         acc[item.path] = Math.round(item.score * 100);
@@ -419,7 +428,7 @@ export function useScanState(): ScanState {
       setProgress(null);
       scanStartTimeRef.current = undefined;
     }
-  }, [folder, threshold, topN, refsLoaded, refPaths]);
+  }, [folder, threshold, topN, refsLoaded, refPaths, multiRefStrategy]);
 
   const handleClear = useCallback(() => {
     setResults([]);
@@ -495,6 +504,31 @@ export function useScanState(): ScanState {
     setError('再補 2~3 張參考照，特別是正面笑臉，通常會立刻變好');
   }, [isProcessing]);
 
+  const handleEnhanceRefPhoto = useCallback(async (path: string) => {
+    if (!window.api?.enhancePhoto) return;
+    setEnhancingPath(path);
+    try {
+      const result = await window.api.enhancePhoto(path);
+      if (result.ok && result.data?.enhancedPath) {
+        setRefPaths(prev => {
+          const lines = prev.split('\n').map(l => l.trim()).filter(Boolean);
+          const idx = lines.indexOf(path);
+          if (idx >= 0) lines[idx] = result.data!.enhancedPath;
+          return lines.join('\n');
+        });
+        setRefsLoaded(0);
+        setStatus('idle');
+        setError(`✅ 已增強照片，請點「重新載入」以更新識別結果`);
+      } else {
+        setError(`增強失敗: ${(result as any).error || '未知錯誤'}`);
+      }
+    } catch (err: any) {
+      setError(`增強失敗: ${err?.message || '未知錯誤'}`);
+    } finally {
+      setEnhancingPath(null);
+    }
+  }, []);
+
   const handleNoMatchSwitchPendingView = useCallback(() => {
     if (!results.length) {
       setError('目前待複核是空白，先用「低信心先放寬門檻」重新跑一次後再切回篩選');
@@ -536,6 +570,10 @@ export function useScanState(): ScanState {
     handleNoMatchLowerThresholdAndRerun,
     handleNoMatchAddReference,
     handleNoMatchSwitchPendingView,
+    handleEnhanceRefPhoto,
+    enhancingPath,
+    multiRefStrategy,
+    setMultiRefStrategy,
     getThresholdGuide,
     getStatusText,
     getStatusType,

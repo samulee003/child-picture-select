@@ -247,7 +247,7 @@ export interface ElectronAPI extends GrowthApi {
   scanFolder: (dir: string) => Promise<ScanFolderResponse>;
   embedReferences: (files: string[]) => Promise<EmbedReferencesResponse>;
   runScan: (dir: string) => Promise<RunScanResponse>;
-  runMatch: (opts: { topN: number; threshold: number }) => Promise<MatchRunResponse>;
+  runMatch: (opts: { topN: number; threshold: number; strategy?: 'best' | 'average' | 'weighted' }) => Promise<MatchRunResponse>;
   exportCopy: (files: string[], outDir: string) => Promise<ExportCopyResponse>;
   openFolder: (folderPath: string) => Promise<{ ok: boolean; error?: string }>;
   onScanProgress: (callback: (progress: ScanProgress) => void) => void;

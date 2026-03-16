@@ -11,6 +11,8 @@ import type { RefFileResult } from '../hooks/useScanState';
 interface RefPhotoFeedbackProps {
   results: RefFileResult[];
   onRemove?: (path: string) => void;
+  onEnhance?: (path: string) => void;
+  enhancingPath?: string | null;
 }
 
 function getFileName(path: string): string {
@@ -31,7 +33,7 @@ function ConfidenceDot({ confidence }: { confidence: number }) {
   );
 }
 
-export function RefPhotoFeedback({ results, onRemove }: RefPhotoFeedbackProps) {
+export function RefPhotoFeedback({ results, onRemove, onEnhance, enhancingPath }: RefPhotoFeedbackProps) {
   if (results.length === 0) return null;
 
   const faceCount = results.filter(r => r.source === 'face').length;
@@ -124,7 +126,27 @@ export function RefPhotoFeedback({ results, onRemove }: RefPhotoFeedbackProps) {
               </span>
             )}
 
-            {onRemove && r.source === 'deterministic' && (
+            {onEnhance && (
+              <button
+                onClick={() => onEnhance(r.path)}
+                disabled={enhancingPath === r.path}
+                style={{
+                  background: 'none',
+                  border: '1px solid rgba(59,130,246,0.3)',
+                  borderRadius: '4px',
+                  color: '#3b82f6',
+                  cursor: enhancingPath === r.path ? 'not-allowed' : 'pointer',
+                  fontSize: '10px',
+                  padding: '1px 5px',
+                  flexShrink: 0,
+                  opacity: enhancingPath === r.path ? 0.5 : 1,
+                }}
+                title="智能增強此照片（調整亮度、銳度）"
+              >
+                {enhancingPath === r.path ? '…' : '✨'}
+              </button>
+            )}
+            {onRemove && (
               <button
                 onClick={() => onRemove(r.path)}
                 style={{

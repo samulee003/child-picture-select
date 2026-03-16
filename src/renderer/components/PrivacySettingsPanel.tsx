@@ -24,9 +24,10 @@ const defaultSettings: PrivacySettings = {
 
 interface PrivacySettingsPanelProps {
   onClose?: () => void;
+  onDeleteAllData?: () => void | Promise<void>;
 }
 
-export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
+export function PrivacySettingsPanel({ onClose, onDeleteAllData }: PrivacySettingsPanelProps) {
   const [settings, setSettings] = useState<PrivacySettings>(() => {
     const saved = localStorage.getItem('privacy-settings');
     return saved ? JSON.parse(saved) : defaultSettings;
@@ -325,6 +326,7 @@ export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
               ⬇️ 匯出所有資料
             </button>
             <button
+              onClick={onDeleteAllData}
               style={{
                 padding: `${theme.spacing[2]} ${theme.spacing[4]}`,
                 background: 'rgba(239, 68, 68, 0.2)',
@@ -333,11 +335,12 @@ export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
                 color: theme.colors.error[300],
                 fontSize: theme.typography.fontSize.xs,
                 fontWeight: theme.typography.fontWeight.medium,
-                cursor: 'pointer',
+                cursor: onDeleteAllData ? 'pointer' : 'not-allowed',
                 transition: 'all 0.2s',
+                opacity: onDeleteAllData ? 1 : 0.5,
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+                if (onDeleteAllData) e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
