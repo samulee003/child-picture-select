@@ -13,6 +13,7 @@ import { performanceManager } from '../core/performance';
 import { getPhotoEnhancer } from '../core/photoEnhancer';
 import { ChildQualityAssessor } from '../core/childQualityAssessment';
 import { getGrowthRecordManager } from './growthRecordManager';
+import type { ScanSession } from '../types/api';
 import { getModelStatus, preloadModel } from '../core/detector';
 import { autoUpdater } from 'electron-updater';
 
@@ -1029,9 +1030,9 @@ function wireIpc() {
   ipcMain.handle('privacy:clear-old-sessions', async (_e, olderThanDays: number) => {
     try {
       const mgr = getGrowthRecordManager();
-      const sessions = await mgr.getScanSessions();
+      const { sessions } = await mgr.getScanSessions();
       const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-      const toDelete = sessions.filter(s => new Date(s.createdAt).getTime() < cutoff);
+      const toDelete = sessions.filter((s: ScanSession) => new Date(s.createdAt).getTime() < cutoff);
       let deleted = 0;
       for (const session of toDelete) {
         try {

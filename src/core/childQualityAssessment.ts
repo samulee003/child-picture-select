@@ -241,7 +241,7 @@ export class ChildQualityAssessor {
   private calculateEdgeVariance(stats: SharpStats): number {
     const channels = stats.channels;
     if (!channels || channels.length === 0) return 5;
-    const avgStdev = channels.reduce((sum, ch) => sum + ch.stdev, 0) / channels.length;
+    const avgStdev = channels.reduce((sum: number, ch: { stdev: number }) => sum + ch.stdev, 0) / channels.length;
     // avgStdev 範圍約 0–128；映射為 0–10（值越低 = 越模糊）
     return Math.max(0, 10 - avgStdev / 12.8);
   }
