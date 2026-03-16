@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // GDPR 資料匯出
   exportAllData: () => ipcRenderer.invoke('data:export-all'),
+
+  // 隱私設定
+  clearOldSessions: (olderThanDays: number) => ipcRenderer.invoke('privacy:clear-old-sessions', olderThanDays),
 });
 
 export {};

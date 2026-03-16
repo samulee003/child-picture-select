@@ -1025,6 +1025,30 @@ function wireIpc() {
       return { ok: false, error: errorInfo.message };
     }
   });
+
+  ipcMain.handle('privacy:clear-old-sessions', async (_e, olderThanDays: number) => {
+    try {
+      const mgr = getGrowthRecordManager();
+      const sessions = await mgr.getScanSessions();
+      const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+      const toDelete = sessions.filter(s => new Date(s.createdAt).getTime() < cutoff);
+      let deleted = 0;
+      for (const session of toDelete) {
+        try {
+          await mgr.deleteScanSession(session.id);
+          deleted++;
+        } catch {
+          // best-effort
+        }
+      }
+      logger.info(`privacy:clear-old-sessions: removed ${deleted} sessions older than ${olderThanDays} days`);
+      return { ok: true, data: { deleted } };
+    } catch (err: any) {
+      const errorInfo = createErrorInfo(err);
+      logger.error('Failed to clear old sessions:', errorInfo);
+      return { ok: false, error: errorInfo.message };
+    }
+  });
 }
 
 app.on('window-all-closed', () => {

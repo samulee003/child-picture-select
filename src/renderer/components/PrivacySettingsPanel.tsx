@@ -10,7 +10,6 @@ interface PrivacySettings {
   enableEncryption: boolean;
   autoClearHistory: boolean;
   clearHistoryDays: number;
-  allowAnalytics: boolean;
   showPrivacyBadge: boolean;
 }
 
@@ -18,7 +17,6 @@ const defaultSettings: PrivacySettings = {
   enableEncryption: true,
   autoClearHistory: false,
   clearHistoryDays: 30,
-  allowAnalytics: false,
   showPrivacyBadge: true,
 };
 
@@ -36,6 +34,9 @@ export function PrivacySettingsPanel({ onClose, onDeleteAllData, onExportAllData
 
   useEffect(() => {
     localStorage.setItem('privacy-settings', JSON.stringify(settings));
+    if (settings.autoClearHistory && window.api && (window.api as any).clearOldSessions) {
+      (window.api as any).clearOldSessions(settings.clearHistoryDays).catch(() => {});
+    }
   }, [settings]);
 
   const updateSetting = <K extends keyof PrivacySettings>(

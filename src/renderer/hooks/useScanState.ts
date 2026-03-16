@@ -122,8 +122,8 @@ export function useScanState(): ScanState {
         setTopN(parsed.topN || 50);
         setRefPaths(parsed.lastReferencePaths?.join('\n') || '');
         setFolder(parsed.lastFolder || '');
-      } catch (err) {
-        console.warn('Failed to load settings:', err);
+      } catch {
+        // non-critical: start with defaults
       }
     }
   }, []);
@@ -384,12 +384,6 @@ export function useScanState(): ScanState {
         return;
       }
 
-      if (scanData && scanData.deterministicFallback && scanData.deterministicFallback > 0) {
-        console.warn(`[scan] ${scanData.deterministicFallback} photos used deterministic (non-face) embeddings`);
-      }
-      if (scanData && scanData.faceDetected && scanData.faceDetected > 0) {
-        console.info(`[scan] ${scanData.faceDetected} photos had faces detected`);
-      }
 
       setStatus('matching...');
       setProgress(null);
@@ -400,11 +394,6 @@ export function useScanState(): ScanState {
         acc[item.path] = Math.round(item.score * 100);
         return acc;
       }, {});
-      if (matchResponse.dimensionAdjustedCount > 0) {
-        console.warn(
-          `[match] ${matchResponse.dimensionAdjustedCount}/${matchResponse.totalComparisons} comparisons used adjusted embedding dimensions`
-        );
-      }
       const elapsedMs = scanStartTimeRef.current ? Date.now() - scanStartTimeRef.current : 0;
       const scannedCount = typeof scanData?.scanned === 'number' ? scanData.scanned : 0;
       setLastRunSummary({ scanned: scannedCount, matched: matched.length, elapsedMs });
