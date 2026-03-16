@@ -24,9 +24,11 @@ const defaultSettings: PrivacySettings = {
 
 interface PrivacySettingsPanelProps {
   onClose?: () => void;
+  onDeleteAllData?: () => void | Promise<void>;
+  onExportAllData?: () => void | Promise<void>;
 }
 
-export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
+export function PrivacySettingsPanel({ onClose, onDeleteAllData, onExportAllData }: PrivacySettingsPanelProps) {
   const [settings, setSettings] = useState<PrivacySettings>(() => {
     const saved = localStorage.getItem('privacy-settings');
     return saved ? JSON.parse(saved) : defaultSettings;
@@ -304,6 +306,7 @@ export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
             flexWrap: 'wrap',
           }}>
             <button
+              onClick={onExportAllData}
               style={{
                 padding: `${theme.spacing[2]} ${theme.spacing[4]}`,
                 background: 'rgba(102, 126, 234, 0.2)',
@@ -312,11 +315,12 @@ export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
                 color: theme.colors.primary[300],
                 fontSize: theme.typography.fontSize.xs,
                 fontWeight: theme.typography.fontWeight.medium,
-                cursor: 'pointer',
+                cursor: onExportAllData ? 'pointer' : 'not-allowed',
                 transition: 'all 0.2s',
+                opacity: onExportAllData ? 1 : 0.5,
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(102, 126, 234, 0.3)';
+                if (onExportAllData) e.currentTarget.style.background = 'rgba(102, 126, 234, 0.3)';
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = 'rgba(102, 126, 234, 0.2)';
@@ -325,6 +329,7 @@ export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
               ⬇️ 匯出所有資料
             </button>
             <button
+              onClick={onDeleteAllData}
               style={{
                 padding: `${theme.spacing[2]} ${theme.spacing[4]}`,
                 background: 'rgba(239, 68, 68, 0.2)',
@@ -333,11 +338,12 @@ export function PrivacySettingsPanel({ onClose }: PrivacySettingsPanelProps) {
                 color: theme.colors.error[300],
                 fontSize: theme.typography.fontSize.xs,
                 fontWeight: theme.typography.fontWeight.medium,
-                cursor: 'pointer',
+                cursor: onDeleteAllData ? 'pointer' : 'not-allowed',
                 transition: 'all 0.2s',
+                opacity: onDeleteAllData ? 1 : 0.5,
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+                if (onDeleteAllData) e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';

@@ -8,6 +8,8 @@ export interface MatchResult {
   score: number;
   thumbPath?: string;
   source?: 'face' | 'deterministic' | 'unknown';
+  /** 0-based index of the reference photo that produced the highest similarity score */
+  bestRefIndex?: number;
 }
 
 export interface MatchRunResponse {
@@ -247,7 +249,7 @@ export interface ElectronAPI extends GrowthApi {
   scanFolder: (dir: string) => Promise<ScanFolderResponse>;
   embedReferences: (files: string[]) => Promise<EmbedReferencesResponse>;
   runScan: (dir: string) => Promise<RunScanResponse>;
-  runMatch: (opts: { topN: number; threshold: number }) => Promise<MatchRunResponse>;
+  runMatch: (opts: { topN: number; threshold: number; strategy?: 'best' | 'average' | 'weighted' }) => Promise<MatchRunResponse>;
   exportCopy: (files: string[], outDir: string) => Promise<ExportCopyResponse>;
   openFolder: (folderPath: string) => Promise<{ ok: boolean; error?: string }>;
   onScanProgress: (callback: (progress: ScanProgress) => void) => void;
@@ -258,6 +260,8 @@ export interface ElectronAPI extends GrowthApi {
   getModelStatus: () => Promise<{ loaded: boolean; error: string | null }>;
   assessPhotoQuality: (filePath: string) => Promise<QualityMetrics>;
   enhancePhoto: (filePath: string) => Promise<EnhancePhotoResponse>;
+  // GDPR 資料匯出
+  exportAllData: () => Promise<ApiResponse<{ filePath: string }>>;
   // 掃描控制
   cancelScan: () => Promise<{ ok: boolean }>;
   pauseScan: () => Promise<{ ok: boolean }>;

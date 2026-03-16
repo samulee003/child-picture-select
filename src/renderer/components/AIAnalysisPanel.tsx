@@ -373,7 +373,11 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
         fontSize: '11px',
       }}>
         <span>速度：{photosPerSec ? `${photosPerSec.toFixed(2)} 張/秒` : '計算中'}</span>
-        <span>預估剩餘：{typeof etaSeconds === 'number' ? `${etaSeconds} 秒` : '計算中'}</span>
+        <span>預估剩餘：{typeof etaSeconds === 'number'
+          ? etaSeconds >= 60
+            ? `${Math.floor(etaSeconds / 60)} 分 ${etaSeconds % 60} 秒`
+            : `${etaSeconds} 秒`
+          : '計算中'}</span>
       </div>
 
       {/* CSS animations */}

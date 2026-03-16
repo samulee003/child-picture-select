@@ -3,7 +3,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
 import { fileToEmbeddingWithSource, Embedding, DETERMINISTIC_SCORE_PENALTY, type FaceAnalysis } from '../core/embeddings';
-import { cosineSimilarity } from '../core/similarity';
+import { cosineSimilarity, multiReferenceSimilarity, type MultiRefStrategy } from '../core/similarity';
 import { getPhoto, upsertPhoto, upsertFace, getFacesByPath, getDb, closeDb } from '../core/db';
 import { ensureThumbnailFor } from '../core/thumbs';
 import { stat as fsStat } from 'fs/promises';
@@ -18,6 +18,8 @@ import { autoUpdater } from 'electron-updater';
 
 let mainWindow: BrowserWindow | null = null;
 const referenceEmbeddings: Embedding[] = [];
+// Tracks whether each reference embedding came from face detection or deterministic fallback
+const referenceEmbeddingSources: Array<'face' | 'deterministic'> = [];
 
 // LRU cache for photo embeddings with max size to prevent memory leaks
 const MAX_EMBEDDING_CACHE_SIZE = 50000; // ~200MB for 1024-dim float64
@@ -316,6 +318,7 @@ function wireIpc() {
 
       logger.info(`Embedding ${files.length} reference files`);
       referenceEmbeddings.length = 0;
+      referenceEmbeddingSources.length = 0;
 
       let faceCount = 0;
       let deterministicCount = 0;
@@ -329,6 +332,7 @@ function wireIpc() {
         logger.debug(`Processing reference file: ${f}`);
         const result = await fileToEmbeddingWithSource(f);
         referenceEmbeddings.push(result.embedding);
+        referenceEmbeddingSources.push(result.source === 'face' ? 'face' : 'deterministic');
         perFileResults.push({
           path: f,
           source: result.source,
@@ -425,7 +429,18 @@ function wireIpc() {
 
       logger.info(`Found ${total} images to process`);
 
-      const perfBatchSize = Math.max(5, performanceManager.getMetrics().maxConcurrency * 10);
+      // Adaptive batch size based on available memory
+      const freeMem = require('os').freemem();
+      const freeMB = freeMem / (1024 * 1024);
+      let adaptiveBatchSize: number;
+      if (freeMB < 512) {
+        adaptiveBatchSize = 10;
+      } else if (freeMB < 1024) {
+        adaptiveBatchSize = 20;
+      } else {
+        adaptiveBatchSize = Math.max(5, performanceManager.getMetrics().maxConcurrency * 10);
+      }
+      const perfBatchSize = adaptiveBatchSize;
 
       // Process files in small batches for better responsiveness and ETA updates
       for (let offset = 0; offset < files.length; offset += perfBatchSize) {
@@ -594,59 +609,74 @@ function wireIpc() {
     }
   });
 
-  ipcMain.handle('match:run', async (_e, opts: { topN: number; threshold: number }) => {
-    const results: Array<{ path: string; score: number; thumbPath?: string; source?: 'face' | 'deterministic' | 'unknown' }> = [];
+  ipcMain.handle('match:run', async (_e, opts: { topN: number; threshold: number; strategy?: MultiRefStrategy }) => {
+    const results: Array<{ path: string; score: number; thumbPath?: string; source?: 'face' | 'deterministic' | 'unknown'; bestRefIndex?: number }> = [];
     if (referenceEmbeddings.length === 0) {
       logger.warn('match:run called with 0 reference embeddings');
       return { results, dimensionAdjustedCount: 0, totalComparisons: 0 };
     }
-    
+
+    const strategy: MultiRefStrategy = opts?.strategy ?? 'best';
     let dimensionAdjustedCount = 0;
-    let totalComparisons = 0;
     let maxScoreOverall = -1;
-    
-    // 記錄參考向量維度
+
+    // Build reference objects with face/deterministic info for weighted strategy
+    const refObjects = referenceEmbeddings.map((emb, i) => ({
+      embedding: emb,
+      isFace: referenceEmbeddingSources[i] === 'face',
+    }));
+
     const refDims = referenceEmbeddings.map(r => r.length);
-    logger.info(`match:run: ${referenceEmbeddings.length} refs (dims: ${[...new Set(refDims)].join(',')}), ${photoEmbeddings.size} photos, threshold=${opts?.threshold ?? 0}`);
-    
+    logger.info(`match:run: ${referenceEmbeddings.length} refs (dims: ${[...new Set(refDims)].join(',')}, strategy: ${strategy}), ${photoEmbeddings.size} photos, threshold=${opts?.threshold ?? 0}`);
+
     for (const [path, emb] of photoEmbeddings.entries()) {
-      let best = -1;
+      // Check for any dimension mismatch (for logging only)
       for (const ref of referenceEmbeddings) {
-        totalComparisons++;
-        const { score: s, dimensionAdjusted } = cosineSimilarityWithDimensionHandling(emb, ref);
-        if (dimensionAdjusted) {
-          dimensionAdjustedCount++;
-        }
-        if (s > best) best = s;
+        if (emb.length !== ref.length) dimensionAdjustedCount++;
       }
+
+      let score = multiReferenceSimilarity(emb, refObjects, strategy);
+
+      // Track which reference photo gave the best individual score
+      let bestRefIndex = 0;
+      let bestIndividualScore = -1;
+      for (let ri = 0; ri < refObjects.length; ri++) {
+        const ref = refObjects[ri];
+        const a = emb;
+        const b = ref.embedding;
+        const s = a.length === b.length
+          ? cosineSimilarity(a, b)
+          : cosineSimilarity(a.slice(0, Math.min(a.length, b.length)), b.slice(0, Math.min(a.length, b.length)));
+        if (s > bestIndividualScore) { bestIndividualScore = s; bestRefIndex = ri; }
+      }
+
       const source = photoEmbeddingSources.get(path) || 'unknown';
       // Deterministic vectors are only a fallback signal, reduce score to lower false positives.
-      if (source === 'deterministic' && best > 0) {
-        best = Math.max(0, best - DETERMINISTIC_SCORE_PENALTY);
+      if (source === 'deterministic' && score > 0) {
+        score = Math.max(0, score - DETERMINISTIC_SCORE_PENALTY);
       }
-      if (best > maxScoreOverall) maxScoreOverall = best;
-      if (best >= (opts?.threshold ?? 0)) {
-        // 獲取縮圖路徑
+      if (score > maxScoreOverall) maxScoreOverall = score;
+      if (score >= (opts?.threshold ?? 0)) {
         const photo = getPhoto(path);
         const thumbPath = photo?.thumbPath || null;
-        results.push({ path, score: best, thumbPath: thumbPath || undefined, source });
+        results.push({ path, score, thumbPath: thumbPath || undefined, source, bestRefIndex });
       }
     }
-    
+
     if (dimensionAdjustedCount > 0) {
-      logger.warn(`⚠️ match:run: ${dimensionAdjustedCount}/${totalComparisons} comparisons used adjusted dimensions`);
+      logger.warn(`⚠️ match:run: ${dimensionAdjustedCount} comparisons had mismatched dimensions (handled internally)`);
     }
     logger.info(`match:run: ${results.length} matches found (best score: ${maxScoreOverall.toFixed(4)}, threshold: ${opts?.threshold ?? 0})`);
     if (results.length === 0 && maxScoreOverall > -1) {
       logger.warn(`⚠️ match:run: Best score was ${maxScoreOverall.toFixed(4)} but threshold is ${opts?.threshold ?? 0}. Consider lowering threshold.`);
     }
-    
+
     results.sort((a, b) => b.score - a.score);
     const topN = Math.max(1, Math.min(1000, opts?.topN ?? 100));
     return {
       results: results.slice(0, topN),
       dimensionAdjustedCount,
-      totalComparisons,
+      totalComparisons: photoEmbeddings.size * referenceEmbeddings.length,
     };
   });
 
@@ -951,6 +981,47 @@ function wireIpc() {
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
       logger.error('Failed to create shared album:', errorInfo);
+      return { ok: false, error: errorInfo.message };
+    }
+  });
+
+  // GDPR 資料匯出 — 將所有本地資料匯出為 JSON
+  ipcMain.handle('data:export-all', async () => {
+    if (!mainWindow) return { ok: false, error: '視窗未就緒' };
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: '匯出所有資料',
+        defaultPath: `find-my-kid-export-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (canceled || !filePath) return { ok: false, error: 'cancelled' };
+
+      const mgr = getGrowthRecordManager();
+      const [growthRecords, scanSessions, reminders, familyMembers, sharedAlbums] = await Promise.all([
+        mgr.getGrowthRecords(),
+        mgr.getScanSessions(),
+        mgr.getReminders(),
+        mgr.getFamilyMembers(),
+        mgr.getSharedAlbums(),
+      ]);
+
+      const exportPayload = {
+        exportedAt: new Date().toISOString(),
+        appVersion: app.getVersion(),
+        growthRecords,
+        scanSessions,
+        reminders,
+        familyMembers,
+        sharedAlbums,
+      };
+
+      const fs = require('fs');
+      fs.writeFileSync(filePath, JSON.stringify(exportPayload, null, 2), 'utf-8');
+      logger.info(`Data exported to ${filePath}`);
+      return { ok: true, data: { filePath } };
+    } catch (err: any) {
+      const errorInfo = createErrorInfo(err);
+      logger.error('Failed to export data:', errorInfo);
       return { ok: false, error: errorInfo.message };
     }
   });

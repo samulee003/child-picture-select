@@ -19,6 +19,7 @@ import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ExportSuccessModal } from './components/ExportSuccessModal';
 import { RefPhotoFeedback } from './components/RefPhotoFeedback';
 import { SwipeReview } from './components/SwipeReview';
+import { PrivacySettingsPanel } from './components/PrivacySettingsPanel';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { useScanState } from './hooks/useScanState';
 import { useReviewState } from './hooks/useReviewState';
@@ -29,6 +30,8 @@ import { theme, animations } from './styles/theme';
 export function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSwipeReview, setIsSwipeReview] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [reminderBanner, setReminderBanner] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('onboardingCompleted');
   });
@@ -55,6 +58,20 @@ export function App() {
     }
     prevResultsRef.current = scan.results;
   }, [scan.results]);
+
+  // Check reminders after scan completes
+  const prevStatusRef = useRef(scan.status);
+  useEffect(() => {
+    if (prevStatusRef.current !== 'done' && scan.status === 'done') {
+      window.api?.checkReminders?.().then(res => {
+        if (res?.ok && res.data?.newReminders && res.data.newReminders.length > 0) {
+          const top = res.data.newReminders[0];
+          setReminderBanner(top.message || top.title);
+        }
+      }).catch(() => {});
+    }
+    prevStatusRef.current = scan.status;
+  }, [scan.status]);
 
   // Export state
   const exportState = useExportState({
@@ -295,6 +312,8 @@ export function App() {
               <div style={{ marginTop: theme.spacing[2] }}>
                 <RefPhotoFeedback
                   results={scan.refQualityResults}
+                  enhancingPath={scan.enhancingPath}
+                  onEnhance={scan.handleEnhanceRefPhoto}
                   onRemove={(path) => {
                     const lines = scan.refPaths.split('\n').filter(p => p.trim() !== path);
                     scan.setRefPaths(lines.join('\n'));
@@ -434,6 +453,40 @@ export function App() {
             <div style={{ fontSize: '11px', color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
               {scan.getThresholdGuide().desc}
             </div>
+
+            {/* Multi-ref fusion strategy — only shown when 2+ reference photos loaded */}
+            {scan.refsLoaded >= 2 && (
+              <div style={{ marginTop: theme.spacing[2] }}>
+                <div style={{ fontSize: '10px', color: theme.colors.neutral[500], marginBottom: '4px' }}>
+                  多照融合方式
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {([
+                    { value: 'best' as const, label: '最高分', title: '取多張中最相似的分數（預設）' },
+                    { value: 'average' as const, label: '平均分', title: '取多張的平均相似分' },
+                    { value: 'weighted' as const, label: '加權', title: '人臉照片給 2 倍權重，未偵測到人臉的給 1 倍' },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.value}
+                      title={opt.title}
+                      onClick={() => scan.setMultiRefStrategy(opt.value)}
+                      disabled={scan.isProcessing}
+                      style={{
+                        flex: 1,
+                        padding: '3px 0',
+                        borderRadius: theme.borderRadius.sm,
+                        border: `1px solid ${scan.multiRefStrategy === opt.value ? 'rgba(59,130,246,0.5)' : 'rgba(0,0,0,0.08)'}`,
+                        background: scan.multiRefStrategy === opt.value ? 'rgba(59,130,246,0.08)' : 'transparent',
+                        color: scan.multiRefStrategy === opt.value ? '#3b82f6' : theme.colors.neutral[500],
+                        cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
+                        fontSize: '10px',
+                        fontWeight: scan.multiRefStrategy === opt.value ? 700 : 400,
+                      }}
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Export section */}
@@ -520,6 +573,7 @@ export function App() {
           }}>
             <button onClick={handleHelp} style={{ background: 'none', border: 'none', color: theme.colors.neutral[400], cursor: 'pointer', fontSize: theme.typography.fontSize.xs }}>說明</button>
             <button onClick={() => setIsHelpOpen(true)} style={{ background: 'none', border: 'none', color: theme.colors.neutral[400], cursor: 'pointer', fontSize: theme.typography.fontSize.xs }}>{scan.appInfo?.version ? `v${scan.appInfo.version}` : '關於'}</button>
+            <button onClick={() => setIsPrivacyOpen(true)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: theme.typography.fontSize.xs, fontWeight: 600 }} title="隱私保護設定">🔒 隱私</button>
             <button onClick={() => window.api?.openExternal?.('https://buymeacoffee.com/samulee003')} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: theme.typography.fontSize.xs, fontWeight: 600 }}>☕ 支持</button>
           </div>
         </div>
@@ -545,6 +599,28 @@ export function App() {
           width: '100%',
         }}>
           <UpdateBanner />
+
+          {/* Reminder Banner */}
+          {reminderBanner && (
+            <div style={{
+              background: 'rgba(102, 126, 234, 0.15)',
+              border: '1px solid rgba(102, 126, 234, 0.35)',
+              borderRadius: '10px',
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '13px',
+              color: '#c7d2fe',
+            }}>
+              <span>💡</span>
+              <span style={{ flex: 1 }}>{reminderBanner}</span>
+              <button
+                onClick={() => setReminderBanner(null)}
+                style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0 }}
+              >×</button>
+            </div>
+          )}
 
           {/* Welcome State */}
           {scan.results.length === 0 && !scan.status.includes('ing...') && scan.status !== 'done' && (
@@ -627,6 +703,7 @@ export function App() {
             scanWarnings={scan.scanWarnings}
             favoriteMatches={favoriteMatches}
             onClearFavorites={() => favorites.setFavoritePaths([])}
+            refPaths={scan.refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean)}
           />
 
           {/* No matches */}
@@ -688,6 +765,33 @@ export function App() {
       )}
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} appInfo={scan.appInfo} />
+
+      {isPrivacyOpen && (
+        <PrivacySettingsPanel
+          onClose={() => setIsPrivacyOpen(false)}
+          onExportAllData={async () => {
+            const result = await window.api?.exportAllData?.();
+            if (result?.ok) {
+              scan.setError(`✅ 資料已匯出至 ${result.data?.filePath ?? '指定位置'}`);
+            } else if (result?.error && result.error !== 'cancelled') {
+              scan.setError(`❌ 匯出失敗：${result.error}`);
+            }
+          }}
+          onDeleteAllData={async () => {
+            if (!window.confirm('確定要刪除所有本地資料嗎？此操作無法復原。')) return;
+            await window.api?.clearEmbeddingCache?.();
+            localStorage.removeItem('app-settings');
+            localStorage.removeItem('privacy-settings');
+            scan.setRefPaths('');
+            scan.setRefsLoaded(0);
+            scan.setResults([]);
+            scan.setFolder('');
+            scan.setStatus('idle');
+            setIsPrivacyOpen(false);
+            scan.setError('✅ 所有本地資料已清除');
+          }}
+        />
+      )}
 
       <style>{animations}</style>
     </div>
