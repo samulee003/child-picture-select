@@ -31,6 +31,7 @@ export function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSwipeReview, setIsSwipeReview] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [reminderBanner, setReminderBanner] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('onboardingCompleted');
   });
@@ -57,6 +58,20 @@ export function App() {
     }
     prevResultsRef.current = scan.results;
   }, [scan.results]);
+
+  // Check reminders after scan completes
+  const prevStatusRef = useRef(scan.status);
+  useEffect(() => {
+    if (prevStatusRef.current !== 'done' && scan.status === 'done') {
+      window.api?.checkReminders?.().then(res => {
+        if (res?.ok && res.data?.newReminders && res.data.newReminders.length > 0) {
+          const top = res.data.newReminders[0];
+          setReminderBanner(top.message || top.title);
+        }
+      }).catch(() => {});
+    }
+    prevStatusRef.current = scan.status;
+  }, [scan.status]);
 
   // Export state
   const exportState = useExportState({
@@ -585,6 +600,28 @@ export function App() {
         }}>
           <UpdateBanner />
 
+          {/* Reminder Banner */}
+          {reminderBanner && (
+            <div style={{
+              background: 'rgba(102, 126, 234, 0.15)',
+              border: '1px solid rgba(102, 126, 234, 0.35)',
+              borderRadius: '10px',
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '13px',
+              color: '#c7d2fe',
+            }}>
+              <span>💡</span>
+              <span style={{ flex: 1 }}>{reminderBanner}</span>
+              <button
+                onClick={() => setReminderBanner(null)}
+                style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0 }}
+              >×</button>
+            </div>
+          )}
+
           {/* Welcome State */}
           {scan.results.length === 0 && !scan.status.includes('ing...') && scan.status !== 'done' && (
             <WelcomeState
@@ -666,6 +703,7 @@ export function App() {
             scanWarnings={scan.scanWarnings}
             favoriteMatches={favoriteMatches}
             onClearFavorites={() => favorites.setFavoritePaths([])}
+            refPaths={scan.refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean)}
           />
 
           {/* No matches */}
@@ -731,6 +769,14 @@ export function App() {
       {isPrivacyOpen && (
         <PrivacySettingsPanel
           onClose={() => setIsPrivacyOpen(false)}
+          onExportAllData={async () => {
+            const result = await window.api?.exportAllData?.();
+            if (result?.ok) {
+              scan.setError(`✅ 資料已匯出至 ${result.data?.filePath ?? '指定位置'}`);
+            } else if (result?.error && result.error !== 'cancelled') {
+              scan.setError(`❌ 匯出失敗：${result.error}`);
+            }
+          }}
           onDeleteAllData={async () => {
             if (!window.confirm('確定要刪除所有本地資料嗎？此操作無法復原。')) return;
             await window.api?.clearEmbeddingCache?.();

@@ -17,6 +17,8 @@ interface MatchResultCardProps {
   onReviewScore?: (path: string, score: number) => void;
   onFavorite?: (path: string) => void;
   isFavorite?: boolean;
+  /** Ordered list of reference photo paths (to show which one matched best) */
+  refPaths?: string[];
 }
 
 interface MatchExplanation {
@@ -75,7 +77,7 @@ function ConfidenceBadge({ level }: { level: MatchExplanation['confidenceLevel']
   );
 }
 
-export function MatchResultCard({ result, index, compact = false, onPreview, reviewDecision, reviewScore, onDecision, onReviewScore, onFavorite, isFavorite = false }: MatchResultCardProps) {
+export function MatchResultCard({ result, index, compact = false, onPreview, reviewDecision, reviewScore, onDecision, onReviewScore, onFavorite, isFavorite = false, refPaths }: MatchResultCardProps) {
   const [showExplain, setShowExplain] = useState(false);
   const explanation = getExplanation(result);
   const fileName = result.path.split(/[/\\]/).pop() || '';
@@ -382,6 +384,31 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
           }}>
             🔍 匹配原因
           </h4>
+
+          {/* Best matching reference photo */}
+          {result.bestRefIndex !== undefined && refPaths && refPaths.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing[2],
+              marginBottom: theme.spacing[2],
+              padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
+              background: 'rgba(59,130,246,0.06)',
+              borderRadius: theme.borderRadius.sm,
+              fontSize: theme.typography.fontSize.xs,
+              color: theme.colors.neutral[600],
+            }}>
+              <span style={{ color: '#3b82f6', fontWeight: 600 }}>📸</span>
+              <span>最匹配：參考照 #{result.bestRefIndex + 1}
+                {refPaths[result.bestRefIndex] && (
+                  <span style={{ color: theme.colors.neutral[400], marginLeft: 4 }}>
+                    ({refPaths[result.bestRefIndex].split(/[/\\]/).pop()})
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+
           <ul style={{
             margin: 0,
             paddingLeft: theme.spacing[4],
@@ -404,7 +431,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
               </li>
             ))}
           </ul>
-          
+
           {explanation.confidenceLevel !== 'high' && (
             <div style={{
               marginTop: theme.spacing[3],

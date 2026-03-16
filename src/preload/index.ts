@@ -66,6 +66,9 @@ contextBridge.exposeInMainWorld('api', {
   addFamilyMember: (member: Omit<FamilyMember, 'id' | 'photosAdded' | 'lastActive'>) => ipcRenderer.invoke('growth:add-family-member', member),
   getSharedAlbums: () => ipcRenderer.invoke('growth:get-shared-albums'),
   createSharedAlbum: (album: Omit<SharedAlbum, 'id' | 'createdAt' | 'lastUpdated'>) => ipcRenderer.invoke('growth:create-shared-album', album),
+
+  // GDPR 資料匯出
+  exportAllData: () => ipcRenderer.invoke('data:export-all'),
 });
 
 export {};

@@ -30,6 +30,7 @@ interface ResultsSectionProps {
   onFavorite: (path: string) => void;
   isFavorite: (path: string) => boolean;
   onLowerThreshold: () => boolean;
+  refPaths?: string[];
 
   // Scan summary
   lastRunSummary: { scanned: number; matched: number; elapsedMs: number } | null;
@@ -99,6 +100,7 @@ export function ResultsSection(props: ResultsSectionProps) {
     onScore: (path: string, score: number) => void;
     onFav: (path: string) => void;
     isFav: (path: string) => boolean;
+    refPaths?: string[];
   }
 
   function VirtualCell({ columnIndex, rowIndex, style, ...cellProps }: CellComponentProps<VirtualCellProps>) {
@@ -117,6 +119,7 @@ export function ResultsSection(props: ResultsSectionProps) {
           onReviewScore={cellProps.revMode ? cellProps.onScore : undefined}
           reviewDecision={cellProps.revMode ? cellProps.revDecisions[r.path] : undefined}
           reviewScore={cellProps.revMode ? cellProps.revScores[r.path] : undefined}
+          refPaths={cellProps.refPaths}
         />
       </div>
     );
@@ -289,6 +292,7 @@ export function ResultsSection(props: ResultsSectionProps) {
                     onScore: onReviewScore,
                     onFav: onFavorite,
                     isFav: isFavorite,
+                    refPaths: props.refPaths,
                   }}
                   style={{ height: '100%', overflowX: 'hidden' }}
                 />
@@ -311,6 +315,7 @@ export function ResultsSection(props: ResultsSectionProps) {
                     onReviewScore={reviewMode ? onReviewScore : undefined}
                     reviewDecision={reviewMode ? reviewDecisions[r.path] : undefined}
                     reviewScore={reviewMode ? reviewScores[r.path] : undefined}
+                    refPaths={props.refPaths}
                   />
                 ))}
               </div>
