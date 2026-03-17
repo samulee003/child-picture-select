@@ -24,6 +24,18 @@ export function getDb(): any {
   const dbPath = join(getUserDataDir(), 'cache.sqlite');
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+
+  const CURRENT_CACHE_VERSION = 2;
+  const user_version = db.pragma('user_version', { simple: true }) as number;
+  if (user_version !== CURRENT_CACHE_VERSION) {
+    logger.info(`Upgrading cache database from v${user_version} to v${CURRENT_CACHE_VERSION}, clearing old data...`);
+    db.exec(`
+      DROP TABLE IF EXISTS photos;
+      DROP TABLE IF EXISTS faces;
+    `);
+    db.pragma(`user_version = ${CURRENT_CACHE_VERSION}`);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS photos (
       id INTEGER PRIMARY KEY,
@@ -35,10 +47,17 @@ export function getDb(): any {
       id INTEGER PRIMARY KEY,
       photoPath TEXT NOT NULL,
       embedding TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'unknown',
       UNIQUE(photoPath)
     );
     CREATE INDEX IF NOT EXISTS idx_faces_photo ON faces(photoPath);
   `);
+  const hasSourceColumn = db
+    .prepare(`SELECT COUNT(1) AS count FROM pragma_table_info('faces') WHERE name = 'source'`)
+    .get() as { count: number };
+  if (!hasSourceColumn.count) {
+    db.exec(`ALTER TABLE faces ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'`);
+  }
   return db;
 }
 
@@ -57,18 +76,18 @@ export function getPhoto(path: string): { id: number; path: string; mtime: numbe
   return row as any;
 }
 
-export function upsertFace(path: string, embedding: number[]) {
+export function upsertFace(path: string, embedding: number[], source: 'face' | 'deterministic' | 'unknown' = 'unknown') {
   const d = getDb();
   const stmt = d.prepare(
-    `INSERT INTO faces(photoPath, embedding) VALUES(?, ?)
-     ON CONFLICT(photoPath) DO UPDATE SET embedding=excluded.embedding`
+    `INSERT INTO faces(photoPath, embedding, source) VALUES(?, ?, ?)
+     ON CONFLICT(photoPath) DO UPDATE SET embedding=excluded.embedding, source=excluded.source`
   );
-  stmt.run(path, JSON.stringify(embedding));
+  stmt.run(path, JSON.stringify(embedding), source);
 }
 
-export function getFacesByPath(path: string): number[][] {
+export function getFacesByPath(path: string): Array<{ embedding: number[]; source: 'face' | 'deterministic' | 'unknown' }> {
   const d = getDb();
-  const rows = d.prepare('SELECT embedding FROM faces WHERE photoPath = ?').all(path) as Array<{ embedding: string }>;
+  const rows = d.prepare('SELECT embedding, source FROM faces WHERE photoPath = ?').all(path) as Array<{ embedding: string; source?: string }>;
   return rows.flatMap((r) => {
     try {
       const parsed = JSON.parse(r.embedding);
@@ -76,7 +95,9 @@ export function getFacesByPath(path: string): number[][] {
         logger.warn(`Invalid embedding payload in DB for ${path}, skipping row`);
         return [];
       }
-      return [parsed];
+      const source: 'face' | 'deterministic' | 'unknown' =
+        r.source === 'face' || r.source === 'deterministic' ? r.source : 'unknown';
+      return [{ embedding: parsed, source }];
     } catch (error) {
       logger.warn(`Failed to parse embedding JSON for ${path}, skipping row: ${(error as Error)?.message || error}`);
       return [];
