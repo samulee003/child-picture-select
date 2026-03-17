@@ -18,6 +18,8 @@ export interface EmbeddingResult {
   source: 'face' | 'deterministic';
   dimensions: number;
   faceAnalysis?: FaceAnalysis;
+  fallbackReason?: 'no_face' | 'detection_error';
+  detectionErrorCode?: string;
 }
 
 /**
@@ -74,18 +76,33 @@ export interface EmbeddingOptions {
   maxSize?: number;
   /** 最小臉部信心度 */
   minConfidence?: number;
+  /** 抓不到臉時是否自動以更寬鬆條件重試一次 */
+  retryOnNoFace?: boolean;
 }
 
 export async function fileToEmbeddingWithSource(filePath: string, options: EmbeddingOptions = {}): Promise<EmbeddingResult> {
+  let fallbackReason: 'no_face' | 'detection_error' = 'no_face';
+  let detectionErrorCode: string | undefined;
   try {
     logger.debug(`Attempting face detection for: ${filePath}`);
 
     // 嘗試使用真正的臉部偵測（含年齡/性別分析）
-    const faces = await detectFaces(filePath, {
+    let faces = await detectFaces(filePath, {
       enableAgeGender: true,
       maxSize: options.maxSize,
       minConfidence: options.minConfidence,
     });
+
+    if (faces.length === 0 && options.retryOnNoFace) {
+    const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
+    const retryMinConfidence = Math.min(options.minConfidence ?? 0.3, 0.05);
+      logger.info(`Retrying face detection with broader settings: ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: retryMaxSize,
+        minConfidence: retryMinConfidence,
+      });
+    }
     if (faces.length > 0) {
       // 使用信心度最高的臉部
       const bestFace = faces.reduce((best, current) =>
@@ -117,6 +134,8 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
     logger.warn(`⚠️ No face detected in: ${filePath}, using deterministic embedding (NOT a face embedding; keep this result for fallback only)`);
   } catch (err) {
     // 臉部偵測失敗，降級到 deterministic embedding
+    fallbackReason = 'detection_error';
+    if (err instanceof AppError) detectionErrorCode = err.code;
     logger.warn(`⚠️ Face detection failed for ${filePath}, using deterministic embedding:`, err);
   }
 
@@ -129,6 +148,8 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
       embedding: deterministicEmbedding,
       source: 'deterministic',
       dimensions: EMBEDDING_DIMS,
+      fallbackReason,
+      detectionErrorCode,
     };
   } catch (error) {
     throw new AppError(

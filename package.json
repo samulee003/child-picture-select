@@ -1,6 +1,6 @@
 {
   "name": "da-hai-lao-b",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "大海撈Ｂ - AI Photo Sorter",
   "author": "Local Developer",
@@ -69,7 +69,16 @@
       "node_modules/sharp/**",
       "node_modules/canvas/**",
       "node_modules/@vladmandic/**",
-      "node_modules/@tensorflow/tfjs-backend-wasm/dist/*.wasm",
+      "node_modules/@tensorflow/tfjs/**",
+      "node_modules/@tensorflow/tfjs-core/**",
+      "node_modules/@tensorflow/tfjs-layers/**",
+      "node_modules/@tensorflow/tfjs-converter/**",
+      "node_modules/@tensorflow/tfjs-backend-cpu/**",
+      "node_modules/@tensorflow/tfjs-backend-wasm/**",
+      "node_modules/@tensorflow/tfjs-backend-webgl/**",
+      "node_modules/@tensorflow/tfjs-data/**",
+      "node_modules/seedrandom/**",
+      "node_modules/long/**",
       "node_modules/electron-updater/**"
     ],
     "extraResources": [
@@ -116,8 +125,8 @@
       }
     ],
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "大海撈Ｂ"
@@ -128,7 +137,11 @@
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-cpu": "^4.22.0",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@tensorflow/tfjs-converter": "^4.22.0",
+    "@tensorflow/tfjs-core": "^4.22.0",
+    "@tensorflow/tfjs-layers": "^4.22.0",
     "@vladmandic/human": "^2.10.0",
     "better-sqlite3": "^11.7.0",
     "canvas": "^3.2.1",
@@ -138,6 +151,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^2.2.7",
+    "seedrandom": "^3.0.5",
     "sharp": "^0.33.5",
     "uuid": "^13.0.0"
   },

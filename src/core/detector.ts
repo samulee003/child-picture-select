@@ -31,6 +31,13 @@ let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
 const FACE_DETECTION_TIMEOUT_MS = 30000;
 type DisposableTensor = { dispose: () => void };
+let localFileFetchShimInstalled = false;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isModelHealthy(human: any): boolean {
+  const models = human?.models;
+  return Boolean(models?.facedetect) && Boolean(models?.faceres);
+}
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCode: string, timeoutMessage: string): Promise<T> {
   let timer: NodeJS.Timeout | null = null;
@@ -46,6 +53,57 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCod
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * Node 22 fetch() 不支援 file://；human 讀本機模型會失敗。
+ * 這裡攔截本機路徑並改用 fs 讀檔，回傳 Response 供 human/tfjs 使用。
+ */
+function installLocalFileFetchShim(): void {
+  if (localFileFetchShimInstalled) return;
+  const g = globalThis as unknown as { fetch?: (input: unknown, init?: unknown) => Promise<Response> };
+  if (typeof g.fetch !== 'function' || typeof Response === 'undefined') return;
+
+  const originalFetch = g.fetch.bind(globalThis);
+  g.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
+    try {
+      const raw = typeof input === 'string' ? input : (input as { url?: string } | null)?.url;
+      if (typeof raw === 'string') {
+        let localPath: string | null = null;
+        if (raw.startsWith('file://')) {
+          localPath = decodeURIComponent(raw.replace(/^file:\/\//, ''));
+          // Windows file URL 會是 /D:/...，轉回 D:/...
+          if (/^\/[a-zA-Z]:\//.test(localPath)) localPath = localPath.slice(1);
+        } else if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('/')) {
+          localPath = raw;
+        }
+
+        if (localPath) {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { existsSync, readFileSync } = require('fs');
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { normalize } = require('path');
+          const normalized = normalize(localPath);
+          if (!existsSync(normalized)) {
+            return new Response(`Not found: ${normalized}`, { status: 404 });
+          }
+          const data = readFileSync(normalized);
+          const contentType = normalized.endsWith('.json')
+            ? 'application/json'
+            : normalized.endsWith('.wasm')
+              ? 'application/wasm'
+              : 'application/octet-stream';
+          return new Response(data, { status: 200, headers: { 'content-type': contentType } });
+        }
+      }
+    } catch {
+      // fallback to original fetch
+    }
+    return originalFetch(input, init);
+  };
+
+  localFileFetchShimInstalled = true;
+  logger.info('Installed local file fetch shim for model loading');
 }
 
 /**
@@ -142,6 +200,7 @@ async function getHuman() {
 
   try {
     logger.info('Loading @vladmandic/human model (WASM backend)...');
+    installLocalFileFetchShim();
 
     // 載入 WASM 版本 — 不依賴 tfjs-node，無 native bindings
     // 動態構建路徑，避免 Node.js exports 限制和 tsup 靜態分析
@@ -191,7 +250,7 @@ async function getHuman() {
       filter: { enabled: false },
       face: {
         enabled: true,
-        detector: { enabled: true, modelPath: 'blazeface.json', maxDetected: 30 },
+        detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.05 },
         mesh: { enabled: false },
         iris: { enabled: false },
         emotion: { enabled: false },
@@ -221,6 +280,13 @@ async function getHuman() {
 
     // 預先載入模型權重（確保 model 可用）
     await humanInstance.load();
+
+    if (!isModelHealthy(humanInstance)) {
+      throw new AppError(
+        'AI 模型載入不完整（臉部偵測模型未就緒）',
+        'MODEL_HEALTH_CHECK_FAILED'
+      );
+    }
 
     logger.info('@vladmandic/human model loaded and ready (WASM backend)');
     return humanInstance;
@@ -309,7 +375,7 @@ export async function detectFaces(
       }
     }
 
-    const maxEdge = options.maxSize || 640;
+    const maxEdge = options.maxSize || 1280; // Increase default maxSize for reference photos
     const imageBuffer = await withTimeout<Buffer>(
       sharpInstance
         .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
