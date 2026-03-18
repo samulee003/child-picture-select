@@ -29,10 +29,10 @@ export interface EmbeddingResult {
 export const DETERMINISTIC_SCORE_PENALTY = 0.12;
 
 /**
- * FaceNet recognition model 輸出的 embedding 維度為 128
+ * InsightFace ArcFace recognition model 輸出的 embedding 維度為 512
  * 確定性 fallback 必須使用相同維度以保持 cosine similarity 可計算
  */
-export const EMBEDDING_DIMS = 128;
+export const EMBEDDING_DIMS = 512;
 
 // Deterministic placeholder embedding based on file bytes.
 // Produces a unit-normalized vector so cosine similarity is computable.

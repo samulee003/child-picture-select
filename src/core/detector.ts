@@ -1,28 +1,32 @@
 /**
  * 臉部偵測模組
- * 使用 @vladmandic/face-api (SSD MobileNet V1) 進行臉部偵測與特徵提取
- * SSD MobileNet 對亞洲兒童臉部的偵測率優於 BlazeFace，尤其在角度、遮擋和不同膚色場景下。
- * 特徵向量由 FaceNet recognition model 輸出 128 維，以 canvas npm package 作為 Node.js 環境支援。
+ *
+ * 偵測：@vladmandic/face-api SSD MobileNet V1（比 BlazeFace 對亞洲兒童效果更好）
+ * 識別：InsightFace ArcFace w600k_mbf ONNX（512 維，對亞洲人臉辨識遠優於 FaceNet）
+ *
+ * 流程：
+ *   sharp 預處理 → face-api SSD MobileNet 偵測 → ArcFace ONNX 提取 512 維特徵
  */
 
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 import sharp from 'sharp';
+import { extractArcFaceEmbedding, loadArcFace } from './arcface';
 
 export interface FaceDetection {
   bbox: [number, number, number, number]; // x, y, width, height
-  embedding: number[]; // 128 維特徵向量 (FaceNet)
+  embedding: number[]; // 512 維 ArcFace 特徵向量
   confidence: number;
   age?: number;
   gender?: 'male' | 'female';
 }
 
 export interface DetectorOptions {
-  /** 是否啟用年齡和性別識別 */
+  /** 是否啟用年齡和性別識別（需額外模型，目前保留介面） */
   enableAgeGender?: boolean;
   /** 最小臉部偵測信心度 (0-1) */
   minConfidence?: number;
-  /** 圖片縮放最大邊長（越大越能偵測小臉，但越慢） */
+  /** 圖片縮放最大邊長 */
   maxSize?: number;
   /** 裁切圖片上方比例（0-1），用於全身照中定位臉部區域 */
   cropTopFraction?: number;
@@ -34,7 +38,6 @@ export interface DetectorOptions {
 let faceapi: any = null;
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
-let ageGenderLoaded = false;
 
 const FACE_DETECTION_TIMEOUT_MS = 30000;
 
@@ -57,70 +60,49 @@ async function withTimeout<T>(
   }
 }
 
-/**
- * 解析 @vladmandic/face-api 模型目錄路徑（含開發模式與 Electron 打包路徑）
- */
-function resolveModelPath(): string {
+function resolveFaceApiModelPath(): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { join } = require('path');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { existsSync } = require('fs');
 
   const devPath = join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'model');
-  if (existsSync(devPath)) {
-    logger.info(`Using face-api models from: ${devPath}`);
-    return devPath;
-  }
+  if (existsSync(devPath)) return devPath;
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require('electron');
     const appPath = app.getAppPath();
-
     const unpackedPath = join(
       appPath.replace('app.asar', 'app.asar.unpacked'),
       'node_modules', '@vladmandic', 'face-api', 'model'
     );
-    if (existsSync(unpackedPath)) {
-      logger.info(`Using unpacked face-api models from: ${unpackedPath}`);
-      return unpackedPath;
-    }
-
-    const asarPath = join(appPath, 'node_modules', '@vladmandic', 'face-api', 'model');
-    if (existsSync(asarPath)) {
-      logger.info(`Using asar face-api models from: ${asarPath}`);
-      return asarPath;
-    }
+    if (existsSync(unpackedPath)) return unpackedPath;
   } catch {
     // Not in Electron
   }
 
-  throw new Error(
-    'face-api model directory not found. Make sure @vladmandic/face-api is installed.'
-  );
+  throw new Error('face-api model directory not found. Make sure @vladmandic/face-api is installed.');
 }
 
 /**
- * 初始化 face-api 並載入所需模型
- * - ssdMobilenetv1: 臉部偵測（比 BlazeFace 對多族裔/兒童效果更好）
- * - faceLandmark68Net: 68 特徵點（對齊後供 recognition model 使用）
- * - faceRecognitionNet: 128 維特徵向量 (FaceNet)
+ * 載入 face-api SSD MobileNet（偵測用）
+ * 注意：只載入 ssdMobilenetv1，不載入 faceLandmark68Net 或 faceRecognitionNet。
+ *       識別功能由獨立的 ArcFace ONNX 模組處理。
  */
 async function loadFaceApi() {
   if (faceapi) return faceapi;
   if (modelLoadAttempted) return null;
-
   modelLoadAttempted = true;
 
   try {
-    logger.info('Loading @vladmandic/face-api (SSD MobileNet + FaceNet)...');
+    logger.info('Loading @vladmandic/face-api SSD MobileNet (detection only)...');
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { join } = require('path');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { existsSync } = require('fs');
 
-    // 優先使用 node-wasm build（自含 WASM，不依賴 tfjs-node native bindings）
     const candidates = [
       join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js'),
       join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node.js'),
@@ -129,8 +111,7 @@ async function loadFaceApi() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { app } = require('electron');
-      const appPath = app.getAppPath();
-      const unpacked = appPath.replace('app.asar', 'app.asar.unpacked');
+      const unpacked = app.getAppPath().replace('app.asar', 'app.asar.unpacked');
       candidates.push(
         join(unpacked, 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js'),
         join(unpacked, 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node.js'),
@@ -143,16 +124,16 @@ async function loadFaceApi() {
       logger.info(`face-api candidate: ${c} → ${existsSync(c) ? 'FOUND' : 'NOT FOUND'}`);
     }
 
-    const faceApiPath = candidates.find(c => existsSync(c));
+    const faceApiPath = candidates.find((c) => existsSync(c));
     if (!faceApiPath) {
-      throw new Error(`Cannot find @vladmandic/face-api build. Searched:\n${candidates.join('\n')}`);
+      throw new Error(`Cannot find @vladmandic/face-api. Searched:\n${candidates.join('\n')}`);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const loaded = require(faceApiPath);
     faceapi = loaded.default || loaded;
 
-    // 在 Node.js 環境中注入 canvas 實作（face-api 需要 DOM Canvas API）
+    // Node.js 環境注入 canvas
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const nodeCanvas = require('canvas');
@@ -161,56 +142,40 @@ async function loadFaceApi() {
         Image: nodeCanvas.Image,
         ImageData: nodeCanvas.ImageData,
       });
-      logger.info('Node.js canvas package patched into face-api env');
+      logger.info('Node.js canvas patched into face-api env');
     } catch (canvasErr) {
-      logger.warn('canvas npm package not available, face detection may be limited:', canvasErr);
+      logger.warn('canvas npm package not available:', canvasErr);
     }
 
-    const modelPath = resolveModelPath();
+    const modelPath = resolveFaceApiModelPath();
 
-    // WASM backend 必須在載入模型前完成初始化
+    // WASM backend 初始化（必須在載入模型前）
     logger.info('Initializing TensorFlow.js backend...');
     await faceapi.tf.ready();
     logger.info(`TF.js backend ready: ${faceapi.tf.getBackend()}`);
 
+    // 只載入偵測模型（SSD MobileNet）
     logger.info(`Loading SSD MobileNet V1 from: ${modelPath}`);
     await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
 
-    logger.info(`Loading FaceLandmark68Net from: ${modelPath}`);
-    await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
+    logger.info('face-api SSD MobileNet loaded (detection only)');
 
-    logger.info(`Loading FaceRecognitionNet from: ${modelPath}`);
-    await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
+    // 同步預熱 ArcFace ONNX（不 await，讓它在背景載入）
+    loadArcFace().catch((err) =>
+      logger.warn('ArcFace pre-warm failed (will retry on first use):', err)
+    );
 
-    logger.info('@vladmandic/face-api loaded and ready (SSD MobileNet + FaceNet 128-dim)');
     return faceapi;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     modelLoadError = message;
-    logger.error(`Failed to load @vladmandic/face-api: ${message}`);
-    logger.error('Face detection will NOT work. Photos will get deterministic embeddings.');
+    logger.error(`Failed to load face-api SSD MobileNet: ${message}`);
     return null;
   }
 }
 
 /**
- * 延遲載入 AgeGender 模型（僅在 enableAgeGender 時載入，節省記憶體）
- */
-async function ensureAgeGenderModel(fa: NonNullable<typeof faceapi>): Promise<void> {
-  if (ageGenderLoaded) return;
-  try {
-    const modelPath = resolveModelPath();
-    await fa.nets.ageGenderNet.loadFromDisk(modelPath);
-    ageGenderLoaded = true;
-    logger.info('AgeGenderNet loaded');
-  } catch (err) {
-    logger.warn('AgeGenderNet not available (optional):', err);
-  }
-}
-
-/**
- * 預先載入模型（在 app ready 後呼叫，讓 UI 不顯示「AI 未載入」）
- * 允許重試：如果之前失敗，會重置狀態再嘗試
+ * 預先載入模型（app ready 後呼叫）
  */
 export async function preloadModel(): Promise<void> {
   try {
@@ -235,8 +200,7 @@ export function getModelStatus(): { loaded: boolean; error: string | null } {
 }
 
 /**
- * 從圖片檔案偵測臉部並提取特徵
- * 使用 SSD MobileNet V1 偵測 → FaceLandmark68 對齊 → FaceRecognitionNet 128-dim 特徵
+ * 從圖片偵測臉部，並對每個偵測到的臉部提取 ArcFace 512 維特徵
  */
 export async function detectFaces(
   imagePath: string,
@@ -262,28 +226,24 @@ export async function detectFaces(
         sharpInstance = sharp(imagePath, { sequentialRead: true });
       } catch (heicError) {
         throw new AppError(
-          `HEIC format not supported for face detection: ${imagePath}`,
+          `HEIC format not supported: ${imagePath}`,
           'HEIC_NOT_SUPPORTED',
           { originalError: heicError }
         );
       }
     }
 
-    // 若指定裁切比例，先裁切圖片上方區域（適用於全身照中臉部偵測）
+    // 裁切上方區域（全身照臉部偵測用）
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
       const meta = await sharp(imagePath).metadata();
-      const imgWidth = meta.width || 1000;
-      const imgHeight = meta.height || 1000;
-      const cropHeight = Math.round(imgHeight * options.cropTopFraction);
-      sharpInstance = sharp(imagePath).extract({
-        left: 0,
-        top: 0,
-        width: imgWidth,
-        height: cropHeight,
-      });
+      const imgW = meta.width || 1000;
+      const imgH = meta.height || 1000;
+      const cropH = Math.round(imgH * options.cropTopFraction);
+      sharpInstance = sharp(imagePath).extract({ left: 0, top: 0, width: imgW, height: cropH });
     }
 
-    const imageBuffer = await withTimeout(
+    // sharp 預處理 → PNG buffer（偵測與 ArcFace 共用同一張縮放後的圖片）
+    const imageBuffer: Buffer = await withTimeout(
       sharpInstance
         .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
         .png()
@@ -296,74 +256,60 @@ export async function detectFaces(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createCanvas, loadImage } = require('canvas');
     const img = await loadImage(imageBuffer);
-    const canvas = createCanvas(img.width as number, img.height as number);
+    const imgWidth = img.width as number;
+    const imgHeight = img.height as number;
+    const canvas = createCanvas(imgWidth, imgHeight);
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     ctx.drawImage(img as unknown as HTMLImageElement, 0, 0);
 
-    // 使用 overrideDetectorMinConfidence（最寬鬆重試）或 minConfidence，預設 0.3
-    const minConf =
-      options.overrideDetectorMinConfidence ?? options.minConfidence ?? 0.3;
-
+    const minConf = options.overrideDetectorMinConfidence ?? options.minConfidence ?? 0.3;
     const detectionOptions = new fa.SsdMobilenetv1Options({
       minConfidence: minConf,
       maxResults: 10,
     });
 
-    let detections: unknown[];
-    if (options.enableAgeGender) {
-      await ensureAgeGenderModel(fa);
-      detections = await withTimeout(
-        fa.detectAllFaces(canvas, detectionOptions)
-          .withFaceLandmarks()
-          .withAgeAndGender()
-          .withFaceDescriptors(),
-        FACE_DETECTION_TIMEOUT_MS,
-        'FACE_DETECTION_TIMEOUT',
-        `Face detection timed out for ${imagePath}`
-      );
-    } else {
-      detections = await withTimeout(
-        fa.detectAllFaces(canvas, detectionOptions)
-          .withFaceLandmarks()
-          .withFaceDescriptors(),
-        FACE_DETECTION_TIMEOUT_MS,
-        'FACE_DETECTION_TIMEOUT',
-        `Face detection timed out for ${imagePath}`
-      );
-    }
+    // SSD MobileNet 偵測（只取 bbox + score，不跑 landmark/descriptor）
+    const rawDetections = await withTimeout(
+      fa.detectAllFaces(canvas, detectionOptions),
+      FACE_DETECTION_TIMEOUT_MS,
+      'FACE_DETECTION_TIMEOUT',
+      `Face detection timed out for ${imagePath}`
+    ) as unknown[];
 
-    if (!detections || detections.length === 0) {
+    if (!rawDetections || rawDetections.length === 0) {
       logger.debug(`No faces detected in ${imagePath}`);
       return [];
     }
 
-    logger.debug(`Found ${detections.length} face(s) in ${imagePath}`);
+    logger.debug(`Found ${rawDetections.length} face(s) in ${imagePath}, extracting ArcFace embeddings...`);
 
     const postMinConf = options.minConfidence ?? 0.01;
+    const results: FaceDetection[] = [];
 
+    // 對每個偵測到的臉部依序提取 ArcFace embedding（避免並行 ORT session 競爭）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const results: FaceDetection[] = (detections as any[])
-      .filter((d) => d.detection.score >= postMinConf)
-      .map((d) => {
-        const detection: FaceDetection = {
-          bbox: [
-            d.detection.box.x,
-            d.detection.box.y,
-            d.detection.box.width,
-            d.detection.box.height,
-          ],
-          embedding: Array.from(d.descriptor as Float32Array),
-          confidence: d.detection.score,
-        };
-        if (options.enableAgeGender && d.age != null) {
-          detection.age = Math.round(d.age as number);
-        }
-        if (options.enableAgeGender && d.gender != null) {
-          detection.gender = (d.gender as string) === 'male' ? 'male' : 'female';
-        }
-        return detection;
-      });
+    for (const d of rawDetections as any[]) {
+      if (d.score < postMinConf) continue;
 
+      const bbox: [number, number, number, number] = [
+        d.detection.box.x,
+        d.detection.box.y,
+        d.detection.box.width,
+        d.detection.box.height,
+      ];
+
+      const embedding = await extractArcFaceEmbedding(imageBuffer, bbox, imgWidth, imgHeight);
+
+      results.push({
+        bbox,
+        embedding: embedding ?? [],
+        confidence: d.score,
+      });
+    }
+
+    logger.debug(
+      `ArcFace extraction complete for ${imagePath}: ${results.length} face(s) with embeddings`
+    );
     return results;
   } catch (err) {
     if (err instanceof AppError && err.code === 'FACE_DETECTION_TIMEOUT') {
@@ -380,18 +326,14 @@ export async function detectFaces(
 }
 
 /**
- * 從圖片中提取主要臉部的特徵向量（用於比對）
- * 如果沒有偵測到臉部，回傳 null
+ * 從圖片中提取主要臉部的 ArcFace 特徵向量
  */
 export async function extractFaceEmbedding(
   imagePath: string,
   options: DetectorOptions = {}
 ): Promise<number[] | null> {
   const faces = await detectFaces(imagePath, options);
-
-  if (faces.length === 0) {
-    return null;
-  }
+  if (faces.length === 0) return null;
 
   const bestFace = faces.reduce((best, current) =>
     current.confidence > best.confidence ? current : best
