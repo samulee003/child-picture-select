@@ -241,6 +241,22 @@ export interface AppInfo {
   changelog?: string[];
 }
 
+export interface DiagnosticsInfo {
+  logFilePath: string;
+  logFileExists: boolean;
+  modelLoaded: boolean;
+  modelError: string | null;
+  faceresModelExists: boolean;
+  facedetectModelExists: boolean;
+  modelFilesFound: number;
+  modelsDir: string;
+  wasmBackendExists: boolean;
+  humanWasmBuildExists: boolean;
+  canvasAvailable: boolean;
+  nodeVersion: string;
+  platform: string;
+}
+
 export interface ElectronAPI extends GrowthApi {
   getAppInfo: () => Promise<AppInfo>;
   selectFiles: () => Promise<string[] | null>;
@@ -272,4 +288,7 @@ export interface ElectronAPI extends GrowthApi {
   installUpdate: () => Promise<ApiResponse>;
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
   removeUpdateListener: () => void;
+  // 診斷工具
+  getDiagnosticsInfo: () => Promise<ApiResponse<DiagnosticsInfo>>;
+  getLogTail: (lines?: number) => Promise<ApiResponse<{ lines: string[]; logFilePath: string }>>;
 }

@@ -109,6 +109,17 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
         current.confidence > best.confidence ? current : best
       );
 
+      if (!bestFace.embedding || bestFace.embedding.length === 0) {
+        // 偵測到臉但沒有 embedding — 通常代表 faceres 描述模型未載入
+        logger.error(
+          `❌ Face detected (confidence=${bestFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
+          ' — the faceres description model may have failed to load.' +
+          ' Check that faceres.json and its weight shards exist in the models directory.'
+        );
+        fallbackReason = 'detection_error';
+        detectionErrorCode = 'FACERES_MODEL_MISSING';
+      }
+
       if (bestFace.embedding && bestFace.embedding.length > 0) {
         // 確保向量已正規化
         let norm = 0;

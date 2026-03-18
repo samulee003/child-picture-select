@@ -227,6 +227,84 @@ function wireIpc() {
     return getModelStatus();
   });
 
+  // 診斷資訊 — 回傳 log 路徑、模型檔案狀態、WASM 狀態，供開發者排查問題
+  ipcMain.handle('diagnostics:get-info', async () => {
+    const { join: pathJoin } = require('path');
+    const { existsSync: fsExistsSync, readdirSync } = require('fs');
+
+    const modelStatus = getModelStatus();
+
+    // Log 檔路徑
+    const userDataPath = app.getPath('userData');
+    const logsDir = pathJoin(userDataPath, 'logs');
+    const today = new Date().toISOString().split('T')[0];
+    const logFilePath = pathJoin(logsDir, `app-${today}.log`);
+
+    // 模型檔案檢查
+    const modelsDir = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
+    let modelFiles: string[] = [];
+    try {
+      modelFiles = readdirSync(modelsDir);
+    } catch { /* not found */ }
+
+    const faceresExists = modelFiles.some(f => f === 'faceres.json');
+    const facedetectExists = modelFiles.some(f => f.startsWith('blazeface'));
+
+    // WASM 檔案檢查
+    const wasmDir = pathJoin(process.cwd(), 'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist');
+    const wasmExists = fsExistsSync(pathJoin(wasmDir, 'tfjs-backend-wasm.wasm'));
+
+    // human WASM build 檢查
+    const humanWasmPath = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'human', 'dist', 'human.node-wasm.js');
+    const humanWasmExists = fsExistsSync(humanWasmPath);
+
+    // canvas 套件檢查
+    let canvasAvailable = false;
+    try {
+      require('canvas');
+      canvasAvailable = true;
+    } catch { /* not available */ }
+
+    return {
+      ok: true,
+      data: {
+        logFilePath,
+        logFileExists: fsExistsSync(logFilePath),
+        modelLoaded: modelStatus.loaded,
+        modelError: modelStatus.error,
+        faceresModelExists: faceresExists,
+        facedetectModelExists: facedetectExists,
+        modelFilesFound: modelFiles.length,
+        modelsDir,
+        wasmBackendExists: wasmExists,
+        humanWasmBuildExists: humanWasmExists,
+        canvasAvailable,
+        nodeVersion: process.version,
+        platform: process.platform,
+      },
+    };
+  });
+
+  // 讀取 log 最後 N 行 — 供 UI 顯示診斷資訊
+  ipcMain.handle('diagnostics:get-log-tail', async (_event, lines: number = 100) => {
+    const { join: pathJoin } = require('path');
+    const { existsSync: fsExistsSync, readFileSync } = require('fs');
+    const userDataPath = app.getPath('userData');
+    const today = new Date().toISOString().split('T')[0];
+    const logFilePath = pathJoin(userDataPath, 'logs', `app-${today}.log`);
+    if (!fsExistsSync(logFilePath)) {
+      return { ok: true, data: { lines: [], logFilePath } };
+    }
+    try {
+      const content = readFileSync(logFilePath, 'utf-8');
+      const allLines = content.split('\n').filter((l: string) => l.trim());
+      const tail = allLines.slice(-lines);
+      return { ok: true, data: { lines: tail, logFilePath } };
+    } catch (err: any) {
+      return { ok: false, error: err?.message };
+    }
+  });
+
   // ==================== Auto-Update IPC ====================
   ipcMain.handle('update:check', async () => {
     try {
