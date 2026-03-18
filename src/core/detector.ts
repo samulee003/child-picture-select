@@ -1,7 +1,8 @@
 /**
  * 臉部偵測模組
- * 使用 @vladmandic/human (WASM backend) 進行臉部偵測與特徵提取
- * 不依賴 @tensorflow/tfjs-node 或 canvas，安裝包更小更穩定
+ * 使用 @vladmandic/face-api (SSD MobileNet V1) 進行臉部偵測與特徵提取
+ * SSD MobileNet 對亞洲兒童臉部的偵測率優於 BlazeFace，尤其在角度、遮擋和不同膚色場景下。
+ * 特徵向量由 FaceNet recognition model 輸出 128 維，以 canvas npm package 作為 Node.js 環境支援。
  */
 
 import { logger } from '../utils/logger';
@@ -10,7 +11,7 @@ import sharp from 'sharp';
 
 export interface FaceDetection {
   bbox: [number, number, number, number]; // x, y, width, height
-  embedding: number[]; // 1024 維特徵向量 (faceres model)
+  embedding: number[]; // 128 維特徵向量 (FaceNet)
   confidence: number;
   age?: number;
   gender?: 'male' | 'female';
@@ -23,35 +24,32 @@ export interface DetectorOptions {
   minConfidence?: number;
   /** 圖片縮放最大邊長（越大越能偵測小臉，但越慢） */
   maxSize?: number;
-  /** 裁切圖片上方比例（0-1），用於全身照中定位臉部區域，例如 0.55 表示只取上半部 55% */
+  /** 裁切圖片上方比例（0-1），用於全身照中定位臉部區域 */
   cropTopFraction?: number;
-  /** 覆蓋 Human 模型偵測器的最低信心度門檻（用於最寬鬆重試，預設不覆蓋） */
+  /** 覆蓋偵測器最低信心度門檻（用於最寬鬆重試） */
   overrideDetectorMinConfidence?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let humanInstance: any = null;
+let faceapi: any = null;
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
+let ageGenderLoaded = false;
+
 const FACE_DETECTION_TIMEOUT_MS = 30000;
-type DisposableTensor = { dispose: () => void };
-let localFileFetchShimInstalled = false;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isModelHealthy(human: any): boolean {
-  const models = human?.models;
-  return Boolean(models?.facedetect) && Boolean(models?.faceres);
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCode: string, timeoutMessage: string): Promise<T> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutCode: string,
+  timeoutMessage: string
+): Promise<T> {
   let timer: NodeJS.Timeout | null = null;
   try {
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(new AppError(timeoutMessage, timeoutCode));
-        }, timeoutMs);
+        timer = setTimeout(() => reject(new AppError(timeoutMessage, timeoutCode)), timeoutMs);
       }),
     ]);
   } finally {
@@ -60,261 +58,161 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutCod
 }
 
 /**
- * Node 22 fetch() 不支援 file://；human 讀本機模型會失敗。
- * 這裡攔截本機路徑並改用 fs 讀檔，回傳 Response 供 human/tfjs 使用。
+ * 解析 @vladmandic/face-api 模型目錄路徑（含開發模式與 Electron 打包路徑）
  */
-function installLocalFileFetchShim(): void {
-  if (localFileFetchShimInstalled) return;
-  const g = globalThis as unknown as { fetch?: (input: unknown, init?: unknown) => Promise<Response> };
-  if (typeof g.fetch !== 'function' || typeof Response === 'undefined') return;
-
-  const originalFetch = g.fetch.bind(globalThis);
-  g.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
-    try {
-      const raw = typeof input === 'string' ? input : (input as { url?: string } | null)?.url;
-      if (typeof raw === 'string') {
-        let localPath: string | null = null;
-        if (raw.startsWith('file://')) {
-          localPath = decodeURIComponent(raw.replace(/^file:\/\//, ''));
-          // Windows file URL 會是 /D:/...，轉回 D:/...
-          if (/^\/[a-zA-Z]:\//.test(localPath)) localPath = localPath.slice(1);
-        } else if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('/')) {
-          localPath = raw;
-        }
-
-        if (localPath) {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { existsSync, readFileSync } = require('fs');
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { normalize } = require('path');
-          const normalized = normalize(localPath);
-          if (!existsSync(normalized)) {
-            return new Response(`Not found: ${normalized}`, { status: 404 });
-          }
-          const data = readFileSync(normalized);
-          const contentType = normalized.endsWith('.json')
-            ? 'application/json'
-            : normalized.endsWith('.wasm')
-              ? 'application/wasm'
-              : 'application/octet-stream';
-          return new Response(data, { status: 200, headers: { 'content-type': contentType } });
-        }
-      }
-    } catch {
-      // fallback to original fetch
-    }
-    return originalFetch(input, init);
-  };
-
-  localFileFetchShimInstalled = true;
-  logger.info('Installed local file fetch shim for model loading');
-}
-
-/**
- * 解析 WASM 二進位檔案路徑
- */
-function resolveWasmPath(): string {
+function resolveModelPath(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { join } = require('path');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { existsSync } = require('fs');
 
-  // 開發模式
-  const devPath = join(process.cwd(), 'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist');
-  if (existsSync(join(devPath, 'tfjs-backend-wasm.wasm'))) {
-    logger.info(`Using WASM from: ${devPath}`);
-    return devPath + '/';
+  const devPath = join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'model');
+  if (existsSync(devPath)) {
+    logger.info(`Using face-api models from: ${devPath}`);
+    return devPath;
   }
 
-  // 打包後 — asarUnpack 路徑
   try {
-    const { app } = require('electron');
-    const appPath = app.getAppPath();
-    const unpackedPath = join(
-      appPath.replace('app.asar', 'app.asar.unpacked'),
-      'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist'
-    );
-    if (existsSync(join(unpackedPath, 'tfjs-backend-wasm.wasm'))) {
-      logger.info(`Using WASM from: ${unpackedPath}`);
-      return unpackedPath + '/';
-    }
-  } catch {
-    // Not in Electron
-  }
-
-  return '';
-}
-
-/**
- * 解析模型路徑，支援開發模式和打包後的 Electron
- */
-function resolveModelBasePath(): string {
-  const { join } = require('path');
-  const { existsSync } = require('fs');
-
-  // 1. 開發模式：node_modules 中的模型
-  const nodeModulesPath = join(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
-  if (existsSync(nodeModulesPath)) {
-    logger.info(`Using models from: ${nodeModulesPath}`);
-    return `file://${nodeModulesPath.replace(/\\/g, '/')}/`;
-  }
-
-  // 2. 打包後的 Electron app 路徑
-  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require('electron');
     const appPath = app.getAppPath();
 
-    // asarUnpack 路徑
     const unpackedPath = join(
       appPath.replace('app.asar', 'app.asar.unpacked'),
-      'node_modules', '@vladmandic', 'human', 'models'
+      'node_modules', '@vladmandic', 'face-api', 'model'
     );
     if (existsSync(unpackedPath)) {
-      logger.info(`Using unpacked models from: ${unpackedPath}`);
-      return `file://${unpackedPath.replace(/\\/g, '/')}/`;
+      logger.info(`Using unpacked face-api models from: ${unpackedPath}`);
+      return unpackedPath;
     }
 
-    // extraResources
-    const resourcesModelsPath = join(process.resourcesPath || appPath, 'models');
-    if (existsSync(resourcesModelsPath)) {
-      logger.info(`Using packaged models from: ${resourcesModelsPath}`);
-      return `file://${resourcesModelsPath.replace(/\\/g, '/')}/`;
-    }
-
-    // asar 內 (JSON 可讀)
-    const asarModulesPath = join(appPath, 'node_modules', '@vladmandic', 'human', 'models');
-    if (existsSync(asarModulesPath)) {
-      logger.info(`Using asar models from: ${asarModulesPath}`);
-      return `file://${asarModulesPath.replace(/\\/g, '/')}/`;
+    const asarPath = join(appPath, 'node_modules', '@vladmandic', 'face-api', 'model');
+    if (existsSync(asarPath)) {
+      logger.info(`Using asar face-api models from: ${asarPath}`);
+      return asarPath;
     }
   } catch {
     // Not in Electron
   }
 
-  logger.warn('Local models not found, using CDN fallback');
-  return 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/';
+  throw new Error(
+    'face-api model directory not found. Make sure @vladmandic/face-api is installed.'
+  );
 }
 
 /**
- * 初始化 Human 實例（延遲載入，WASM backend）
+ * 初始化 face-api 並載入所需模型
+ * - ssdMobilenetv1: 臉部偵測（比 BlazeFace 對多族裔/兒童效果更好）
+ * - faceLandmark68Net: 68 特徵點（對齊後供 recognition model 使用）
+ * - faceRecognitionNet: 128 維特徵向量 (FaceNet)
  */
-async function getHuman() {
-  if (humanInstance) return humanInstance;
+async function loadFaceApi() {
+  if (faceapi) return faceapi;
   if (modelLoadAttempted) return null;
 
   modelLoadAttempted = true;
 
   try {
-    logger.info('Loading @vladmandic/human model (WASM backend)...');
-    installLocalFileFetchShim();
+    logger.info('Loading @vladmandic/face-api (SSD MobileNet + FaceNet)...');
 
-    // 載入 WASM 版本 — 不依賴 tfjs-node，無 native bindings
-    // 動態構建路徑，避免 Node.js exports 限制和 tsup 靜態分析
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { join } = require('path');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { existsSync } = require('fs');
-    const humanWasmFile = ['dist', 'human.node-wasm.js'].join('/');
+
+    // 優先使用 node-wasm build（自含 WASM，不依賴 tfjs-node native bindings）
     const candidates = [
-      join(process.cwd(), 'node_modules', '@vladmandic', 'human', humanWasmFile),
+      join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js'),
+      join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node.js'),
     ];
-    // Electron 打包路徑
+
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { app } = require('electron');
       const appPath = app.getAppPath();
+      const unpacked = appPath.replace('app.asar', 'app.asar.unpacked');
       candidates.push(
-        join(appPath.replace('app.asar', 'app.asar.unpacked'), 'node_modules', '@vladmandic', 'human', humanWasmFile),
-        join(appPath, 'node_modules', '@vladmandic', 'human', humanWasmFile),
+        join(unpacked, 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js'),
+        join(unpacked, 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node.js'),
       );
-    } catch { /* not in Electron */ }
+    } catch {
+      // Not in Electron
+    }
 
-    // 記錄所有候選路徑以便除錯
     for (const c of candidates) {
-      const found = existsSync(c);
-      logger.info(`Model candidate: ${c} → ${found ? 'FOUND' : 'NOT FOUND'}`);
+      logger.info(`face-api candidate: ${c} → ${existsSync(c) ? 'FOUND' : 'NOT FOUND'}`);
     }
 
-    const wasmEntry = candidates.find(c => existsSync(c));
-    if (!wasmEntry) {
-      throw new Error(`Cannot find @vladmandic/human WASM build. Searched: ${candidates.join(', ')}`);
-    }
-    const humanModule = require(wasmEntry);
-    const Human = humanModule.Human || humanModule.default?.Human || humanModule.default;
-
-    if (!Human) {
-      throw new Error('@vladmandic/human module loaded but Human class not found');
+    const faceApiPath = candidates.find(c => existsSync(c));
+    if (!faceApiPath) {
+      throw new Error(`Cannot find @vladmandic/face-api build. Searched:\n${candidates.join('\n')}`);
     }
 
-    // 配置 WASM 路徑
-    const wasmPath = resolveWasmPath();
-    const modelBasePath = resolveModelBasePath();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const loaded = require(faceApiPath);
+    faceapi = loaded.default || loaded;
 
-    humanInstance = new Human({
-      modelBasePath,
-      backend: 'wasm',
-      wasmPath,
-      cacheSensitivity: 0,
-      filter: { enabled: true, equalization: true },
-      face: {
-        enabled: true,
-        detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.01, modelPath: 'blazeface.json' },
-        mesh: { enabled: false },
-        iris: { enabled: false },
-        emotion: { enabled: false },
-        description: { enabled: true, modelPath: 'faceres.json' },
-        antispoof: { enabled: false },
-      },
-      body: { enabled: false },
-      hand: { enabled: false },
-      gesture: { enabled: false },
-      segmentation: { enabled: false },
-      object: { enabled: false },
-    });
-
-    // Fix: Electron main process 沒有 DOM，但 human 會誤判為瀏覽器環境
-    // 強制設定為非瀏覽器模式，並提供 canvas npm package 作為 Canvas 實作
-    humanInstance.env.browser = false;
+    // 在 Node.js 環境中注入 canvas 實作（face-api 需要 DOM Canvas API）
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const nodeCanvas = require('canvas');
-      humanInstance.env.Canvas = nodeCanvas.Canvas;
-      humanInstance.env.Image = nodeCanvas.Image;
-      humanInstance.env.ImageData = nodeCanvas.ImageData;
-      logger.info('Node.js canvas package loaded for face detection support');
+      faceapi.env.monkeyPatch({
+        Canvas: nodeCanvas.Canvas,
+        Image: nodeCanvas.Image,
+        ImageData: nodeCanvas.ImageData,
+      });
+      logger.info('Node.js canvas package patched into face-api env');
     } catch (canvasErr) {
       logger.warn('canvas npm package not available, face detection may be limited:', canvasErr);
     }
 
-    // 預先載入模型權重（確保 model 可用）
-    await humanInstance.load();
+    const modelPath = resolveModelPath();
+    logger.info(`Loading SSD MobileNet V1 from: ${modelPath}`);
+    await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
 
-    if (!isModelHealthy(humanInstance)) {
-      throw new AppError(
-        'AI 模型載入不完整（臉部偵測模型未就緒）',
-        'MODEL_HEALTH_CHECK_FAILED'
-      );
-    }
+    logger.info(`Loading FaceLandmark68Net from: ${modelPath}`);
+    await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
 
-    logger.info('@vladmandic/human model loaded and ready (WASM backend)');
-    return humanInstance;
+    logger.info(`Loading FaceRecognitionNet from: ${modelPath}`);
+    await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
+
+    logger.info('@vladmandic/face-api loaded and ready (SSD MobileNet + FaceNet 128-dim)');
+    return faceapi;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     modelLoadError = message;
-    logger.error(`Failed to load @vladmandic/human: ${message}`);
+    logger.error(`Failed to load @vladmandic/face-api: ${message}`);
     logger.error('Face detection will NOT work. Photos will get deterministic embeddings.');
     return null;
   }
 }
 
 /**
- * 預先載入模型（在 app ready 後呼叫，讓 UI 不會顯示「AI 未載入」）
- * 允許重試：如果之前失敗，會重置狀態再嘗試一次
+ * 延遲載入 AgeGender 模型（僅在 enableAgeGender 時載入，節省記憶體）
+ */
+async function ensureAgeGenderModel(fa: NonNullable<typeof faceapi>): Promise<void> {
+  if (ageGenderLoaded) return;
+  try {
+    const modelPath = resolveModelPath();
+    await fa.nets.ageGenderNet.loadFromDisk(modelPath);
+    ageGenderLoaded = true;
+    logger.info('AgeGenderNet loaded');
+  } catch (err) {
+    logger.warn('AgeGenderNet not available (optional):', err);
+  }
+}
+
+/**
+ * 預先載入模型（在 app ready 後呼叫，讓 UI 不顯示「AI 未載入」）
+ * 允許重試：如果之前失敗，會重置狀態再嘗試
  */
 export async function preloadModel(): Promise<void> {
   try {
-    // 如果之前嘗試失敗了，重置狀態允許重試
-    if (modelLoadAttempted && !humanInstance) {
+    if (modelLoadAttempted && !faceapi) {
       modelLoadAttempted = false;
       modelLoadError = null;
     }
-    await getHuman();
+    await loadFaceApi();
   } catch (err) {
     logger.error('Failed to preload face detection model:', err);
   }
@@ -325,60 +223,38 @@ export async function preloadModel(): Promise<void> {
  */
 export function getModelStatus(): { loaded: boolean; error: string | null } {
   return {
-    loaded: humanInstance !== null,
+    loaded: faceapi !== null,
     error: modelLoadError,
   };
 }
 
 /**
- * 將圖片 buffer 轉為 tensor（使用 sharp 解碼 + human.tf）
- * 強制輸出 RGB 3-channel 以確保 human.detect() 能正確處理
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function bufferToTensor(human: any, imageBuffer: Buffer) {
-  const { data, info } = await sharp(imageBuffer)
-    .removeAlpha()   // 移除 alpha channel，確保輸出為 RGB
-    .toColorspace('srgb')
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  const { width, height, channels } = info;
-
-  if (channels !== 3) {
-    logger.warn(`bufferToTensor: unexpected channel count ${channels} (expected 3); proceeding anyway`);
-  }
-
-  return human.tf.tensor3d(
-    new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
-    [height, width, channels]
-  );
-}
-
-/**
  * 從圖片檔案偵測臉部並提取特徵
+ * 使用 SSD MobileNet V1 偵測 → FaceLandmark68 對齊 → FaceRecognitionNet 128-dim 特徵
  */
 export async function detectFaces(
   imagePath: string,
   options: DetectorOptions = {}
 ): Promise<FaceDetection[]> {
-  const human = await getHuman();
+  const fa = await loadFaceApi();
 
-  if (!human) {
-    logger.debug('Human model not available, skipping face detection');
+  if (!fa) {
+    logger.debug('face-api not available, skipping face detection');
     return [];
   }
 
   try {
     logger.debug(`Processing image for face detection: ${imagePath}`);
 
+    const maxEdge = options.maxSize || 1280;
     let sharpInstance = sharp(imagePath);
-    const isHeic = imagePath.toLowerCase().endsWith('.heic') || imagePath.toLowerCase().endsWith('.heif');
 
+    const isHeic =
+      imagePath.toLowerCase().endsWith('.heic') || imagePath.toLowerCase().endsWith('.heif');
     if (isHeic) {
       try {
         sharpInstance = sharp(imagePath, { sequentialRead: true });
       } catch (heicError) {
-        logger.warn(`Failed to process HEIC file ${imagePath}:`, heicError);
         throw new AppError(
           `HEIC format not supported for face detection: ${imagePath}`,
           'HEIC_NOT_SUPPORTED',
@@ -387,103 +263,102 @@ export async function detectFaces(
       }
     }
 
-    const maxEdge = options.maxSize || 1280; // Increase default maxSize for reference photos
-
     // 若指定裁切比例，先裁切圖片上方區域（適用於全身照中臉部偵測）
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
       const meta = await sharp(imagePath).metadata();
       const imgWidth = meta.width || 1000;
       const imgHeight = meta.height || 1000;
       const cropHeight = Math.round(imgHeight * options.cropTopFraction);
-      sharpInstance = sharp(imagePath).extract({ left: 0, top: 0, width: imgWidth, height: cropHeight });
+      sharpInstance = sharp(imagePath).extract({
+        left: 0,
+        top: 0,
+        width: imgWidth,
+        height: cropHeight,
+      });
     }
 
-    const imageBuffer = await withTimeout<Buffer>(
+    const imageBuffer = await withTimeout(
       sharpInstance
         .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 85 })
+        .png()
         .toBuffer(),
       FACE_DETECTION_TIMEOUT_MS,
       'FACE_DETECTION_TIMEOUT',
       `Image preprocessing timed out for ${imagePath}`
     );
 
-    const tensor = await withTimeout<DisposableTensor>(
-      bufferToTensor(human, imageBuffer),
-      FACE_DETECTION_TIMEOUT_MS,
-      'FACE_DETECTION_TIMEOUT',
-      `Tensor conversion timed out for ${imagePath}`
-    );
-    let result: any;
-    try {
-      // 若指定覆蓋信心度門檻，暫時修改 human 設定後還原
-      const origMinConf = options.overrideDetectorMinConfidence != null
-        ? humanInstance?.config?.face?.detector?.minConfidence
-        : undefined;
-      if (options.overrideDetectorMinConfidence != null && humanInstance?.config?.face?.detector) {
-        humanInstance.config.face.detector.minConfidence = options.overrideDetectorMinConfidence;
-      }
-      try {
-        result = await withTimeout(
-          human.detect(tensor),
-          FACE_DETECTION_TIMEOUT_MS,
-          'FACE_DETECTION_TIMEOUT',
-          `Face detection timed out for ${imagePath}`
-        );
-      } finally {
-        // 還原原始設定
-        if (options.overrideDetectorMinConfidence != null && humanInstance?.config?.face?.detector && origMinConf != null) {
-          humanInstance.config.face.detector.minConfidence = origMinConf;
-        }
-      }
-    } finally {
-      tensor.dispose(); // 釋放記憶體
-    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createCanvas, loadImage } = require('canvas');
+    const img = await loadImage(imageBuffer);
+    const canvas = createCanvas(img.width as number, img.height as number);
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    ctx.drawImage(img as unknown as HTMLImageElement, 0, 0);
 
-    const detections: FaceDetection[] = [];
-    const { enableAgeGender = true, minConfidence = 0.01 } = options;
+    // 使用 overrideDetectorMinConfidence（最寬鬆重試）或 minConfidence，預設 0.3
+    const minConf =
+      options.overrideDetectorMinConfidence ?? options.minConfidence ?? 0.3;
 
-    if (result.face && result.face.length > 0) {
-      logger.debug(`Found ${result.face.length} face(s) in ${imagePath}`);
+    const detectionOptions = new fa.SsdMobilenetv1Options({
+      minConfidence: minConf,
+      maxResults: 10,
+    });
 
-      for (const face of result.face) {
-        if (face.score < minConfidence) {
-          logger.debug(`Skipping face with low confidence: ${face.score} < ${minConfidence}`);
-          continue;
-        }
-
-        let embedding: number[] = [];
-        if (face.embedding && face.embedding.length > 0) {
-          embedding = Array.from(face.embedding);
-        }
-
-        const bbox: [number, number, number, number] = [
-          face.box[0],
-          face.box[1],
-          face.box[2],
-          face.box[3],
-        ];
-
-        const detection: FaceDetection = {
-          bbox,
-          embedding: embedding.length > 0 ? embedding : [],
-          confidence: face.score,
-        };
-
-        if (enableAgeGender && face.age != null) {
-          detection.age = Math.round(face.age);
-        }
-        if (enableAgeGender && face.gender != null) {
-          detection.gender = typeof face.gender === 'string' ? face.gender : (face.gender === 0 ? 'female' : 'male');
-        }
-
-        detections.push(detection);
-      }
+    let detections: unknown[];
+    if (options.enableAgeGender) {
+      await ensureAgeGenderModel(fa);
+      detections = await withTimeout(
+        fa.detectAllFaces(canvas, detectionOptions)
+          .withFaceLandmarks()
+          .withAgeAndGender()
+          .withFaceDescriptors(),
+        FACE_DETECTION_TIMEOUT_MS,
+        'FACE_DETECTION_TIMEOUT',
+        `Face detection timed out for ${imagePath}`
+      );
     } else {
-      logger.debug(`No faces detected in ${imagePath}`);
+      detections = await withTimeout(
+        fa.detectAllFaces(canvas, detectionOptions)
+          .withFaceLandmarks()
+          .withFaceDescriptors(),
+        FACE_DETECTION_TIMEOUT_MS,
+        'FACE_DETECTION_TIMEOUT',
+        `Face detection timed out for ${imagePath}`
+      );
     }
 
-    return detections;
+    if (!detections || detections.length === 0) {
+      logger.debug(`No faces detected in ${imagePath}`);
+      return [];
+    }
+
+    logger.debug(`Found ${detections.length} face(s) in ${imagePath}`);
+
+    const postMinConf = options.minConfidence ?? 0.01;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results: FaceDetection[] = (detections as any[])
+      .filter((d) => d.detection.score >= postMinConf)
+      .map((d) => {
+        const detection: FaceDetection = {
+          bbox: [
+            d.detection.box.x,
+            d.detection.box.y,
+            d.detection.box.width,
+            d.detection.box.height,
+          ],
+          embedding: Array.from(d.descriptor as Float32Array),
+          confidence: d.detection.score,
+        };
+        if (options.enableAgeGender && d.age != null) {
+          detection.age = Math.round(d.age as number);
+        }
+        if (options.enableAgeGender && d.gender != null) {
+          detection.gender = (d.gender as string) === 'male' ? 'male' : 'female';
+        }
+        return detection;
+      });
+
+    return results;
   } catch (err) {
     if (err instanceof AppError && err.code === 'FACE_DETECTION_TIMEOUT') {
       logger.warn(`${err.message}; skipping face detection for this image`);

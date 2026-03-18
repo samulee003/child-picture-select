@@ -29,10 +29,10 @@ export interface EmbeddingResult {
 export const DETERMINISTIC_SCORE_PENALTY = 0.12;
 
 /**
- * FaceRes 模型輸出的 embedding 維度為 1024
+ * FaceNet recognition model 輸出的 embedding 維度為 128
  * 確定性 fallback 必須使用相同維度以保持 cosine similarity 可計算
  */
-export const EMBEDDING_DIMS = 1024;
+export const EMBEDDING_DIMS = 128;
 
 // Deterministic placeholder embedding based on file bytes.
 // Produces a unit-normalized vector so cosine similarity is computable.
@@ -184,7 +184,7 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
   }
 
   // 降級到 deterministic embedding
-  // 使用 EMBEDDING_DIMS (1024) 以匹配 faceres 模型的輸出維度
+  // 使用 EMBEDDING_DIMS (128) 以匹配 FaceNet 模型的輸出維度
   try {
     const deterministicEmbedding = await fileToDeterministicEmbedding(filePath, EMBEDDING_DIMS);
     logger.warn(`🔶 Generated DETERMINISTIC embedding for: ${filePath} — this is a FILE HASH, not a face embedding; UI should suggest manual review`);
