@@ -8,7 +8,7 @@
 - **Version**: 0.2.8
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
-- **Stack**: React 18 + TypeScript + Electron + TensorFlow.js (WASM) + SQLite
+- **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
 
 ---
 
@@ -19,7 +19,7 @@
 | Desktop | Electron 31.5.0 |
 | UI | React 18.3.1 + TypeScript 5.6.3 |
 | Build | Vite 5.4.10 + tsup |
-| AI/ML | @vladmandic/human 2.10.0 + TensorFlow.js 4.22.0 (WASM backend) |
+| AI/ML | InsightFace SCRFD det_500m + ArcFace w600k_mbf (onnxruntime-node 1.20.1) |
 | Image Processing | Sharp 0.33.5 |
 | Database | better-sqlite3 11.7.0 (local SQLite) |
 | Testing | Vitest 2.1.4 + Playwright 1.48.2 |
@@ -73,7 +73,10 @@ npm run release:check    # Pre-release validation
 ```
 src/
 ├── core/                    # AI and image processing logic
-│   ├── detector.ts          # Face detection (@vladmandic/human)
+│   ├── detector.ts          # Face detection orchestration (SCRFD → align → ArcFace)
+│   ├── scrfd.ts             # SCRFD det_500m ONNX detector (bbox + 5-point kps)
+│   ├── align.ts             # Umeyama 5-point similarity transform → 112×112 alignment
+│   ├── arcface.ts           # ArcFace w600k_mbf ONNX recognition (512-dim embedding)
 │   ├── embeddings.ts        # Embedding extraction + deterministic fallback
 │   ├── similarity.ts        # Cosine similarity matching
 │   ├── db.ts                # SQLite cache for embeddings and thumbnails
@@ -141,15 +144,22 @@ IPC handlers return a consistent shape:
 ```
 
 ### AI Pipeline
-1. **Load reference photos** → `embed:references` → extract 1024-dim face embeddings
+1. **Load reference photos** → `embed:references` → extract 512-dim ArcFace embeddings
 2. **Scan target folder** → `embed:batch` → extract embeddings for all photos (cached in SQLite)
 3. **Run matching** → `match:run` → cosine similarity, return top-N results sorted by score
+
+**InsightFace detection pipeline** (per photo):
+```
+sharp 預處理 → SCRFD det_500m（bbox + 5 kps）→ Umeyama 對齊（112×112）→ ArcFace w600k_mbf（512-dim）
+```
+This mirrors Python `insightface.app.FaceAnalysis.get()` exactly.
 
 ### Deterministic Fallback
 When face detection fails, the app falls back to a SHA-256 hash-based embedding. This allows the scan to continue but:
 - Results are penalized by **0.12** in similarity scoring
 - User is warned via the `deterministicFallback` flag
 - Embedding source is tracked as `'face'` | `'deterministic'` | `'unknown'`
+- Embedding dimensions: **512** (ArcFace) — deterministic fallback also generates 512-dim vectors
 - Never treat deterministic embeddings as true face matches
 
 ### Caching Strategy
@@ -269,18 +279,38 @@ logger.error('Face detection failed', error);
 
 ## Core Module Reference
 
+### `src/core/scrfd.ts`
+- `loadSCRFD()` — Load `det_500m.onnx` via onnxruntime-node
+- `detectFacesSCRFD(imagePath, options)` — SCRFD inference → bbox `[x1,y1,x2,y2]` + 5 keypoints
+- `getSCRFDStatus()` — Check if SCRFD session is loaded
+- `resetSCRFD()` — Reset session for retry
+- Input: BGR, `(px-127.5)/128.0`, 640×640; outputs: 9 tensors (score/bbox/kps × stride 8/16/32)
+- Applies sigmoid to raw scores + IoU NMS (threshold 0.4)
+
+### `src/core/align.ts`
+- `alignFace(imageBuffer, imageWidth, imageHeight, kps, outputSize?)` — Umeyama → 112×112 aligned raw RGB buffer
+- `umeyama2D(src, dst)` — Analytic 2×2 SVD similarity transform
+- `ARCFACE_DST_5PT` — Standard ArcFace 112×112 template coordinates
+- Uses Sharp `.affine()` with inverse mapping for efficient bicubic warp
+
+### `src/core/arcface.ts`
+- `loadArcFace()` — Load `w600k_mbf.onnx` via onnxruntime-node
+- `extractArcFaceEmbeddingFromAligned(alignedRawRgb)` — Primary entry; accepts 112×112 raw RGB buffer
+- `extractArcFaceEmbedding(imageBuffer, bbox, w, h)` — Legacy bbox-based entry (deprecated)
+- `getArcFaceStatus()` — Check if ArcFace session is loaded
+- Input: BGR NCHW `[1,3,112,112]`, `(px-127.5)/127.5`; output: 512-dim L2-normalized
+
 ### `src/core/detector.ts`
-- `preloadModel()` — Load AI model asynchronously
-- `detectFaces(filePath, options)` — Extract face detections + 1024-dim embeddings
-- `getModelStatus()` — Check if model is loaded
-- Uses FaceRes model; falls back at confidence 0.05 if 0.3 threshold fails
-- 30-second timeout per detection; WASM backend (no TF-node or Canvas required in worker)
+- `preloadModel()` — Load SCRFD + ArcFace in parallel
+- `detectFaces(filePath, options)` — Full pipeline: SCRFD → Umeyama → ArcFace → `FaceDetection[]`
+- `getModelStatus()` — Returns combined SCRFD + ArcFace load state
+- 30-second timeout per detection; pure ONNX, no TF.js or Canvas required
 
 ### `src/core/embeddings.ts`
 - `fileToEmbeddingWithSource(filePath, options)` — Returns `{ embedding, source }`
 - `fileToEmbedding(filePath)` — Legacy backward-compatible wrapper
 - `fileToDeterministicEmbedding(filePath, dims)` — SHA-256 hash fallback
-- Constants: `EMBEDDING_DIMS = 1024`, `DETERMINISTIC_SCORE_PENALTY = 0.12`
+- Constants: `EMBEDDING_DIMS = 512`, `DETERMINISTIC_SCORE_PENALTY = 0.12`
 
 ### `src/core/similarity.ts`
 - `cosineSimilarity(a, b)` — Standard cosine similarity with dimension tolerance
@@ -355,21 +385,25 @@ npm test
 
 ## Common Pitfalls
 
-1. **Canvas in main process** — `@vladmandic/human` requires Canvas. If face detection silently fails, check that the `canvas` npm package is available in the main process context. This was a past bug (fixed in PR #16).
+1. **Both ONNX models required** — `det_500m.onnx` (SCRFD) and `w600k_mbf.onnx` (ArcFace) must both be present in `models/insightface/`. Run `npm run download-models` if either is missing. Both are committed to the repo.
 
-2. **Model must load before scanning** — Scans are blocked if the AI model fails to load. Check `model:status` before allowing `embed:batch`.
+2. **Model must load before scanning** — Scans are blocked if SCRFD or ArcFace fails to load. Check `model:status` before allowing `embed:batch`. Both models load in parallel via `preloadModel()`.
 
-3. **Dimension mismatch in embeddings** — `similarity.ts` handles mismatched vector lengths. Reference embeddings and photo embeddings must both be 1024-dim for accurate results.
+3. **Dimension mismatch in embeddings** — All embeddings are **512-dim** (ArcFace). Deterministic fallback also produces 512-dim. Old cached embeddings from pre-v0.2.8 (1024-dim `@vladmandic/human`) are automatically invalidated by the SQLite schema migration.
 
-4. **SQLite WAL mode** — The database uses WAL mode for performance. Do not switch to journal mode without benchmarking.
+4. **SCRFD score pre-sigmoid** — The `det_500m.onnx` from buffalo_sc outputs raw logits (NOT pre-sigmoided). `scrfd.ts` applies `1 / (1 + exp(-x))` before thresholding. Do not remove this step.
 
-5. **Electron version compatibility** — Native modules (`better-sqlite3`, `sharp`, `canvas`) must be rebuilt for the exact Electron version. Use `electron-rebuild` after changing Electron version.
+5. **Alignment is critical for ArcFace accuracy** — ArcFace was trained on Umeyama-aligned 112×112 faces. Skipping alignment (passing raw bbox crops) significantly degrades embedding quality, especially for tilted or side-facing photos.
 
-6. **TypeScript strict mode** — Type assertions via `as any` are used sparingly at IPC boundaries. Avoid introducing them in core logic.
+6. **SQLite WAL mode** — The database uses WAL mode for performance. Do not switch to journal mode without benchmarking.
 
-7. **Legacy embedding cache invalidation** — Starting v0.2.5, the SQLite schema was bumped and old cache entries without a `source` column are automatically invalidated on first run. Do not rely on previously cached embeddings across this version boundary.
+7. **Electron version compatibility** — Native modules (`better-sqlite3`, `sharp`, `onnxruntime-node`) must be rebuilt for the exact Electron version. Use `electron-rebuild` after changing Electron version.
 
-8. **`perFileResults` type assertion** — In `src/main/index.ts`, `perFileResults` uses `as any` cast to avoid TS2339. This is intentional to handle IPC boundary types safely.
+8. **TypeScript strict mode** — Type assertions via `as any` are used sparingly at IPC boundaries. Avoid introducing them in core logic.
+
+9. **Legacy embedding cache invalidation** — Starting v0.2.5, the SQLite schema was bumped and old cache entries without a `source` column are automatically invalidated on first run. v0.2.8 further invalidates pre-existing 1024-dim embeddings (incompatible with the new 512-dim ArcFace model).
+
+10. **`perFileResults` type assertion** — In `src/main/index.ts`, `perFileResults` uses `as any` cast to avoid TS2339. This is intentional to handle IPC boundary types safely.
 
 ---
 
