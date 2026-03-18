@@ -254,7 +254,7 @@ async function getHuman() {
       filter: { enabled: true, equalization: true },
       face: {
         enabled: true,
-        detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.01 },
+        detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.01, modelPath: 'blazeface.json' },
         mesh: { enabled: false },
         iris: { enabled: false },
         emotion: { enabled: false },
