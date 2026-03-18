@@ -95,12 +95,11 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
 
     if (faces.length === 0 && options.retryOnNoFace) {
       const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
-      const retryMinConfidence = Math.min(options.minConfidence ?? 0.3, 0.05);
       logger.info(`Retrying face detection with broader settings: ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
         maxSize: retryMaxSize,
-        minConfidence: retryMinConfidence,
+        minConfidence: 0.01,
       });
     }
 

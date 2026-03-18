@@ -428,7 +428,7 @@ function wireIpc() {
         logger.debug(`Processing reference file: ${f}`);
         const result = await fileToEmbeddingWithSource(f, {
           maxSize: 1280,
-          minConfidence: 0.05,
+          minConfidence: 0.01,
           retryOnNoFace: true,
         });
         referenceEmbeddings.push(result.embedding);
@@ -599,7 +599,7 @@ function wireIpc() {
               logger.debug(`Processing new/modified file: ${filePath}`);
               const result = await fileToEmbeddingWithSource(filePath, {
                 maxSize: 1280,
-                minConfidence: 0.05,
+                minConfidence: 0.01,
                 retryOnNoFace: true,
               });
               faceAnalysis = result.faceAnalysis;
@@ -630,7 +630,7 @@ function wireIpc() {
                 logger.debug(`No cached embedding found for: ${filePath}`);
                 const result = await fileToEmbeddingWithSource(filePath, {
                   maxSize: 1280,
-                  minConfidence: 0.05,
+                  minConfidence: 0.01,
                   retryOnNoFace: true,
                 });
                 faceAnalysis = result.faceAnalysis;

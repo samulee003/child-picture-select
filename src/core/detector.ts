@@ -254,7 +254,7 @@ async function getHuman() {
       filter: { enabled: true, equalization: true },
       face: {
         enabled: true,
-        detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.05 },
+        detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.01 },
         mesh: { enabled: false },
         iris: { enabled: false },
         emotion: { enabled: false },
@@ -441,7 +441,7 @@ export async function detectFaces(
     }
 
     const detections: FaceDetection[] = [];
-    const { enableAgeGender = true, minConfidence = 0.05 } = options;
+    const { enableAgeGender = true, minConfidence = 0.01 } = options;
 
     if (result.face && result.face.length > 0) {
       logger.debug(`Found ${result.face.length} face(s) in ${imagePath}`);
