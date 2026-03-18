@@ -167,6 +167,12 @@ async function loadFaceApi() {
     }
 
     const modelPath = resolveModelPath();
+
+    // WASM backend 必須在載入模型前完成初始化
+    logger.info('Initializing TensorFlow.js backend...');
+    await faceapi.tf.ready();
+    logger.info(`TF.js backend ready: ${faceapi.tf.getBackend()}`);
+
     logger.info(`Loading SSD MobileNet V1 from: ${modelPath}`);
     await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
 
