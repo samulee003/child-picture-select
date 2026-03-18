@@ -25,6 +25,8 @@ export interface DetectorOptions {
   maxSize?: number;
   /** 裁切圖片上方比例（0-1），用於全身照中定位臉部區域，例如 0.55 表示只取上半部 55% */
   cropTopFraction?: number;
+  /** 覆蓋 Human 模型偵測器的最低信心度門檻（用於最寬鬆重試，預設不覆蓋） */
+  overrideDetectorMinConfidence?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -414,12 +416,26 @@ export async function detectFaces(
     );
     let result: any;
     try {
-      result = await withTimeout(
-        human.detect(tensor),
-        FACE_DETECTION_TIMEOUT_MS,
-        'FACE_DETECTION_TIMEOUT',
-        `Face detection timed out for ${imagePath}`
-      );
+      // 若指定覆蓋信心度門檻，暫時修改 human 設定後還原
+      const origMinConf = options.overrideDetectorMinConfidence != null
+        ? humanInstance?.config?.face?.detector?.minConfidence
+        : undefined;
+      if (options.overrideDetectorMinConfidence != null && humanInstance?.config?.face?.detector) {
+        humanInstance.config.face.detector.minConfidence = options.overrideDetectorMinConfidence;
+      }
+      try {
+        result = await withTimeout(
+          human.detect(tensor),
+          FACE_DETECTION_TIMEOUT_MS,
+          'FACE_DETECTION_TIMEOUT',
+          `Face detection timed out for ${imagePath}`
+        );
+      } finally {
+        // 還原原始設定
+        if (options.overrideDetectorMinConfidence != null && humanInstance?.config?.face?.detector && origMinConf != null) {
+          humanInstance.config.face.detector.minConfidence = origMinConf;
+        }
+      }
     } finally {
       tensor.dispose(); // 釋放記憶體
     }

@@ -114,6 +114,29 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
         cropTopFraction: 0.55,
       });
     }
+
+    // 第四次重試：裁切上方 38%（頭部特寫），最低信心度 0.01，抓住被頭飾遮擋的臉
+    if (faces.length === 0 && options.retryOnNoFace) {
+      logger.info(`Fourth retry with tight head crop (top 38%) + relaxed confidence: ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: 2048,
+        minConfidence: 0.01,
+        cropTopFraction: 0.38,
+        overrideDetectorMinConfidence: 0.01,
+      });
+    }
+
+    // 第五次重試：完整圖片，最高解析度，最低信心度（最後手段）
+    if (faces.length === 0 && options.retryOnNoFace) {
+      logger.info(`Fifth retry with full image at max resolution + minimum confidence: ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: 3072,
+        minConfidence: 0.01,
+        overrideDetectorMinConfidence: 0.01,
+      });
+    }
     if (faces.length > 0) {
       // 使用信心度最高的臉部
       const bestFace = faces.reduce((best, current) =>
