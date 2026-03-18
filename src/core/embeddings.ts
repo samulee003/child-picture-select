@@ -86,54 +86,56 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
   try {
     logger.debug(`Attempting face detection for: ${filePath}`);
 
-    // 嘗試使用真正的臉部偵測（含年齡/性別分析）
+    // Attempt 1：SCRFD 標準（minConfidence=0.3, inputSize=640）
     let faces = await detectFaces(filePath, {
       enableAgeGender: true,
       maxSize: options.maxSize,
-      minConfidence: options.minConfidence,
+      minConfidence: options.minConfidence ?? 0.3,
     });
 
+    // Attempt 2：降低信心度（minConfidence=0.1）
     if (faces.length === 0 && options.retryOnNoFace) {
-      const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
-      logger.info(`Retrying face detection with broader settings: ${filePath}`);
+      logger.info(`Retry #2: lower confidence (0.1): ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
-        maxSize: retryMaxSize,
-        minConfidence: 0.01,
+        maxSize: options.maxSize,
+        minConfidence: 0.1,
+        overrideDetectorMinConfidence: 0.1,
       });
     }
 
-    // 第三次重試：裁切圖片上半部後偵測（適用於全身照，臉部通常在上方 50-60%）
+    // Attempt 3：裁切上方 55% + minConfidence=0.1（全身照臉部通常在上方）
     if (faces.length === 0 && options.retryOnNoFace) {
-      logger.info(`Third retry with portrait crop (top 55%): ${filePath}`);
+      logger.info(`Retry #3: portrait crop (top 55%) + conf=0.1: ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
-        maxSize: 2048,
-        minConfidence: 0.05,
+        maxSize: options.maxSize,
+        minConfidence: 0.1,
+        overrideDetectorMinConfidence: 0.1,
         cropTopFraction: 0.55,
       });
     }
 
-    // 第四次重試：裁切上方 38%（頭部特寫），最低信心度 0.01，抓住被頭飾遮擋的臉
+    // Attempt 4：裁切上方 38% + minConfidence=0.05（頭部特寫，抓遮擋的臉）
     if (faces.length === 0 && options.retryOnNoFace) {
-      logger.info(`Fourth retry with tight head crop (top 38%) + relaxed confidence: ${filePath}`);
+      logger.info(`Retry #4: tight head crop (top 38%) + conf=0.05: ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
-        maxSize: 2048,
-        minConfidence: 0.01,
+        maxSize: options.maxSize,
+        minConfidence: 0.05,
+        overrideDetectorMinConfidence: 0.05,
         cropTopFraction: 0.38,
-        overrideDetectorMinConfidence: 0.01,
       });
     }
 
-    // 第五次重試：完整圖片，最高解析度，最低信心度（最後手段）
+    // Attempt 5：全圖最大解析度 + minConfidence=0.05（最後手段）
     if (faces.length === 0 && options.retryOnNoFace) {
-      logger.info(`Fifth retry with full image at max resolution + minimum confidence: ${filePath}`);
+      logger.info(`Retry #5: full image max resolution + conf=0.05: ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
         maxSize: 3072,
-        minConfidence: 0.01,
-        overrideDetectorMinConfidence: 0.01,
+        minConfidence: 0.05,
+        overrideDetectorMinConfidence: 0.05,
       });
     }
     if (faces.length > 0) {

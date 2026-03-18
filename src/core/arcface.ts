@@ -9,6 +9,10 @@
  * 輸出：[1, 512] float32，L2 正規化特徵向量
  *
  * 安裝後首次使用時如模型不存在，請執行 npm run download-models
+ *
+ * 新增 extractArcFaceEmbeddingFromAligned()：
+ *   接受已通過 Umeyama 5-point 對齊的 112×112 RGB raw Buffer，
+ *   直接執行 BGR 轉換 + ONNX 推論，不再做 crop/resize。
  */
 
 import sharp from 'sharp';
@@ -38,9 +42,7 @@ let sessionLoadError: string | null = null;
  *   2. Electron app.asar.unpacked extraResources（打包後）
  */
 function resolveModelPath(): string | null {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { join } = require('path');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { existsSync } = require('fs');
 
   const candidates: string[] = [
@@ -48,7 +50,6 @@ function resolveModelPath(): string | null {
   ];
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require('electron');
     const resourcesPath: string =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,9 +78,7 @@ function resolveModelPath(): string | null {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function requireOrt(): any {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { join } = require('path');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { existsSync } = require('fs');
 
   const candidates: string[] = [
@@ -87,7 +86,6 @@ function requireOrt(): any {
   ];
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { app } = require('electron');
     candidates.push(
       join(
@@ -102,10 +100,8 @@ function requireOrt(): any {
 
   const found = candidates.find((p) => existsSync(p));
   if (found) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require(found);
   }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('onnxruntime-node'); // fallback: let Node resolve it
 }
 
@@ -231,6 +227,66 @@ export async function extractArcFaceEmbedding(
     return embedding.map((v) => v / norm);
   } catch (err) {
     logger.error('ArcFace embedding extraction failed:', err);
+    return null;
+  }
+}
+
+/**
+ * 從已對齊的 112×112 RGB raw Buffer 提取 ArcFace 512 維特徵向量
+ *
+ * 這是完整 InsightFace pipeline（SCRFD → 5-point align → ArcFace）的最後一步。
+ * 輸入必須是 alignFace() 產出的 112×112 RGB raw Buffer。
+ *
+ * @param alignedBuffer  已對齊的 112×112 RGB raw Buffer（112*112*3 = 37632 bytes）
+ * @returns L2 正規化的 512 維 float32 向量，失敗時回傳 null
+ */
+export async function extractArcFaceEmbeddingFromAligned(
+  alignedBuffer: Buffer
+): Promise<number[] | null> {
+  if (!session) {
+    const loaded = await loadArcFace();
+    if (!loaded) return null;
+  }
+
+  try {
+    const expectedBytes = ARCFACE_SIZE * ARCFACE_SIZE * 3;
+    if (alignedBuffer.length !== expectedBytes) {
+      logger.warn(
+        `ArcFace: expected ${expectedBytes} bytes for 112×112 RGB, got ${alignedBuffer.length}`
+      );
+      return null;
+    }
+
+    // 轉換為 NCHW float32；BGR 通道順序
+    const pixelCount = ARCFACE_SIZE * ARCFACE_SIZE;
+    const data = new Float32Array(3 * pixelCount);
+
+    for (let i = 0; i < pixelCount; i++) {
+      const r = alignedBuffer[i * 3];
+      const g = alignedBuffer[i * 3 + 1];
+      const b = alignedBuffer[i * 3 + 2];
+      // NCHW，BGR: channel 0 = B, channel 1 = G, channel 2 = R
+      data[i] = (b - ARCFACE_MEAN) / ARCFACE_STD;
+      data[pixelCount + i] = (g - ARCFACE_MEAN) / ARCFACE_STD;
+      data[2 * pixelCount + i] = (r - ARCFACE_MEAN) / ARCFACE_STD;
+    }
+
+    const inputName = session.inputNames[0] as string;
+    const tensor = new ort.Tensor('float32', data, [1, 3, ARCFACE_SIZE, ARCFACE_SIZE]);
+    const results = await session.run({ [inputName]: tensor });
+
+    const outputName = session.outputNames[0] as string;
+    const embeddingRaw = results[outputName].data as Float32Array;
+    const embedding = Array.from(embeddingRaw);
+
+    // L2 正規化
+    let norm = 0;
+    for (const v of embedding) norm += v * v;
+    norm = Math.sqrt(norm) + 1e-12;
+
+    return embedding.map((v) => v / norm);
+  } catch (err) {
+    logger.error('ArcFace aligned embedding extraction failed:', err);
     return null;
   }
 }
