@@ -29,10 +29,10 @@ export interface EmbeddingResult {
 export const DETERMINISTIC_SCORE_PENALTY = 0.12;
 
 /**
- * FaceRes 模型輸出的 embedding 維度為 1024
+ * FaceNet recognition model 輸出的 embedding 維度為 128
  * 確定性 fallback 必須使用相同維度以保持 cosine similarity 可計算
  */
-export const EMBEDDING_DIMS = 1024;
+export const EMBEDDING_DIMS = 128;
 
 // Deterministic placeholder embedding based on file bytes.
 // Produces a unit-normalized vector so cosine similarity is computable.
@@ -94,13 +94,46 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
     });
 
     if (faces.length === 0 && options.retryOnNoFace) {
-    const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
-    const retryMinConfidence = Math.min(options.minConfidence ?? 0.3, 0.05);
+      const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
       logger.info(`Retrying face detection with broader settings: ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
         maxSize: retryMaxSize,
-        minConfidence: retryMinConfidence,
+        minConfidence: 0.01,
+      });
+    }
+
+    // 第三次重試：裁切圖片上半部後偵測（適用於全身照，臉部通常在上方 50-60%）
+    if (faces.length === 0 && options.retryOnNoFace) {
+      logger.info(`Third retry with portrait crop (top 55%): ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: 2048,
+        minConfidence: 0.05,
+        cropTopFraction: 0.55,
+      });
+    }
+
+    // 第四次重試：裁切上方 38%（頭部特寫），最低信心度 0.01，抓住被頭飾遮擋的臉
+    if (faces.length === 0 && options.retryOnNoFace) {
+      logger.info(`Fourth retry with tight head crop (top 38%) + relaxed confidence: ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: 2048,
+        minConfidence: 0.01,
+        cropTopFraction: 0.38,
+        overrideDetectorMinConfidence: 0.01,
+      });
+    }
+
+    // 第五次重試：完整圖片，最高解析度，最低信心度（最後手段）
+    if (faces.length === 0 && options.retryOnNoFace) {
+      logger.info(`Fifth retry with full image at max resolution + minimum confidence: ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: 3072,
+        minConfidence: 0.01,
+        overrideDetectorMinConfidence: 0.01,
       });
     }
     if (faces.length > 0) {
@@ -110,14 +143,14 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
       );
 
       if (!bestFace.embedding || bestFace.embedding.length === 0) {
-        // 偵測到臉但沒有 embedding — 通常代表 faceres 描述模型未載入
+        // 偵測到臉但沒有 embedding — 通常代表 face recognition model 未載入
         logger.error(
           `❌ Face detected (confidence=${bestFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
-          ' — the faceres description model may have failed to load.' +
-          ' Check that faceres.json and its weight shards exist in the models directory.'
+          ' — the face recognition model may have failed to load.' +
+          ' Check that face_recognition_model weights exist in the models directory.'
         );
         fallbackReason = 'detection_error';
-        detectionErrorCode = 'FACERES_MODEL_MISSING';
+        detectionErrorCode = 'RECOGNITION_MODEL_MISSING';
       }
 
       if (bestFace.embedding && bestFace.embedding.length > 0) {
@@ -151,7 +184,7 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
   }
 
   // 降級到 deterministic embedding
-  // 使用 EMBEDDING_DIMS (1024) 以匹配 faceres 模型的輸出維度
+  // 使用 EMBEDDING_DIMS (128) 以匹配 FaceNet 模型的輸出維度
   try {
     const deterministicEmbedding = await fileToDeterministicEmbedding(filePath, EMBEDDING_DIMS);
     logger.warn(`🔶 Generated DETERMINISTIC embedding for: ${filePath} — this is a FILE HASH, not a face embedding; UI should suggest manual review`);

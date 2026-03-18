@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:legacy": "concurrently -k \"npm:dev:*\"",
-    "dev:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --watch --silent --external electron --external better-sqlite3 --external sharp --external canvas --external @tensorflow/tfjs-backend-wasm --external @tensorflow/tfjs --external @vladmandic/human --external electron-updater --external fs-extra --external uuid",
+    "dev:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --watch --silent --external electron --external better-sqlite3 --external sharp --external canvas --external @tensorflow/tfjs-backend-wasm --external @tensorflow/tfjs --external @vladmandic/face-api --external electron-updater --external fs-extra --external uuid",
     "dev:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --watch --silent --external electron",
     "dev:renderer": "vite --config vite.renderer.config.ts",
     "dev:app": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "node scripts/build.mjs",
     "build:legacy": "npm run clean && npm run build:main && npm run build:preload && npm run build:renderer",
-    "build:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --external electron --external better-sqlite3 --external sharp --external canvas --external @tensorflow/tfjs-backend-wasm --external @tensorflow/tfjs --external @vladmandic/human --external electron-updater --external fs-extra --external uuid",
+    "build:main": "tsup src/main/index.ts --format cjs --out-dir dist/main --external electron --external better-sqlite3 --external sharp --external canvas --external @tensorflow/tfjs-backend-wasm --external @tensorflow/tfjs --external @vladmandic/face-api --external electron-updater --external fs-extra --external uuid",
     "build:preload": "tsup src/preload/index.ts --format cjs --out-dir dist/preload --external electron --external electron-updater",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "clean": "rimraf dist out",
@@ -60,8 +60,7 @@
       "!node_modules/@tensorflow/tfjs-node/**",
       "!node_modules/@tensorflow/tfjs-node-gpu/**",
       "!node_modules/canvas/**/build-tmp-napi-v*/**",
-      "!node_modules/@vladmandic/human/dist/human.node.js",
-      "!node_modules/@vladmandic/human/dist/human.node-gpu.js"
+      "!node_modules/@vladmandic/face-api/dist/face-api.node.js"
     ],
     "asar": true,
     "asarUnpack": [
@@ -142,7 +141,7 @@
     "@tensorflow/tfjs-converter": "^4.22.0",
     "@tensorflow/tfjs-core": "^4.22.0",
     "@tensorflow/tfjs-layers": "^4.22.0",
-    "@vladmandic/human": "^2.10.0",
+    "@vladmandic/face-api": "^1.7.12",
     "better-sqlite3": "^11.7.0",
     "canvas": "^3.2.1",
     "electron-updater": "^6.8.3",
