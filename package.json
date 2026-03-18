@@ -1,6 +1,6 @@
 {
   "name": "da-hai-lao-b",
-  "version": "0.2.5",
+  "version": "0.2.8",
   "private": true,
   "description": "大海撈Ｂ - AI Photo Sorter",
   "author": "Local Developer",
@@ -97,7 +97,7 @@
           ]
         }
       ],
-      "artifactName": "大海撈Ｂ-${version}-Setup.${ext}",
+      "artifactName": "da-hai-lao-b-${version}-Setup.${ext}",
       "publisherName": "Local Developer"
     },
     "mac": {

@@ -1,5 +1,25 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.2 – 模型偵測穩定性與流程一致性修復（2026-03-17）
+
+- **模型掃描主流程**
+  - `embed:batch` 改為與 `embed:references` 一致：模型未就緒時先重試 `preloadModel()`，降低誤判「模型壞掉」。
+  - 每次新掃描都重建記憶體 embedding 索引，避免混入前一次資料夾結果造成比對污染。
+
+- **快取與比對一致性**
+  - SQLite `faces` 新增 `source` 欄位（含舊資料自動 migration），保存 `face/deterministic/unknown` 來源。
+  - 讀取快取時保留來源，讓 deterministic 懲罰邏輯在重啟後仍一致。
+
+- **參考照流程與 UI**
+  - 參考照變更（拖放/重選）時自動重置 `refsLoaded`，避免 UI 與實際 embedding 不一致。
+  - 參考區顯示「已選 N / 已載入 M」，並加入參考照縮圖預覽，方便快速檢查選圖是否正確。
+  - 訊息語義分流：成功/警告/資訊/錯誤改為不同提示色，減少誤導。
+
+- **測試**
+  - 新增 `db` 單元測試：驗證 embedding `source` roundtrip 與舊 schema migration。
+  - 擴充 `useScanState` 測試：驗證拖放新參考照時會重置已載入狀態。
+  - 全部單元測試通過（`96 passed`），`npm run build` 通過。
+
 ### v0.2.1 – 上線品質強化（2026-03-13）
 
 - **生產品質改善**

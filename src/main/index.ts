@@ -55,6 +55,28 @@ function setPhotoEmbedding(path: string, embedding: Embedding, source: 'face' | 
   }
 }
 
+async function ensureModelReady(context: 'references' | 'batch'): Promise<{ ok: true } | { ok: false; error: string }> {
+  const status = getModelStatus();
+  if (status.loaded) return { ok: true };
+
+  logger.warn(`Model not loaded when running ${context}, attempting to load...`);
+  await preloadModel();
+  const retryStatus = getModelStatus();
+  if (retryStatus.loaded) return { ok: true };
+
+  if (context === 'references') {
+    return {
+      ok: false,
+      error: `AI 模型載入失敗，無法進行臉部辨識。${retryStatus.error ? `\n錯誤：${retryStatus.error}` : ''}\n\n請嘗試重新啟動應用程式。`,
+    };
+  }
+
+  return {
+    ok: false,
+    error: `AI 模型未載入，無法掃描。${retryStatus.error ? `\n錯誤：${retryStatus.error}` : ''}\n\n請重新啟動應用程式。`,
+  };
+}
+
 function wakePausedScan(sessionId: number) {
   if (resolveScanPause && resolveScanPause.sessionId === sessionId) {
     const { resolve } = resolveScanPause;
@@ -303,18 +325,12 @@ function wireIpc() {
 
   ipcMain.handle('embed:references', async (_e, files: string[]) => {
     try {
-      // 檢查模型是否已載入，未載入則先嘗試載入
-      const status = getModelStatus();
-      if (!status.loaded) {
-        logger.warn('Model not loaded when embedding references, attempting to load...');
-        await preloadModel();
-        const retryStatus = getModelStatus();
-        if (!retryStatus.loaded) {
-          return {
-            ok: false,
-            error: `AI 模型載入失敗，無法進行臉部辨識。${retryStatus.error ? `\n錯誤：${retryStatus.error}` : ''}\n\n請嘗試重新啟動應用程式。`,
-          };
-        }
+      const modelReady = await ensureModelReady('references');
+      if (!modelReady.ok) {
+        return {
+          ok: false,
+          error: modelReady.error,
+        };
       }
 
       logger.info(`Embedding ${files.length} reference files`);
@@ -323,6 +339,7 @@ function wireIpc() {
 
       let faceCount = 0;
       let deterministicCount = 0;
+      let detectionErrorFallbackCount = 0;
       const perFileResults: Array<{
         path: string;
         source: 'face' | 'deterministic';
@@ -331,7 +348,11 @@ function wireIpc() {
 
       for (const f of files) {
         logger.debug(`Processing reference file: ${f}`);
-        const result = await fileToEmbeddingWithSource(f);
+        const result = await fileToEmbeddingWithSource(f, {
+          maxSize: 1280,
+          minConfidence: 0.05,
+          retryOnNoFace: true,
+        });
         referenceEmbeddings.push(result.embedding);
         referenceEmbeddingSources.push(result.source === 'face' ? 'face' : 'deterministic');
         perFileResults.push({
@@ -343,6 +364,7 @@ function wireIpc() {
           faceCount++;
         } else {
           deterministicCount++;
+          if (result.fallbackReason === 'detection_error') detectionErrorFallbackCount++;
         }
       }
 
@@ -353,14 +375,18 @@ function wireIpc() {
         logger.info(`✅ ${faceCount}/${files.length} reference photos had faces detected`);
       }
 
-      // 如果沒有任何參考照偵測到人臉，回傳錯誤不允許繼續
+      // 若偵測引擎異常才阻擋；若只是沒抓到臉，允許以降級模式繼續（維持舊版可用體感）
       if (faceCount === 0) {
-        logger.error(`❌ NO reference photos had faces detected! Blocking scan.`);
-        referenceEmbeddings.length = 0; // 清空，不允許用假 embedding 進行比對
-        return {
-          ok: false,
-          error: '所有參考照片都無法偵測到人臉。\n\n請確認：\n1. 照片中有清晰的正面人臉\n2. 照片不是太暗、太模糊或太小\n3. 建議使用 3-10 張不同角度的清晰臉部照片',
-        };
+        logger.warn(`⚠️ NO reference photos had faces detected; continue in deterministic fallback mode.`);
+        const modelStatus = getModelStatus();
+        if (!modelStatus.loaded || modelStatus.error || detectionErrorFallbackCount === files.length) {
+          logger.error(`❌ Blocking scan because model engine is not healthy.`);
+          referenceEmbeddings.length = 0;
+          return {
+            ok: false,
+            error: `AI 模型目前不可用，無法正確辨識人臉。${modelStatus.error ? `\n錯誤：${modelStatus.error}` : ''}${detectionErrorFallbackCount === files.length ? '\n偵測引擎回傳錯誤，已自動改用降級模式。' : ''}\n\n請重新啟動應用程式後再試一次。`,
+          };
+        }
       }
       
       logger.info(`Successfully embedded ${referenceEmbeddings.length} reference files`);
@@ -390,10 +416,9 @@ function wireIpc() {
       return { ok: false, error: '已有掃描正在進行中，請先等待完成或先取消目前掃描。' };
     }
 
-    // 確認模型已載入才允許掃描
-    const modelCheck = getModelStatus();
-    if (!modelCheck.loaded) {
-      return { ok: false, error: `AI 模型未載入，無法掃描。${modelCheck.error ? `\n錯誤：${modelCheck.error}` : ''}\n\n請重新啟動應用程式。` };
+    const modelReady = await ensureModelReady('batch');
+    if (!modelReady.ok) {
+      return { ok: false, error: modelReady.error };
     }
 
     scanInProgress = true;
@@ -424,9 +449,10 @@ function wireIpc() {
       // 如果要求清除快取，清除相關的記憶體 embeddings
       if (clearCache) {
         logger.info('Clearing embedding cache as requested');
-        photoEmbeddings.clear();
-        photoEmbeddingSources.clear();
       }
+      // 每次新掃描都重建本次 in-memory 索引，避免混入前一次資料夾結果
+      photoEmbeddings.clear();
+      photoEmbeddingSources.clear();
 
       logger.info(`Found ${total} images to process`);
 
@@ -493,7 +519,11 @@ function wireIpc() {
 
             if (clearCache || !existing || existing.mtime !== mtime) {
               logger.debug(`Processing new/modified file: ${filePath}`);
-              const result = await fileToEmbeddingWithSource(filePath, { maxSize: 1024, minConfidence: 0.15 });
+              const result = await fileToEmbeddingWithSource(filePath, {
+                maxSize: 1280,
+                minConfidence: 0.05,
+                retryOnNoFace: true,
+              });
               faceAnalysis = result.faceAnalysis;
 
               let thumb: string | null = null;
@@ -505,7 +535,7 @@ function wireIpc() {
               }
 
               upsertPhoto(filePath, mtime, thumb);
-              upsertFace(filePath, result.embedding);
+              upsertFace(filePath, result.embedding, result.source);
               setPhotoEmbedding(filePath, result.embedding, result.source);
 
               if (result.source === 'face') faceCount++;
@@ -515,13 +545,18 @@ function wireIpc() {
             } else if (!photoEmbeddings.has(filePath)) {
               const cachedFaces = getFacesByPath(filePath);
               if (cachedFaces.length > 0) {
-                setPhotoEmbedding(filePath, cachedFaces[0], 'unknown');
+                const cachedFace = cachedFaces[0];
+                setPhotoEmbedding(filePath, cachedFace.embedding, cachedFace.source);
                 cached++;
               } else {
                 logger.debug(`No cached embedding found for: ${filePath}`);
-                const result = await fileToEmbeddingWithSource(filePath, { maxSize: 1024, minConfidence: 0.15 });
+                const result = await fileToEmbeddingWithSource(filePath, {
+                  maxSize: 1280,
+                  minConfidence: 0.05,
+                  retryOnNoFace: true,
+                });
                 faceAnalysis = result.faceAnalysis;
-                upsertFace(filePath, result.embedding);
+                upsertFace(filePath, result.embedding, result.source);
                 setPhotoEmbedding(filePath, result.embedding, result.source);
                 if (result.source === 'face') faceCount++;
                 else deterministicCount++;

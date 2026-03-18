@@ -41,6 +41,24 @@ export function App() {
 
   // Scan state
   const scan = useScanState();
+  const referencePaths = Array.from(new Set(
+    scan.refPaths
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  ));
+  const selectedRefCount = referencePaths.length;
+  const toFileSrc = (filePath: string) => encodeURI(`file:///${filePath.replace(/\\/g, '/')}`);
+  const errorType: 'success' | 'warning' | 'error' | 'info' | null =
+    !scan.error
+      ? null
+      : scan.error.startsWith('✅')
+        ? 'success'
+        : scan.error.startsWith('⚠️')
+          ? 'warning'
+          : scan.error.startsWith('錯誤:') || scan.error.includes('失敗')
+            ? 'error'
+            : 'info';
 
   // Review state bound to scan results
   const review = useReviewState(scan.results);
@@ -181,10 +199,10 @@ export function App() {
           {scan.modelStatus && (
             <span style={{
               fontSize: '10px',
-              color: scan.modelStatus.loaded ? '#10b981' : '#ef4444',
+              color: scan.modelStatus.loaded ? '#10b981' : (scan.modelStatus.error ? '#ef4444' : '#f59e0b'),
               fontWeight: 600,
             }}>
-              {scan.modelStatus.loaded ? 'AI' : '!'}
+              {scan.modelStatus.loaded ? 'AI' : (scan.modelStatus.error ? '!' : 'AI…')}
             </span>
           )}
         </div>
@@ -218,8 +236,16 @@ export function App() {
             <div style={{
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               borderRadius: theme.borderRadius.md,
-              background: scan.error.startsWith('✅') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)',
-              border: `1px solid ${scan.error.startsWith('✅') ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'}`,
+              background:
+                errorType === 'success' ? 'rgba(16,185,129,0.1)'
+                  : errorType === 'warning' ? 'rgba(245,158,11,0.1)'
+                    : errorType === 'info' ? 'rgba(59,130,246,0.08)'
+                      : 'rgba(239,68,68,0.08)',
+              border:
+                errorType === 'success' ? '1px solid rgba(16,185,129,0.25)'
+                  : errorType === 'warning' ? '1px solid rgba(245,158,11,0.25)'
+                    : errorType === 'info' ? '1px solid rgba(59,130,246,0.2)'
+                      : '1px solid rgba(239,68,68,0.2)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-start',
@@ -227,7 +253,11 @@ export function App() {
             }}>
               <span style={{
                 fontSize: theme.typography.fontSize.xs,
-                color: scan.error.startsWith('✅') ? '#10b981' : theme.colors.error[600],
+                color:
+                  errorType === 'success' ? '#10b981'
+                    : errorType === 'warning' ? '#d97706'
+                      : errorType === 'info' ? '#2563eb'
+                        : theme.colors.error[600],
                 lineHeight: 1.5,
                 flex: 1,
               }}>{scan.error}</span>
@@ -254,11 +284,9 @@ export function App() {
                 fontWeight: theme.typography.fontWeight.semibold,
                 color: theme.colors.neutral[800],
               }}>參考照片</span>
-              {scan.refsLoaded > 0 && (
-                <span style={{ fontSize: theme.typography.fontSize.xs, color: '#10b981', marginLeft: 'auto' }}>
-                  {scan.refsLoaded} 張已載入
-                </span>
-              )}
+              <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[500], marginLeft: 'auto' }}>
+                已選 {selectedRefCount} / 已載入 {scan.refsLoaded}
+              </span>
             </div>
             <DragDropZone onFilesDrop={scan.handleRefFilesDrop} accept="files" disabled={scan.isProcessing}>
               <div
@@ -277,9 +305,7 @@ export function App() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[2], justifyContent: 'center' }}>
                     <span style={{ fontSize: theme.typography.fontSize.lg }}>{scan.refsLoaded > 0 ? '✅' : '📸'}</span>
                     <span style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.primary[600], fontWeight: 600 }}>
-                      {scan.refsLoaded > 0
-                        ? `已載入 ${scan.refsLoaded} 張`
-                        : `已選 ${scan.refPaths.split(/\r?\n/).filter(s => s.trim()).length} 張`}
+                      已選 {selectedRefCount} 張 / 已載入 {scan.refsLoaded} 張
                     </span>
                     <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400] }}>點擊新增</span>
                   </div>
@@ -299,10 +325,49 @@ export function App() {
             {scan.refPaths.trim() && (
               <div style={{ display: 'flex', gap: theme.spacing[2], marginTop: theme.spacing[2] }}>
                 <ModernButton variant="secondary" size="sm" onClick={scan.handleBrowseFiles} disabled={scan.isProcessing}>新增</ModernButton>
-                <ModernButton variant="ghost" size="sm" onClick={() => { scan.setRefPaths(''); scan.setRefsLoaded(0); }} disabled={scan.isProcessing}>清除</ModernButton>
+                <ModernButton variant="ghost" size="sm" onClick={() => { scan.setRefPaths(''); scan.setRefsLoaded(0); scan.setStatus('idle'); scan.setError(null); }} disabled={scan.isProcessing}>清除</ModernButton>
                 {scan.refsLoaded > 0 && (
                   <ModernButton variant="primary" size="sm" loading={scan.status === 'embedding refs...'} disabled={scan.isProcessing} onClick={scan.handleEmbedRefs}>重新載入</ModernButton>
                 )}
+              </div>
+            )}
+
+            {referencePaths.length > 0 && (
+              <div style={{ marginTop: theme.spacing[2] }}>
+                <div style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[500], marginBottom: theme.spacing[1] }}>
+                  參考照預覽（已選 {selectedRefCount} 張）
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))',
+                    gap: theme.spacing[1],
+                  }}
+                >
+                  {referencePaths.map((path) => (
+                    <div
+                      key={path}
+                      title={path}
+                      style={{
+                        borderRadius: theme.borderRadius.sm,
+                        border: `1px solid ${theme.colors.neutral[200]}`,
+                        overflow: 'hidden',
+                        background: '#fff',
+                        aspectRatio: '1 / 1',
+                      }}
+                    >
+                      <img
+                        src={toFileSrc(path)}
+                        alt="參考照縮圖"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             <textarea ref={scan.refPathsTextareaRef} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} value={scan.refPaths} onChange={(e) => scan.setRefPaths(e.target.value)} tabIndex={-1} />
@@ -563,7 +628,12 @@ export function App() {
           <ModernButton
             variant="success" size="lg" fullWidth
             loading={scan.isProcessing}
-            disabled={scan.isProcessing || !scan.folder.trim() || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')}
+            disabled={
+              scan.isProcessing
+              || !scan.folder.trim()
+              || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')
+              || scan.modelStatus?.loaded === false
+            }
             onClick={scan.handleRunScan}
           >
             {scan.isProcessing ? '處理中...' : scan.refsLoaded === 0 && scan.refPaths.trim() ? '載入照片並搜尋' : '開始搜尋'}

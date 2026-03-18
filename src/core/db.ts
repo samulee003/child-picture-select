@@ -25,7 +25,7 @@ export function getDb(): any {
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
 
-  const CURRENT_CACHE_VERSION = 2;
+  const CURRENT_CACHE_VERSION = 3;
   const user_version = db.pragma('user_version', { simple: true }) as number;
   if (user_version !== CURRENT_CACHE_VERSION) {
     logger.info(`Upgrading cache database from v${user_version} to v${CURRENT_CACHE_VERSION}, clearing old data...`);

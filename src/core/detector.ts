@@ -247,7 +247,7 @@ async function getHuman() {
       backend: 'wasm',
       wasmPath,
       cacheSensitivity: 0,
-      filter: { enabled: false },
+      filter: { enabled: true, equalization: true },
       face: {
         enabled: true,
         detector: { rotation: true, return: true, maxDetected: 10, iouThreshold: 0.1, minConfidence: 0.05 },
@@ -405,7 +405,7 @@ export async function detectFaces(
     }
 
     const detections: FaceDetection[] = [];
-    const { enableAgeGender = true, minConfidence = 0.3 } = options;
+    const { enableAgeGender = true, minConfidence = 0.05 } = options;
 
     if (result.face && result.face.length > 0) {
       logger.debug(`Found ${result.face.length} face(s) in ${imagePath}`);

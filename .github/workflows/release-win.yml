@@ -1,0 +1,78 @@
+name: Release Windows Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "建立 GitHub Release"
+        required: true
+        default: true
+        type: boolean
+      prerelease:
+        description: "標記為預發布 (prerelease)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-win-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Build and Release (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package installer
+        run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version from package.json
+        id: pkg
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: da-hai-lao-b-win-${{ steps.pkg.outputs.version }}
+          path: |
+            dist-electron/*-Setup.exe
+            dist-electron/*-Setup.exe.blockmap
+            dist-electron/latest.yml
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: ${{ inputs.publish_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.pkg.outputs.version }}
+          name: 大海撈Ｂ v${{ steps.pkg.outputs.version }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            dist-electron/*-Setup.exe
+            dist-electron/*-Setup.exe.blockmap
+            dist-electron/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

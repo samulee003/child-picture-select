@@ -120,8 +120,7 @@ export function useScanState(): ScanState {
         setSettings(parsed);
         setThreshold(parsed.threshold || 0.6);
         setTopN(parsed.topN || 50);
-        setRefPaths(parsed.lastReferencePaths?.join('\n') || '');
-        setFolder(parsed.lastFolder || '');
+        // 啟動時維持空白，避免剛安裝/重新安裝直接帶入舊資料夾與舊參考照
       } catch {
         // non-critical: start with defaults
       }
@@ -239,6 +238,10 @@ export function useScanState(): ScanState {
       const currentPaths = refPaths.split('\n').filter(p => p.trim());
       const newPaths = [...new Set([...currentPaths, ...imageFiles])];
       setRefPaths(newPaths.join('\n'));
+      setRefsLoaded(0);
+      setRefQualityResults([]);
+      setStatus('idle');
+      setError(null);
     }
   }, [refPaths]);
 
@@ -250,13 +253,12 @@ export function useScanState(): ScanState {
     if (!window.api?.selectFiles) return;
     const files = await window.api.selectFiles();
     if (files && files.length > 0) {
-      setRefPaths(prev => {
-        const lines = prev.split('\n').map(l => l.trim()).filter(Boolean);
-        const newFiles = files.filter(f => !lines.includes(f));
-        if (newFiles.length === 0) return prev;
-        const current = prev.trim() ? prev.trim() + '\n' : '';
-        return current + newFiles.join('\n');
-      });
+      const next = Array.from(new Set(files.map(f => f.trim()).filter(Boolean)));
+      setRefPaths(next.join('\n'));
+      setRefsLoaded(0);
+      setRefQualityResults([]);
+      setStatus('idle');
+      setError(null);
     }
   };
 
@@ -345,6 +347,10 @@ export function useScanState(): ScanState {
           return;
         }
         setRefsLoaded(embedResult.data?.count || files.length);
+        const perFileResults = (embedResult.data as any)?.perFileResults;
+        if (Array.isArray(perFileResults)) {
+          setRefQualityResults(perFileResults as RefFileResult[]);
+        }
         const warning = embedResult.data?.warning;
         if (warning) {
           setError(`⚠️ ${warning}`);
@@ -403,13 +409,16 @@ export function useScanState(): ScanState {
       if (matched.length === 0) {
         const faceDetected = scanData?.faceDetected ?? 0;
         if (faceDetected === 0 && scannedCount > 0) {
-          setError('⚠️ 所有照片都無法偵測到人臉！可能是 AI 模型載入失敗，請嘗試「清除快取重新掃描」，或確認照片是否包含清晰人臉。');
+          setError('⚠️ 這次掃描中尚未偵測到可用人臉，已用保守模式完成比對；建議改用更清晰正面照片、增加參考照，或降低門檻後再試一次。');
         } else {
           setError('未找到匹配的照片，請嘗試降低門檻值或增加參考照片數量');
         }
       }
       if (scanData?.skippedErrors && scanData.skippedErrors > 0) {
-        setError(`已略過 ${scanData.skippedErrors} 張處理失敗照片，建議先看掃描摘要中的提醒後再重試。`);
+        setScanWarnings((prev) => {
+          const warning = `已略過 ${scanData.skippedErrors} 張處理失敗照片，建議先看掃描摘要中的提醒後再重試。`;
+          return prev.includes(warning) ? prev : [...prev, warning];
+        });
       }
     } catch (err: any) {
       setError(`錯誤: ${err?.message || '未知錯誤'}`);
