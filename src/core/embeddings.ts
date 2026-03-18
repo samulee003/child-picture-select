@@ -186,7 +186,7 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
   }
 
   // 降級到 deterministic embedding
-  // 使用 EMBEDDING_DIMS (128) 以匹配 FaceNet 模型的輸出維度
+  // 使用 EMBEDDING_DIMS (512) 以匹配 ArcFace 模型的輸出維度
   try {
     const deterministicEmbedding = await fileToDeterministicEmbedding(filePath, EMBEDDING_DIMS);
     logger.warn(`🔶 Generated DETERMINISTIC embedding for: ${filePath} — this is a FILE HASH, not a face embedding; UI should suggest manual review`);
