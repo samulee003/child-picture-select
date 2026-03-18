@@ -94,13 +94,24 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
     });
 
     if (faces.length === 0 && options.retryOnNoFace) {
-    const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
-    const retryMinConfidence = Math.min(options.minConfidence ?? 0.3, 0.05);
+      const retryMaxSize = Math.max(options.maxSize ?? 640, 2048);
+      const retryMinConfidence = Math.min(options.minConfidence ?? 0.3, 0.05);
       logger.info(`Retrying face detection with broader settings: ${filePath}`);
       faces = await detectFaces(filePath, {
         enableAgeGender: true,
         maxSize: retryMaxSize,
         minConfidence: retryMinConfidence,
+      });
+    }
+
+    // 第三次重試：裁切圖片上半部後偵測（適用於全身照，臉部通常在上方 50-60%）
+    if (faces.length === 0 && options.retryOnNoFace) {
+      logger.info(`Third retry with portrait crop (top 55%): ${filePath}`);
+      faces = await detectFaces(filePath, {
+        enableAgeGender: true,
+        maxSize: 2048,
+        minConfidence: 0.05,
+        cropTopFraction: 0.55,
       });
     }
     if (faces.length > 0) {

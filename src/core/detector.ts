@@ -23,6 +23,8 @@ export interface DetectorOptions {
   minConfidence?: number;
   /** 圖片縮放最大邊長（越大越能偵測小臉，但越慢） */
   maxSize?: number;
+  /** 裁切圖片上方比例（0-1），用於全身照中定位臉部區域，例如 0.55 表示只取上半部 55% */
+  cropTopFraction?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -384,6 +386,16 @@ export async function detectFaces(
     }
 
     const maxEdge = options.maxSize || 1280; // Increase default maxSize for reference photos
+
+    // 若指定裁切比例，先裁切圖片上方區域（適用於全身照中臉部偵測）
+    if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
+      const meta = await sharp(imagePath).metadata();
+      const imgWidth = meta.width || 1000;
+      const imgHeight = meta.height || 1000;
+      const cropHeight = Math.round(imgHeight * options.cropTopFraction);
+      sharpInstance = sharp(imagePath).extract({ left: 0, top: 0, width: imgWidth, height: cropHeight });
+    }
+
     const imageBuffer = await withTimeout<Buffer>(
       sharpInstance
         .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
