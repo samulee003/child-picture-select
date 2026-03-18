@@ -1,5 +1,34 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.8 – 還原完整 InsightFace Pipeline（2026-03-18）
+
+- **偵測引擎：SSD MobileNet → SCRFD det_500m**
+  - 以 InsightFace SCRFD-500MF（`det_500m.onnx`，2.5 MB）取代 `@vladmandic/face-api` SSD MobileNet。
+  - SCRFD 專為小臉、側臉設計，偵測精度顯著優於 SSD MobileNet，尤其對於兒童照片與非正面角度。
+  - 新增 `src/core/scrfd.ts`：ONNX 推論、anchor 生成、distance-based bbox 解碼、5-point keypoint 解碼、IoU NMS。
+  - 移除 `@vladmandic/face-api`、TensorFlow.js WASM backend、canvas npm 套件依賴。
+
+- **臉部對齊：新增 Umeyama 5-point Similarity Transform**
+  - 新增 `src/core/align.ts`：以 SCRFD 偵測的 5 個特徵點（左眼、右眼、鼻尖、左右嘴角）計算 Umeyama 相似變換，將臉部對齊至 ArcFace 標準 112×112 空間。
+  - 對齊是 ArcFace 準確率的關鍵——模型訓練時全部使用標準化對齊圖片，未對齊的裁切（尤其側臉、仰頭）會顯著降低辨識精度。
+  - 實作解析法 2×2 SVD + 防反射修正（Umeyama 1991），使用 Sharp `.affine()` 逆映射 + 雙三次插值。
+
+- **識別引擎：確立 ArcFace w600k_mbf（512 維）**
+  - 新增 `src/core/arcface.ts` 的 `extractArcFaceEmbeddingFromAligned()`：直接接受已對齊的 112×112 raw RGB buffer，不再做 crop/resize。
+  - Embedding 維度從 1024（`@vladmandic/human` FaceRes）正式確立為 **512**（InsightFace ArcFace）。
+  - Pipeline 等同 Python `insightface.app.FaceAnalysis.get()`。
+
+- **模型檔案**
+  - 新增 `models/insightface/det_500m.onnx`（2.5 MB）納入 repo。
+  - `models/insightface/w600k_mbf.onnx`（13 MB）已存在，維持不變。
+  - `scripts/download-models.mjs` 更新為同時下載/解壓兩個模型。
+
+- **快取相容性**
+  - 舊版（v0.2.7 以前）的 1024-dim embedding 快取與新 512-dim 不相容，首次執行時自動失效並重新計算。
+
+- **測試**
+  - 全部 96 個單元測試通過，`npm run typecheck` 通過。
+
 ### v0.2.2 – 模型偵測穩定性與流程一致性修復（2026-03-17）
 
 - **模型掃描主流程**
