@@ -18,4 +18,10 @@ build/
 *.spec
 temp_fix/
 
+# 暫存與測試用檔案（勿提交）
+debug.png
+test-face.jpg
+temp_*.cjs
+test-*-tensor.cjs
+
 

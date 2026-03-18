@@ -6,7 +6,7 @@ interface ImagePreviewProps {
   className?: string;
   style?: React.CSSProperties;
   onLoad?: () => void;
-  onError?: (error: any) => void;
+  onError?: (error: Error | unknown) => void;
 }
 
 export function ImagePreview({
@@ -15,7 +15,7 @@ export function ImagePreview({
   className = '',
   style = {},
   onLoad,
-  onError
+  onError,
 }: ImagePreviewProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -27,7 +27,7 @@ export function ImagePreview({
     onLoad?.();
   };
 
-  const handleError = (error: any) => {
+  const handleError = (error: Error | unknown) => {
     setHasError(true);
     setIsLoaded(false);
     onError?.(error);
@@ -42,7 +42,7 @@ export function ImagePreview({
   const containerStyle: React.CSSProperties = {
     position: 'relative',
     cursor: isLoaded && !hasError ? 'pointer' : 'default',
-    ...style
+    ...style,
   };
 
   const imageStyle: React.CSSProperties = {
@@ -50,7 +50,7 @@ export function ImagePreview({
     height: '100%',
     objectFit: 'cover',
     display: isLoaded ? 'block' : 'none',
-    transition: 'transform 0.2s ease'
+    transition: 'transform 0.2s ease',
   };
 
   const zoomedImageStyle: React.CSSProperties = {
@@ -68,7 +68,7 @@ export function ImagePreview({
     maxHeight: '90vh',
     zIndex: 1000,
     boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-    borderRadius: '8px'
+    borderRadius: '8px',
   };
 
   const placeholderStyle: React.CSSProperties = {
@@ -81,7 +81,7 @@ export function ImagePreview({
     color: '#999',
     fontSize: '14px',
     flexDirection: 'column',
-    gap: '8px'
+    gap: '8px',
   };
 
   const loadingStyle: React.CSSProperties = {
@@ -90,7 +90,7 @@ export function ImagePreview({
     border: '2px solid #e0e0e0',
     borderTop: '2px solid #4a90e2',
     borderRadius: '50%',
-    animation: 'spin 1s linear infinite'
+    animation: 'spin 1s linear infinite',
   };
 
   return (
@@ -102,21 +102,15 @@ export function ImagePreview({
             <span>載入中...</span>
           </div>
         )}
-        
+
         {hasError && (
           <div style={placeholderStyle}>
             <span style={{ fontSize: '24px' }}>🖼️</span>
             <span>載入失敗</span>
           </div>
         )}
-        
-        <img
-          src={src}
-          alt={alt}
-          style={imageStyle}
-          onLoad={handleLoad}
-          onError={handleError}
-        />
+
+        <img src={src} alt={alt} style={imageStyle} onLoad={handleLoad} onError={handleError} />
       </div>
 
       {isZoomed && (
@@ -132,16 +126,11 @@ export function ImagePreview({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'pointer'
+            cursor: 'pointer',
           }}
           onClick={() => setIsZoomed(false)}
         >
-          <img
-            src={src}
-            alt={alt}
-            style={zoomedImageStyle}
-            onClick={(e) => e.stopPropagation()}
-          />
+          <img src={src} alt={alt} style={zoomedImageStyle} onClick={e => e.stopPropagation()} />
           <div
             style={{
               position: 'absolute',
@@ -156,7 +145,7 @@ export function ImagePreview({
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
             }}
             onClick={() => setIsZoomed(false)}
           >
@@ -164,8 +153,6 @@ export function ImagePreview({
           </div>
         </div>
       )}
-
-
     </>
   );
 }

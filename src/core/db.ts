@@ -1,11 +1,18 @@
 import Database from 'better-sqlite3';
 import { join } from 'path';
 import { app } from 'electron';
-import { existsSync } from 'fs';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { logger } from '../utils/logger';
+import { validatePath } from '../utils/path-validator';
 
-let db: any | null = null;
+type BetterSqlite3Database = InstanceType<typeof Database>;
+type BetterSqlite3Statement = ReturnType<BetterSqlite3Database['prepare']>;
+
+type PhotoRow = { id: number; path: string; mtime: number; thumbPath: string | null };
+type FaceRow = { id: number; photoPath: string; embedding: string; source: string };
+type FaceResult = { embedding: number[]; source: 'face' | 'deterministic' | 'unknown' };
+
+let db: BetterSqlite3Database | null = null;
 
 export function getUserDataDir(): string {
   const dir = app.getPath('userData');
@@ -19,7 +26,7 @@ export function getThumbsDir(): string {
   return dir;
 }
 
-export function getDb(): any {
+export function getDb(): BetterSqlite3Database {
   if (db) return db;
   const dbPath = join(getUserDataDir(), 'cache.sqlite');
   db = new Database(dbPath);
@@ -28,7 +35,9 @@ export function getDb(): any {
   const CURRENT_CACHE_VERSION = 3;
   const user_version = db.pragma('user_version', { simple: true }) as number;
   if (user_version !== CURRENT_CACHE_VERSION) {
-    logger.info(`Upgrading cache database from v${user_version} to v${CURRENT_CACHE_VERSION}, clearing old data...`);
+    logger.info(
+      `Upgrading cache database from v${user_version} to v${CURRENT_CACHE_VERSION}, clearing old data...`
+    );
     db.exec(`
       DROP TABLE IF EXISTS photos;
       DROP TABLE IF EXISTS faces;
@@ -52,54 +61,97 @@ export function getDb(): any {
     );
     CREATE INDEX IF NOT EXISTS idx_faces_photo ON faces(photoPath);
   `);
+
   const hasSourceColumn = db
     .prepare(`SELECT COUNT(1) AS count FROM pragma_table_info('faces') WHERE name = 'source'`)
-    .get() as { count: number };
-  if (!hasSourceColumn.count) {
+    .get() as { count: number } | undefined;
+  if (hasSourceColumn && !hasSourceColumn.count) {
     db.exec(`ALTER TABLE faces ADD COLUMN source TEXT NOT NULL DEFAULT 'unknown'`);
   }
   return db;
 }
 
-export function upsertPhoto(path: string, mtime: number, thumbPath: string | null) {
+export function upsertPhoto(filePath: string, mtime: number, thumbPath: string | null): void {
+  const validation = validatePath(filePath);
+  if (!validation.valid) {
+    logger.warn(`Invalid path in upsertPhoto: ${validation.error}`);
+    return;
+  }
+
+  const safePath = validation.normalizedPath || filePath;
   const d = getDb();
   const stmt = d.prepare(
     `INSERT INTO photos(path, mtime, thumbPath) VALUES(?, ?, ?)
      ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime, thumbPath=excluded.thumbPath`
-  );
-  stmt.run(path, mtime, thumbPath);
+  ) as BetterSqlite3Statement;
+  stmt.run(safePath, mtime, thumbPath);
 }
 
-export function getPhoto(path: string): { id: number; path: string; mtime: number; thumbPath: string | null } | undefined {
+export function getPhoto(filePath: string): PhotoRow | undefined {
+  const validation = validatePath(filePath);
+  if (!validation.valid) {
+    return undefined;
+  }
+
+  const safePath = validation.normalizedPath || filePath;
   const d = getDb();
-  const row = d.prepare('SELECT id, path, mtime, thumbPath FROM photos WHERE path = ?').get(path);
-  return row as any;
+  const stmt = d.prepare(
+    'SELECT id, path, mtime, thumbPath FROM photos WHERE path = ?'
+  ) as BetterSqlite3Statement;
+  return stmt.get(safePath) as PhotoRow | undefined;
 }
 
-export function upsertFace(path: string, embedding: number[], source: 'face' | 'deterministic' | 'unknown' = 'unknown') {
+export function upsertFace(
+  filePath: string,
+  embedding: number[],
+  source: 'face' | 'deterministic' | 'unknown' = 'unknown'
+): void {
+  const validation = validatePath(filePath);
+  if (!validation.valid) {
+    logger.warn(`Invalid path in upsertFace: ${validation.error}`);
+    return;
+  }
+
+  if (!Array.isArray(embedding) || !embedding.every(v => typeof v === 'number')) {
+    logger.warn('Invalid embedding in upsertFace: must be array of numbers');
+    return;
+  }
+
+  const safePath = validation.normalizedPath || filePath;
   const d = getDb();
   const stmt = d.prepare(
     `INSERT INTO faces(photoPath, embedding, source) VALUES(?, ?, ?)
      ON CONFLICT(photoPath) DO UPDATE SET embedding=excluded.embedding, source=excluded.source`
-  );
-  stmt.run(path, JSON.stringify(embedding), source);
+  ) as BetterSqlite3Statement;
+  stmt.run(safePath, JSON.stringify(embedding), source);
 }
 
-export function getFacesByPath(path: string): Array<{ embedding: number[]; source: 'face' | 'deterministic' | 'unknown' }> {
+export function getFacesByPath(filePath: string): FaceResult[] {
+  const validation = validatePath(filePath);
+  if (!validation.valid) {
+    return [];
+  }
+
+  const safePath = validation.normalizedPath || filePath;
   const d = getDb();
-  const rows = d.prepare('SELECT embedding, source FROM faces WHERE photoPath = ?').all(path) as Array<{ embedding: string; source?: string }>;
-  return rows.flatMap((r) => {
+  const stmt = d.prepare(
+    'SELECT embedding, source FROM faces WHERE photoPath = ?'
+  ) as BetterSqlite3Statement;
+  const rows = stmt.all(safePath) as FaceRow[];
+
+  return rows.flatMap((r: FaceRow): FaceResult[] => {
     try {
-      const parsed = JSON.parse(r.embedding);
-      if (!Array.isArray(parsed) || !parsed.every(v => typeof v === 'number')) {
-        logger.warn(`Invalid embedding payload in DB for ${path}, skipping row`);
+      const parsed: unknown = JSON.parse(r.embedding);
+      if (!Array.isArray(parsed) || !parsed.every((v: unknown) => typeof v === 'number')) {
+        logger.warn(`Invalid embedding payload in DB for ${safePath}, skipping row`);
         return [];
       }
-      const source: 'face' | 'deterministic' | 'unknown' =
+      const faceSource: 'face' | 'deterministic' | 'unknown' =
         r.source === 'face' || r.source === 'deterministic' ? r.source : 'unknown';
-      return [{ embedding: parsed, source }];
+      return [{ embedding: parsed, source: faceSource }];
     } catch (error) {
-      logger.warn(`Failed to parse embedding JSON for ${path}, skipping row: ${(error as Error)?.message || error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(`Failed to parse embedding JSON for ${safePath}, skipping row: ${errorMessage}`);
       return [];
     }
   });
@@ -110,9 +162,43 @@ export function closeDb(): void {
   try {
     db.close();
   } catch (error) {
-    logger.warn(`Failed to close SQLite database: ${(error as Error)?.message || error}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn(`Failed to close SQLite database: ${errorMessage}`);
   } finally {
     db = null;
   }
 }
 
+/**
+ * 在資料庫事務中執行多個操作
+ * 確保所有操作都成功，否則回滾
+ */
+export function withTransaction<T>(fn: () => T): T {
+  const d = getDb();
+  d.exec('BEGIN TRANSACTION');
+  try {
+    const result = fn();
+    d.exec('COMMIT');
+    return result;
+  } catch (error) {
+    d.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
+ * 原子性更新照片和臉部資料
+ * 確保照片記錄和臉部 embedding 同時寫入
+ */
+export function upsertPhotoAndFace(
+  filePath: string,
+  mtime: number,
+  thumbPath: string | null,
+  embedding: number[],
+  source: 'face' | 'deterministic' | 'unknown'
+): void {
+  return withTransaction(() => {
+    upsertPhoto(filePath, mtime, thumbPath);
+    upsertFace(filePath, embedding, source);
+  });
+}

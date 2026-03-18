@@ -223,7 +223,9 @@ export async function alignFace(
   const invTy = -(inv10 * mtx + inv11 * mty);
 
   try {
-    const aligned = await sharp(imageBuffer, {
+    // NOTE: sharp.affine() 在某些邊界條件下可能會輸出非預期尺寸（非固定 112×112）。
+    // 因此這裡採用「雙保險」：先 affine 輸出 raw + 寬高資訊，再以 raw 輸入強制 resize 成固定輸出。
+    const affineOut = await sharp(imageBuffer, {
       raw: { width: imageWidth, height: imageHeight, channels: 3 },
     })
       .affine(
@@ -237,12 +239,30 @@ export async function alignFace(
           ody: 0,
         }
       )
-      .extract({ left: 0, top: 0, width: outputSize, height: outputSize })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const resized = await sharp(affineOut.data, {
+      raw: {
+        width: affineOut.info.width,
+        height: affineOut.info.height,
+        channels: affineOut.info.channels,
+      },
+    })
+      .resize(outputSize, outputSize, { fit: 'fill' })
       .removeAlpha()
       .raw()
       .toBuffer();
 
-    return aligned;
+    const expectedBytes = outputSize * outputSize * 3;
+    if (resized.length !== expectedBytes) {
+      logger.warn(
+        `alignFace produced unexpected raw length after resize: got ${resized.length}, expected ${expectedBytes}`
+      );
+    }
+
+    return resized;
   } catch (err) {
     logger.error('Face alignment affine transform failed:', err);
     // Fallback: 直接 resize

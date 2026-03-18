@@ -5,7 +5,7 @@
 ## 特色
 
 - 🔒 **完全離線**：所有處理都在本機進行，不會上傳任何照片到網路
-- 🎯 **高準確度**：使用 `@vladmandic/human` 進行臉部偵測與特徵提取
+- 🎯 **高準確度**：使用 InsightFace SCRFD + ArcFace（ONNX）進行臉部偵測與特徵提取
 - ⚡ **快速處理**：支援 SQLite 快取與縮圖快取，大幅提升重複掃描速度
 - 📊 **進度追蹤**：即時顯示處理進度與目前處理的檔案
 - 🖼️ **縮圖預覽**：結果列表顯示縮圖，方便快速檢視
@@ -130,7 +130,7 @@ npm run release:win:with-sign # 進行打包（環境有憑證才會進行簽章
 - **Electron 31+**：跨平台桌面應用框架
 - **React 18**：使用者介面
 - **TypeScript**：型別安全的程式碼
-- **@vladmandic/human**：臉部偵測與特徵提取
+- **InsightFace SCRFD + ArcFace**：臉部偵測（det_500m）與特徵提取（w600k_mbf，512 維），透過 onnxruntime-node 執行
 - **better-sqlite3**：本地快取資料庫
 - **sharp**：圖片處理與縮圖生成
 
@@ -139,8 +139,11 @@ npm run release:win:with-sign # 進行打包（環境有憑證才會進行簽章
 ```
 ├── src/
 │   ├── core/           # 核心功能模組
-│   │   ├── detector.ts        # 臉部偵測
-│   │   ├── embeddings.ts       # 特徵向量提取
+│   │   ├── detector.ts        # 臉部偵測協調
+│   │   ├── scrfd.ts           # SCRFD 偵測（det_500m）
+│   │   ├── align.ts           # Umeyama 5-point 對齊
+│   │   ├── arcface.ts         # ArcFace 識別（w600k_mbf）
+│   │   ├── embeddings.ts      # 特徵向量提取
 │   │   ├── similarity.ts      # 相似度計算
 │   │   ├── db.ts              # SQLite 資料庫
 │   │   └── thumbs.ts          # 縮圖生成
@@ -220,7 +223,7 @@ A:
 A: 
 - 應用程式會自動降級到 deterministic embedding（基於檔案內容）
 - 這是正常的 fallback 機制，不會影響功能
-- 如需真正的臉部偵測，請確保 `@vladmandic/human` 已正確安裝
+- 如需真正的臉部偵測，請確保 `models/insightface/` 下的 ONNX 模型已正確下載（執行 `npm run download-models`）
 
 ## 授權
 

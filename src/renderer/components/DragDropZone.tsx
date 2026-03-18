@@ -17,95 +17,107 @@ export function DragDropZone({
   disabled = false,
   children,
   className = '',
-  style = {}
+  style = {},
 }: DragDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [dragCounter, setDragCounter] = useState(0);
+  const [_dragCounter, setDragCounter] = useState(0);
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (disabled) return;
-    
-    setDragCounter(prev => prev + 1);
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDragOver(true);
-    }
-  }, [disabled]);
+  const handleDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (disabled) return;
-    
-    setDragCounter(prev => {
-      const newCount = prev - 1;
-      if (newCount === 0) {
-        setIsDragOver(false);
+      if (disabled) return;
+
+      setDragCounter(prev => prev + 1);
+      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+        setIsDragOver(true);
       }
-      return newCount;
-    });
-  }, [disabled]);
+    },
+    [disabled]
+  );
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (disabled) return;
-    
-    if (e.dataTransfer.dropEffect === 'none') {
-      e.dataTransfer.dropEffect = 'copy';
-    }
-  }, [disabled]);
+  const handleDragLeave = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (disabled) return;
-    
-    setIsDragOver(false);
-    setDragCounter(0);
+      if (disabled) return;
 
-    const items = Array.from(e.dataTransfer.items);
-    const files: string[] = [];
-    const folders: string[] = [];
+      setDragCounter(prev => {
+        const newCount = prev - 1;
+        if (newCount === 0) {
+          setIsDragOver(false);
+        }
+        return newCount;
+      });
+    },
+    [disabled]
+  );
 
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const entry = item.webkitGetAsEntry();
-        if (entry) {
-          if (entry.isFile) {
-            const file = item.getAsFile();
-            if (file) {
-              files.push(file.path);
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (disabled) return;
+
+      if (e.dataTransfer.dropEffect === 'none') {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    },
+    [disabled]
+  );
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (disabled) return;
+
+      setIsDragOver(false);
+      setDragCounter(0);
+
+      const items = Array.from(e.dataTransfer.items);
+      const files: string[] = [];
+      const folders: string[] = [];
+
+      for (const item of items) {
+        if (item.kind === 'file') {
+          const entry = item.webkitGetAsEntry();
+          if (entry) {
+            if (entry.isFile) {
+              const file = item.getAsFile();
+              if (file) {
+                files.push(file.path);
+              }
+            } else if (entry.isDirectory && (accept === 'folders' || accept === 'both')) {
+              folders.push(entry.fullPath);
             }
-          } else if (entry.isDirectory && (accept === 'folders' || accept === 'both')) {
-            folders.push(entry.fullPath);
           }
         }
       }
-    }
 
-    // Handle files first
-    if (files.length > 0 && (accept === 'files' || accept === 'both')) {
-      onFilesDrop(files);
-    }
-
-    // Then handle folders
-    if (folders.length > 0 && onFolderDrop && (accept === 'folders' || accept === 'both')) {
-      for (const folder of folders) {
-        onFolderDrop(folder);
+      // Handle files first
+      if (files.length > 0 && (accept === 'files' || accept === 'both')) {
+        onFilesDrop(files);
       }
-    }
-  }, [disabled, accept, onFilesDrop, onFolderDrop]);
+
+      // Then handle folders
+      if (folders.length > 0 && onFolderDrop && (accept === 'folders' || accept === 'both')) {
+        for (const folder of folders) {
+          onFolderDrop(folder);
+        }
+      }
+    },
+    [disabled, accept, onFilesDrop, onFolderDrop]
+  );
 
   const baseStyle: React.CSSProperties = {
     position: 'relative',
     transition: 'all 0.2s ease',
-    ...style
+    ...style,
   };
 
   const dragOverStyle: React.CSSProperties = {
@@ -113,7 +125,7 @@ export function DragDropZone({
     backgroundColor: 'rgba(74, 144, 226, 0.1)',
     borderColor: '#4a90e2',
     borderWidth: '2px',
-    borderStyle: 'dashed'
+    borderStyle: 'dashed',
   };
 
   const overlayStyle: React.CSSProperties = {
@@ -129,7 +141,7 @@ export function DragDropZone({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-    pointerEvents: 'none'
+    pointerEvents: 'none',
   };
 
   const overlayTextStyle: React.CSSProperties = {
@@ -139,7 +151,7 @@ export function DragDropZone({
     fontSize: '16px',
     fontWeight: '500',
     color: '#4a90e2',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
   };
 
   return (
@@ -155,9 +167,11 @@ export function DragDropZone({
       {isDragOver && (
         <div style={overlayStyle}>
           <div style={overlayTextStyle}>
-            {accept === 'folders' ? '拖放資料夾到這裡' : 
-             accept === 'files' ? '拖放檔案到這裡' : 
-             '拖放檔案或資料夾到這裡'}
+            {accept === 'folders'
+              ? '拖放資料夾到這裡'
+              : accept === 'files'
+                ? '拖放檔案到這裡'
+                : '拖放檔案或資料夾到這裡'}
           </div>
         </div>
       )}

@@ -6,7 +6,7 @@ export enum LogLevel {
   ERROR = 0,
   WARN = 1,
   INFO = 2,
-  DEBUG = 3
+  DEBUG = 3,
 }
 
 class Logger {
@@ -17,17 +17,17 @@ class Logger {
     if (process.type === 'browser') {
       const userDataPath = app.getPath('userData');
       const logsDir = join(userDataPath, 'logs');
-      
+
       if (!existsSync(logsDir)) {
         mkdirSync(logsDir, { recursive: true });
       }
-      
+
       const today = new Date().toISOString().split('T')[0];
       this.logFile = join(logsDir, `app-${today}.log`);
     }
   }
 
-  private formatMessage(level: string, message: string, data?: any): string {
+  private formatMessage(level: string, message: string, data?: unknown): string {
     const timestamp = new Date().toISOString();
     const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
     return `[${timestamp}] [${level}] ${message}${dataStr}`;
@@ -43,13 +43,13 @@ class Logger {
     }
   }
 
-  public error(message: string, data?: any): void {
+  public error(message: string, data?: unknown): void {
     const formattedMessage = this.formatMessage('ERROR', message, data);
     console.error(formattedMessage);
     this.writeToFile(formattedMessage);
   }
 
-  public warn(message: string, data?: any): void {
+  public warn(message: string, data?: unknown): void {
     if (this.logLevel >= LogLevel.WARN) {
       const formattedMessage = this.formatMessage('WARN', message, data);
       console.warn(formattedMessage);
@@ -57,17 +57,19 @@ class Logger {
     }
   }
 
-  public info(message: string, data?: any): void {
+  public info(message: string, data?: unknown): void {
     if (this.logLevel >= LogLevel.INFO) {
       const formattedMessage = this.formatMessage('INFO', message, data);
+      // eslint-disable-next-line no-console
       console.log(formattedMessage);
       this.writeToFile(formattedMessage);
     }
   }
 
-  public debug(message: string, data?: any): void {
+  public debug(message: string, data?: unknown): void {
     if (this.logLevel >= LogLevel.DEBUG) {
       const formattedMessage = this.formatMessage('DEBUG', message, data);
+      // eslint-disable-next-line no-console
       console.debug(formattedMessage);
       this.writeToFile(formattedMessage);
     }

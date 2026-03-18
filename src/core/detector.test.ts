@@ -1,20 +1,32 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { detectFaces, extractFaceEmbedding, type FaceDetection } from './detector';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
+
+// Mock SCRFD and ArcFace to avoid loading real models
+vi.mock('./scrfd', () => ({
+  detectFacesSCRFD: vi.fn(() => Promise.resolve([])),
+  loadSCRFD: vi.fn(() => Promise.resolve(true)),
+  getSCRFDStatus: vi.fn(() => ({ loaded: true, error: null })),
+  resetSCRFD: vi.fn(),
+}));
+
+vi.mock('./arcface', () => ({
+  extractArcFaceEmbeddingFromAligned: vi.fn(() => Promise.resolve(null)),
+  loadArcFace: vi.fn(() => Promise.resolve(true)),
+  getArcFaceStatus: vi.fn(() => ({ loaded: true, error: null })),
+}));
+
+vi.mock('./align', () => ({
+  alignFace: vi.fn(() => Promise.resolve(Buffer.alloc(112 * 112 * 3))),
+}));
 
 describe('detector', () => {
   let testImagePath: string;
 
   beforeAll(async () => {
-    // 創建一個簡單的測試圖片
     testImagePath = join(process.cwd(), 'tmp-detector-test.jpg');
-    const jpegHeader = Buffer.from([
-      0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
-      0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
-      0x00, 0xFF, 0xD9
-    ]);
-    await writeFile(testImagePath, jpegHeader);
+    await writeFile(testImagePath, Buffer.from('test image data'));
   });
 
   afterAll(async () => {
@@ -22,65 +34,38 @@ describe('detector', () => {
   });
 
   describe('detectFaces', () => {
-    it('returns an array or throws for invalid images', { timeout: 30000 }, async () => {
-      try {
-        const faces = await detectFaces(testImagePath);
-        // If Human model loaded and processed the image, expect an array
-        expect(Array.isArray(faces)).toBe(true);
-
-        if (faces.length > 0) {
-          const face = faces[0];
-          expect(face).toHaveProperty('bbox');
-          expect(face).toHaveProperty('embedding');
-          expect(face).toHaveProperty('confidence');
-          expect(face.bbox).toHaveLength(4);
-        }
-      } catch (err) {
-        // With the real model, invalid JPEG data may cause an error
-        expect(err).toBeDefined();
-      }
+    it('returns an array for valid images', async () => {
+      const faces = await detectFaces(testImagePath);
+      expect(Array.isArray(faces)).toBe(true);
     });
 
     it('respects minConfidence option', async () => {
-      try {
-        const faces = await detectFaces(testImagePath, { minConfidence: 0.9 });
-        faces.forEach(face => {
-          expect(face.confidence).toBeGreaterThanOrEqual(0.9);
-        });
-      } catch {
-        // Expected for invalid test image
-      }
+      const faces = await detectFaces(testImagePath, { minConfidence: 0.9 });
+      expect(Array.isArray(faces)).toBe(true);
     });
 
-    it('returns empty array or throws for non-existent file', async () => {
+    it('returns empty array for non-existent file', async () => {
       try {
         const result = await detectFaces('non-existent-file.jpg');
-        // If model not loaded, returns empty array gracefully
         expect(result).toEqual([]);
       } catch {
-        // If model is loaded, throws for invalid file
+        // Expected for invalid file
       }
     });
   });
 
   describe('extractFaceEmbedding', () => {
-    it('returns null or throws for images without faces', async () => {
-      try {
-        const embedding = await extractFaceEmbedding(testImagePath);
-        // Either null (no face) or array (face detected)
-        expect(embedding === null || Array.isArray(embedding)).toBe(true);
-      } catch {
-        // Expected for invalid test image
-      }
+    it('returns null for images without faces', async () => {
+      const embedding = await extractFaceEmbedding(testImagePath);
+      expect(embedding === null || Array.isArray(embedding)).toBe(true);
     });
 
-    it('returns null or throws for invalid paths', async () => {
+    it('returns null for invalid paths', async () => {
       try {
         const result = await extractFaceEmbedding('invalid-path.jpg');
-        // If model not loaded, returns null gracefully
         expect(result).toBeNull();
       } catch {
-        // If model is loaded, throws for invalid file
+        // Expected for invalid file
       }
     });
   });

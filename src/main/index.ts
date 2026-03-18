@@ -2,13 +2,30 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
-import { fileToEmbeddingWithSource, Embedding, DETERMINISTIC_SCORE_PENALTY, type FaceAnalysis } from '../core/embeddings';
-import { cosineSimilarity, multiReferenceSimilarity, type MultiRefStrategy } from '../core/similarity';
-import { getPhoto, upsertPhoto, upsertFace, getFacesByPath, getDb, closeDb } from '../core/db';
+import {
+  fileToEmbeddingWithSource,
+  Embedding,
+  DETERMINISTIC_SCORE_PENALTY,
+  type FaceAnalysis,
+} from '../core/embeddings';
+import {
+  cosineSimilarity,
+  multiReferenceSimilarity,
+  type MultiRefStrategy,
+} from '../core/similarity';
+import {
+  getPhoto,
+  upsertPhoto,
+  upsertFace,
+  getFacesByPath,
+  getDb,
+  closeDb,
+  upsertPhotoAndFace,
+} from '../core/db';
 import { ensureThumbnailFor } from '../core/thumbs';
 import { stat as fsStat } from 'fs/promises';
 import { logger } from '../utils/logger';
-import { createErrorInfo } from '../utils/error-handler';
+import { AppError, createErrorInfo } from '../utils/error-handler';
 import { performanceManager } from '../core/performance';
 import { getPhotoEnhancer } from '../core/photoEnhancer';
 import { ChildQualityAssessor } from '../core/childQualityAssessment';
@@ -16,6 +33,32 @@ import { getGrowthRecordManager } from './growthRecordManager';
 import type { ScanSession } from '../types/api';
 import { getModelStatus, preloadModel } from '../core/detector';
 import { autoUpdater } from 'electron-updater';
+import { validatePath } from '../utils/path-validator';
+
+function installBrokenPipeGuards() {
+  const guardStream = (stream: NodeJS.WriteStream) => {
+    // When Electron is launched under a parent process that closes stdio,
+    // writes can raise EPIPE and crash the main process. Treat it as non-fatal.
+    stream.on('error', (err: any) => {
+      if (err && err.code === 'EPIPE') return;
+      throw err;
+    });
+
+    const originalWrite = stream.write.bind(stream);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (stream as any).write = ((chunk: any, encoding?: any, cb?: any) => {
+      try {
+        return originalWrite(chunk, encoding, cb);
+      } catch (err: any) {
+        if (err && err.code === 'EPIPE') return false;
+        throw err;
+      }
+    }) as typeof stream.write;
+  };
+
+  if (process.stdout) guardStream(process.stdout);
+  if (process.stderr) guardStream(process.stderr);
+}
 
 let mainWindow: BrowserWindow | null = null;
 const referenceEmbeddings: Embedding[] = [];
@@ -43,7 +86,11 @@ function evictOldestEmbeddings(count: number) {
   }
 }
 
-function setPhotoEmbedding(path: string, embedding: Embedding, source: 'face' | 'deterministic' | 'unknown' = 'unknown') {
+function setPhotoEmbedding(
+  path: string,
+  embedding: Embedding,
+  source: 'face' | 'deterministic' | 'unknown' = 'unknown'
+) {
   if (photoEmbeddings.has(path)) {
     photoEmbeddings.delete(path);
   }
@@ -55,7 +102,9 @@ function setPhotoEmbedding(path: string, embedding: Embedding, source: 'face' | 
   }
 }
 
-async function ensureModelReady(context: 'references' | 'batch'): Promise<{ ok: true } | { ok: false; error: string }> {
+async function ensureModelReady(
+  context: 'references' | 'batch'
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const status = getModelStatus();
   if (status.loaded) return { ok: true };
 
@@ -89,12 +138,15 @@ function waitForScanResumeOrCancel(sessionId: number): Promise<void> {
   if (sessionId !== currentScanSessionId || !scanPaused || scanCancelled) {
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     resolveScanPause = { sessionId, resolve };
   });
 }
 
-function cosineSimilarityWithDimensionHandling(embedding: Embedding, reference: Embedding): { score: number; dimensionAdjusted: boolean } {
+function _cosineSimilarityWithDimensionHandling(
+  embedding: Embedding,
+  reference: Embedding
+): { score: number; dimensionAdjusted: boolean } {
   if (embedding.length === reference.length) {
     return { score: cosineSimilarity(embedding, reference), dimensionAdjusted: false };
   }
@@ -112,6 +164,8 @@ function cosineSimilarityWithDimensionHandling(embedding: Embedding, reference: 
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
+installBrokenPipeGuards();
+
 function getAppRoot(): string {
   if (isDev) return process.cwd();
   return app.getAppPath();
@@ -121,7 +175,10 @@ async function createWindow() {
   const root = getAppRoot();
   const preloadPath = join(root, 'dist/preload/index.cjs');
   const htmlPath = join(root, 'dist/renderer/index.html');
-  const iconPath = join(isDev ? join(process.cwd(), 'resources') : process.resourcesPath, 'logo.ico');
+  const iconPath = join(
+    isDev ? join(process.cwd(), 'resources') : process.resourcesPath,
+    'logo.ico'
+  );
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -130,7 +187,7 @@ async function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
-      preload: preloadPath
+      preload: preloadPath,
     },
     ...(existsSync(iconPath) ? { icon: iconPath } : {}),
   });
@@ -160,8 +217,8 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
       const lower = entry.name.toLowerCase();
       // Support more image formats including HEIC and WebP
       if (
-        lower.endsWith('.jpg') || 
-        lower.endsWith('.jpeg') || 
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
         lower.endsWith('.png') ||
         lower.endsWith('.gif') ||
         lower.endsWith('.bmp') ||
@@ -186,7 +243,7 @@ function setupAutoUpdater() {
     mainWindow?.webContents.send('update:status', { status: 'checking' });
   });
 
-  autoUpdater.on('update-available', (info) => {
+  autoUpdater.on('update-available', info => {
     logger.info(`Update available: v${info.version}`);
     mainWindow?.webContents.send('update:status', {
       status: 'available',
@@ -200,7 +257,7 @@ function setupAutoUpdater() {
     mainWindow?.webContents.send('update:status', { status: 'not-available' });
   });
 
-  autoUpdater.on('download-progress', (progress) => {
+  autoUpdater.on('download-progress', progress => {
     mainWindow?.webContents.send('update:status', {
       status: 'downloading',
       percent: Math.round(progress.percent),
@@ -212,7 +269,7 @@ function setupAutoUpdater() {
     mainWindow?.webContents.send('update:status', { status: 'downloaded' });
   });
 
-  autoUpdater.on('error', (err) => {
+  autoUpdater.on('error', err => {
     logger.warn('Auto-updater error:', err?.message);
     mainWindow?.webContents.send('update:status', {
       status: 'error',
@@ -245,7 +302,9 @@ function wireIpc() {
     let modelFiles: string[] = [];
     try {
       modelFiles = readdirSync(modelsDir);
-    } catch { /* not found */ }
+    } catch {
+      /* not found */
+    }
 
     const recognitionModelExists = modelFiles.includes('w600k_mbf.onnx');
     const facedetectExists = modelFiles.includes('det_500m.onnx');
@@ -374,7 +433,9 @@ function wireIpc() {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: '選擇參考照片',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif'] }]
+      filters: [
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif'] },
+      ],
     });
     if (canceled) return null;
     return filePaths;
@@ -384,7 +445,7 @@ function wireIpc() {
     if (!mainWindow) return null;
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: '選擇照片資料夾',
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
     });
     if (canceled) return null;
     return filePaths[0] || null;
@@ -410,16 +471,36 @@ function wireIpc() {
       const perFileResults: Array<{
         path: string;
         source: 'face' | 'deterministic';
-        faceAnalysis?: { confidence: number; age?: number; gender?: 'male' | 'female'; faceCount: number };
+        faceAnalysis?: {
+          confidence: number;
+          age?: number;
+          gender?: 'male' | 'female';
+          faceCount: number;
+        };
       }> = [];
 
       for (const f of files) {
-        logger.debug(`Processing reference file: ${f}`);
-        const result = await fileToEmbeddingWithSource(f, {
-          maxSize: 1280,
-          minConfidence: 0.01,
-          retryOnNoFace: true,
-        });
+        const startedAt = Date.now();
+        logger.info(`🧩 Reference embedding start: ${f}`);
+        const result = await Promise.race([
+          fileToEmbeddingWithSource(f, {
+            maxSize: 1280,
+            minConfidence: 0.01,
+            retryOnNoFace: true,
+          }),
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new AppError(`Reference embedding timed out for: ${f}`, 'REFERENCE_EMBED_TIMEOUT')
+                ),
+              60_000
+            )
+          ),
+        ]);
+        logger.info(
+          `🧩 Reference embedding done: ${f} (source=${result.source}, dims=${result.dimensions}, ms=${Date.now() - startedAt})`
+        );
         referenceEmbeddings.push(result.embedding);
         referenceEmbeddingSources.push(result.source === 'face' ? 'face' : 'deterministic');
         perFileResults.push({
@@ -436,7 +517,9 @@ function wireIpc() {
       }
 
       if (deterministicCount > 0) {
-        logger.warn(`⚠️ ${deterministicCount}/${files.length} reference photos used DETERMINISTIC embedding (no face detected)`);
+        logger.warn(
+          `⚠️ ${deterministicCount}/${files.length} reference photos used DETERMINISTIC embedding (no face detected)`
+        );
       }
       if (faceCount > 0) {
         logger.info(`✅ ${faceCount}/${files.length} reference photos had faces detected`);
@@ -444,9 +527,15 @@ function wireIpc() {
 
       // 若偵測引擎異常才阻擋；若只是沒抓到臉，允許以降級模式繼續（維持舊版可用體感）
       if (faceCount === 0) {
-        logger.warn(`⚠️ NO reference photos had faces detected; continue in deterministic fallback mode.`);
+        logger.warn(
+          `⚠️ NO reference photos had faces detected; continue in deterministic fallback mode.`
+        );
         const modelStatus = getModelStatus();
-        if (!modelStatus.loaded || modelStatus.error || detectionErrorFallbackCount === files.length) {
+        if (
+          !modelStatus.loaded ||
+          modelStatus.error ||
+          detectionErrorFallbackCount === files.length
+        ) {
           logger.error(`❌ Blocking scan because model engine is not healthy.`);
           referenceEmbeddings.length = 0;
           return {
@@ -455,7 +544,7 @@ function wireIpc() {
           };
         }
       }
-      
+
       logger.info(`Successfully embedded ${referenceEmbeddings.length} reference files`);
       return {
         ok: true,
@@ -464,11 +553,12 @@ function wireIpc() {
           faceDetected: faceCount,
           deterministicFallback: deterministicCount,
           perFileResults,
-          warning: faceCount === 0
-            ? '所有參考照片都無法偵測到人臉，比對結果可能不準確。請確認參考照片是否為清晰的正面人臉照片。'
-            : deterministicCount > 0
-              ? `${deterministicCount} 張參考照片未偵測到人臉，建議替換為正面清晰照片。`
-              : undefined,
+          warning:
+            faceCount === 0
+              ? '所有參考照片都無法偵測到人臉，比對結果可能不準確。請確認參考照片是否為清晰的正面人臉照片。'
+              : deterministicCount > 0
+                ? `${deterministicCount} 張參考照片未偵測到人臉，建議替換為正面清晰照片。`
+                : undefined,
         },
       };
     } catch (err: any) {
@@ -543,11 +633,22 @@ function wireIpc() {
         if (scanCancelled) {
           logger.info(`Scan cancelled at ${scanned}/${total}`);
           mainWindow?.webContents.send('scan:progress', {
-            current: scanned, total, path: '', cancelled: true,
+            current: scanned,
+            total,
+            path: '',
+            cancelled: true,
           });
           return {
             ok: true,
-            data: { scanned, processed, cached, faceDetected: faceCount, deterministicFallback: deterministicCount, thumbnailErrors, cancelled: true },
+            data: {
+              scanned,
+              processed,
+              cached,
+              faceDetected: faceCount,
+              deterministicFallback: deterministicCount,
+              thumbnailErrors,
+              cancelled: true,
+            },
           };
         }
 
@@ -570,7 +671,8 @@ function wireIpc() {
                 readErrors,
                 embeddingErrors,
                 skippedErrors,
-                avgPhotosPerSec: scanned > 0 ? scanned / Math.max(1, (Date.now() - scanStartTs) / 1000) : 0,
+                avgPhotosPerSec:
+                  scanned > 0 ? scanned / Math.max(1, (Date.now() - scanStartTs) / 1000) : 0,
                 durationMs: Date.now() - scanStartTs,
                 warnings,
                 cancelled: true,
@@ -584,6 +686,29 @@ function wireIpc() {
             const mtime = Math.floor(s.mtimeMs);
             const existing = getPhoto(filePath);
 
+            if (scanCancelled) {
+              logger.info(`Scan cancelled mid-batch for: ${filePath}`);
+              return {
+                ok: true,
+                data: {
+                  scanned,
+                  processed,
+                  cached,
+                  faceDetected: faceCount,
+                  deterministicFallback: deterministicCount,
+                  thumbnailErrors,
+                  readErrors,
+                  embeddingErrors,
+                  skippedErrors,
+                  avgPhotosPerSec:
+                    scanned > 0 ? scanned / Math.max(1, (Date.now() - scanStartTs) / 1000) : 0,
+                  durationMs: Date.now() - scanStartTs,
+                  warnings,
+                  cancelled: true,
+                },
+              };
+            }
+
             if (clearCache || !existing || existing.mtime !== mtime) {
               logger.debug(`Processing new/modified file: ${filePath}`);
               const result = await fileToEmbeddingWithSource(filePath, {
@@ -596,13 +721,14 @@ function wireIpc() {
               let thumb: string | null = null;
               try {
                 thumb = await ensureThumbnailFor(filePath);
-              } catch (thumbErr: any) {
+              } catch (thumbErr) {
                 thumbnailErrors++;
-                logger.warn(`Thumbnail generation failed for ${filePath}: ${thumbErr?.message || thumbErr}`);
+                const thumbErrMsg = thumbErr instanceof Error ? thumbErr.message : String(thumbErr);
+                logger.warn(`Thumbnail generation failed for ${filePath}: ${thumbErrMsg}`);
               }
 
-              upsertPhoto(filePath, mtime, thumb);
-              upsertFace(filePath, result.embedding, result.source);
+              // 使用原子性事務確保資料一致性
+              upsertPhotoAndFace(filePath, mtime, thumb, result.embedding, result.source);
               setPhotoEmbedding(filePath, result.embedding, result.source);
 
               if (result.source === 'face') faceCount++;
@@ -637,8 +763,31 @@ function wireIpc() {
               }
               cached++;
             }
-          } catch (itemErr: any) {
-            const msg = itemErr?.message || 'unknown';
+          } catch (itemErr) {
+            if (scanCancelled) {
+              logger.info(`Scan cancelled during error handling for: ${filePath}`);
+              return {
+                ok: true,
+                data: {
+                  scanned,
+                  processed,
+                  cached,
+                  faceDetected: faceCount,
+                  deterministicFallback: deterministicCount,
+                  thumbnailErrors,
+                  readErrors,
+                  embeddingErrors,
+                  skippedErrors,
+                  avgPhotosPerSec:
+                    scanned > 0 ? scanned / Math.max(1, (Date.now() - scanStartTs) / 1000) : 0,
+                  durationMs: Date.now() - scanStartTs,
+                  warnings,
+                  cancelled: true,
+                },
+              };
+            }
+
+            const msg = itemErr instanceof Error ? itemErr.message : String(itemErr);
             if (msg.toLowerCase().includes('enoent') || msg.toLowerCase().includes('permission')) {
               readErrors++;
             } else {
@@ -651,7 +800,10 @@ function wireIpc() {
           scanned += 1;
           const elapsedSec = Math.max(1, (Date.now() - scanStartTs) / 1000);
           const photosPerSec = scanned / elapsedSec;
-          const etaSeconds = Math.max(0, Math.round((total - scanned) / Math.max(0.01, photosPerSec)));
+          const etaSeconds = Math.max(
+            0,
+            Math.round((total - scanned) / Math.max(0.01, photosPerSec))
+          );
 
           if (mainWindow) {
             const photo = getPhoto(filePath);
@@ -677,10 +829,14 @@ function wireIpc() {
         warnings.push('部分照片未偵測到人臉，已使用保底特徵，請優先複核低信心結果。');
       }
       if (skippedErrors > 0) {
-        warnings.push(`有 ${skippedErrors} 張照片處理失敗（讀檔 ${readErrors}、嵌入 ${embeddingErrors}）。`);
+        warnings.push(
+          `有 ${skippedErrors} 張照片處理失敗（讀檔 ${readErrors}、嵌入 ${embeddingErrors}）。`
+        );
       }
 
-      logger.info(`Batch embedding completed: ${processed} processed, ${cached} from cache, ${faceCount} face, ${deterministicCount} deterministic`);
+      logger.info(
+        `Batch embedding completed: ${processed} processed, ${cached} from cache, ${faceCount} face, ${deterministicCount} deterministic`
+      );
       if (thumbnailErrors > 0) {
         logger.warn(`⚠️ ${thumbnailErrors} photos failed thumbnail generation`);
       }
@@ -697,7 +853,10 @@ function wireIpc() {
           readErrors,
           embeddingErrors,
           skippedErrors,
-          avgPhotosPerSec: scanned > 0 ? Number((scanned / Math.max(1, (Date.now() - scanStartTs) / 1000)).toFixed(2)) : 0,
+          avgPhotosPerSec:
+            scanned > 0
+              ? Number((scanned / Math.max(1, (Date.now() - scanStartTs) / 1000)).toFixed(2))
+              : 0,
           durationMs: Date.now() - scanStartTs,
           warnings,
         },
@@ -712,76 +871,103 @@ function wireIpc() {
     }
   });
 
-  ipcMain.handle('match:run', async (_e, opts: { topN: number; threshold: number; strategy?: MultiRefStrategy }) => {
-    const results: Array<{ path: string; score: number; thumbPath?: string; source?: 'face' | 'deterministic' | 'unknown'; bestRefIndex?: number }> = [];
-    if (referenceEmbeddings.length === 0) {
-      logger.warn('match:run called with 0 reference embeddings');
-      return { results, dimensionAdjustedCount: 0, totalComparisons: 0 };
-    }
+  ipcMain.handle(
+    'match:run',
+    async (_e, opts: { topN?: number; threshold?: number; strategy?: MultiRefStrategy }) => {
+      // 參數驗證
+      const threshold = Math.max(0, Math.min(1, opts?.threshold ?? 0.6));
+      const topN = Math.max(1, Math.min(1000, opts?.topN ?? 100));
+      const strategy: MultiRefStrategy = opts?.strategy ?? 'best';
 
-    const strategy: MultiRefStrategy = opts?.strategy ?? 'best';
-    let dimensionAdjustedCount = 0;
-    let maxScoreOverall = -1;
-
-    // Build reference objects with face/deterministic info for weighted strategy
-    const refObjects = referenceEmbeddings.map((emb, i) => ({
-      embedding: emb,
-      isFace: referenceEmbeddingSources[i] === 'face',
-    }));
-
-    const refDims = referenceEmbeddings.map(r => r.length);
-    logger.info(`match:run: ${referenceEmbeddings.length} refs (dims: ${[...new Set(refDims)].join(',')}, strategy: ${strategy}), ${photoEmbeddings.size} photos, threshold=${opts?.threshold ?? 0}`);
-
-    for (const [path, emb] of photoEmbeddings.entries()) {
-      // Check for any dimension mismatch (for logging only)
-      for (const ref of referenceEmbeddings) {
-        if (emb.length !== ref.length) dimensionAdjustedCount++;
+      const results: Array<{
+        path: string;
+        score: number;
+        thumbPath?: string;
+        source?: 'face' | 'deterministic' | 'unknown';
+        bestRefIndex?: number;
+      }> = [];
+      if (referenceEmbeddings.length === 0) {
+        logger.warn('match:run called with 0 reference embeddings');
+        return { results, dimensionAdjustedCount: 0, totalComparisons: 0 };
       }
 
-      let score = multiReferenceSimilarity(emb, refObjects, strategy);
+      let dimensionAdjustedCount = 0;
+      let maxScoreOverall = -1;
 
-      // Track which reference photo gave the best individual score
-      let bestRefIndex = 0;
-      let bestIndividualScore = -1;
-      for (let ri = 0; ri < refObjects.length; ri++) {
-        const ref = refObjects[ri];
-        const a = emb;
-        const b = ref.embedding;
-        const s = a.length === b.length
-          ? cosineSimilarity(a, b)
-          : cosineSimilarity(a.slice(0, Math.min(a.length, b.length)), b.slice(0, Math.min(a.length, b.length)));
-        if (s > bestIndividualScore) { bestIndividualScore = s; bestRefIndex = ri; }
+      // Build reference objects with face/deterministic info for weighted strategy
+      const refObjects = referenceEmbeddings.map((emb, i) => ({
+        embedding: emb,
+        isFace: referenceEmbeddingSources[i] === 'face',
+      }));
+
+      const refDims = referenceEmbeddings.map(r => r.length);
+      logger.info(
+        `match:run: ${referenceEmbeddings.length} refs (dims: ${[...new Set(refDims)].join(',')}, strategy: ${strategy}), ${photoEmbeddings.size} photos, threshold=${opts?.threshold ?? 0}`
+      );
+
+      for (const [path, emb] of photoEmbeddings.entries()) {
+        // Check for any dimension mismatch (for logging only)
+        for (const ref of referenceEmbeddings) {
+          if (emb.length !== ref.length) dimensionAdjustedCount++;
+        }
+
+        let score = multiReferenceSimilarity(emb, refObjects, strategy);
+
+        // Track which reference photo gave the best individual score
+        let bestRefIndex = 0;
+        let bestIndividualScore = -1;
+        for (let ri = 0; ri < refObjects.length; ri++) {
+          const ref = refObjects[ri];
+          const a = emb;
+          const b = ref.embedding;
+          const s =
+            a.length === b.length
+              ? cosineSimilarity(a, b)
+              : cosineSimilarity(
+                  a.slice(0, Math.min(a.length, b.length)),
+                  b.slice(0, Math.min(a.length, b.length))
+                );
+          if (s > bestIndividualScore) {
+            bestIndividualScore = s;
+            bestRefIndex = ri;
+          }
+        }
+
+        const source = photoEmbeddingSources.get(path) || 'unknown';
+        // Deterministic vectors are only a fallback signal, reduce score to lower false positives.
+        if (source === 'deterministic' && score > 0) {
+          score = Math.max(0, score - DETERMINISTIC_SCORE_PENALTY);
+        }
+        if (score > maxScoreOverall) maxScoreOverall = score;
+        if (score >= (opts?.threshold ?? 0)) {
+          const photo = getPhoto(path);
+          const thumbPath = photo?.thumbPath || null;
+          results.push({ path, score, thumbPath: thumbPath || undefined, source, bestRefIndex });
+        }
       }
 
-      const source = photoEmbeddingSources.get(path) || 'unknown';
-      // Deterministic vectors are only a fallback signal, reduce score to lower false positives.
-      if (source === 'deterministic' && score > 0) {
-        score = Math.max(0, score - DETERMINISTIC_SCORE_PENALTY);
+      if (dimensionAdjustedCount > 0) {
+        logger.warn(
+          `⚠️ match:run: ${dimensionAdjustedCount} comparisons had mismatched dimensions (handled internally)`
+        );
       }
-      if (score > maxScoreOverall) maxScoreOverall = score;
-      if (score >= (opts?.threshold ?? 0)) {
-        const photo = getPhoto(path);
-        const thumbPath = photo?.thumbPath || null;
-        results.push({ path, score, thumbPath: thumbPath || undefined, source, bestRefIndex });
+      logger.info(
+        `match:run: ${results.length} matches found (best score: ${maxScoreOverall.toFixed(4)}, threshold: ${opts?.threshold ?? 0})`
+      );
+      if (results.length === 0 && maxScoreOverall > -1) {
+        logger.warn(
+          `⚠️ match:run: Best score was ${maxScoreOverall.toFixed(4)} but threshold is ${threshold}. Consider lowering threshold.`
+        );
       }
-    }
 
-    if (dimensionAdjustedCount > 0) {
-      logger.warn(`⚠️ match:run: ${dimensionAdjustedCount} comparisons had mismatched dimensions (handled internally)`);
+      results.sort((a, b) => b.score - a.score);
+      return {
+        results: results.slice(0, topN),
+        dimensionAdjustedCount,
+        totalComparisons: photoEmbeddings.size * referenceEmbeddings.length,
+      };
     }
-    logger.info(`match:run: ${results.length} matches found (best score: ${maxScoreOverall.toFixed(4)}, threshold: ${opts?.threshold ?? 0})`);
-    if (results.length === 0 && maxScoreOverall > -1) {
-      logger.warn(`⚠️ match:run: Best score was ${maxScoreOverall.toFixed(4)} but threshold is ${opts?.threshold ?? 0}. Consider lowering threshold.`);
-    }
-
-    results.sort((a, b) => b.score - a.score);
-    const topN = Math.max(1, Math.min(1000, opts?.topN ?? 100));
-    return {
-      results: results.slice(0, topN),
-      dimensionAdjustedCount,
-      totalComparisons: photoEmbeddings.size * referenceEmbeddings.length,
-    };
-  });
+  );
 
   // 清除 embedding 快取
   ipcMain.handle('scan:clear-cache', async () => {
@@ -805,12 +991,12 @@ function wireIpc() {
     try {
       const { files, outDir } = payload;
       logger.info(`Exporting ${files.length} files to: ${outDir}`);
-      
+
       if (!existsSync(outDir)) {
         await mkdir(outDir, { recursive: true });
         logger.debug(`Created export directory: ${outDir}`);
       }
-      
+
       let copied = 0;
       const failedPaths: string[] = [];
       const usedNames = new Set<string>();
@@ -844,7 +1030,7 @@ function wireIpc() {
         return {
           ok: false,
           data: { copied, failed: failedPaths.length, failedPaths },
-          error: `有 ${failedPaths.length} 張照片匯出失敗`
+          error: `有 ${failedPaths.length} 張照片匯出失敗`,
         };
       }
 
@@ -868,9 +1054,34 @@ function wireIpc() {
 
   ipcMain.handle('folder:open', async (_e, folderPath: string) => {
     try {
-      await shell.openPath(folderPath);
+      // 驗證路徑安全性
+      const validation = validatePath(folderPath, { mustExist: true, mustBeDirectory: true });
+      if (!validation.valid) {
+        return { ok: false, error: `無效的路徑: ${validation.error}` };
+      }
+
+      const safePath = validation.normalizedPath || folderPath;
+
+      // 確保路徑不是可執行文件
+      const ext = require('path').extname(safePath).toLowerCase();
+      const dangerousExtensions = [
+        '.exe',
+        '.bat',
+        '.cmd',
+        '.com',
+        '.scr',
+        '.pif',
+        '.vbs',
+        '.js',
+        '.jse',
+      ];
+      if (dangerousExtensions.includes(ext)) {
+        return { ok: false, error: '不允許打開可執行文件' };
+      }
+
+      await shell.openPath(safePath);
       return { ok: true };
-    } catch (err: any) {
+    } catch (err) {
       const errorInfo = createErrorInfo(err);
       logger.error('Failed to open folder:', errorInfo);
       return { ok: false, error: errorInfo.message };
@@ -1100,13 +1311,14 @@ function wireIpc() {
       if (canceled || !filePath) return { ok: false, error: 'cancelled' };
 
       const mgr = getGrowthRecordManager();
-      const [growthRecords, scanSessions, reminders, familyMembers, sharedAlbums] = await Promise.all([
-        mgr.getGrowthRecords(),
-        mgr.getScanSessions(),
-        mgr.getReminders(),
-        mgr.getFamilyMembers(),
-        mgr.getSharedAlbums(),
-      ]);
+      const [growthRecords, scanSessions, reminders, familyMembers, sharedAlbums] =
+        await Promise.all([
+          mgr.getGrowthRecords(),
+          mgr.getScanSessions(),
+          mgr.getReminders(),
+          mgr.getFamilyMembers(),
+          mgr.getSharedAlbums(),
+        ]);
 
       const exportPayload = {
         exportedAt: new Date().toISOString(),
@@ -1134,7 +1346,9 @@ function wireIpc() {
       const mgr = getGrowthRecordManager();
       const { sessions } = await mgr.getScanSessions();
       const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-      const toDelete = sessions.filter((s: ScanSession) => new Date(s.createdAt).getTime() < cutoff);
+      const toDelete = sessions.filter(
+        (s: ScanSession) => new Date(s.createdAt).getTime() < cutoff
+      );
       let deleted = 0;
       for (const session of toDelete) {
         try {
@@ -1144,7 +1358,9 @@ function wireIpc() {
           // best-effort
         }
       }
-      logger.info(`privacy:clear-old-sessions: removed ${deleted} sessions older than ${olderThanDays} days`);
+      logger.info(
+        `privacy:clear-old-sessions: removed ${deleted} sessions older than ${olderThanDays} days`
+      );
       return { ok: true, data: { deleted } };
     } catch (err: any) {
       const errorInfo = createErrorInfo(err);
@@ -1174,14 +1390,14 @@ app.whenReady().then(async () => {
   await createWindow();
 
   // 預先載入 AI 模型，讓 UI 不會顯示「AI 未載入」
-  preloadModel().catch((err) => {
+  preloadModel().catch(err => {
     logger.warn('Model preload failed:', err);
   });
 
   // Check for updates after window is ready (non-blocking)
   if (!isDev) {
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((err) => {
+      autoUpdater.checkForUpdates().catch(err => {
         logger.warn('Auto-update check failed:', err?.message);
       });
     }, 5000);

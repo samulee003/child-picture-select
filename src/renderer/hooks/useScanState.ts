@@ -6,7 +6,12 @@ export type MultiRefStrategy = 'best' | 'average' | 'weighted';
 export interface RefFileResult {
   path: string;
   source: 'face' | 'deterministic';
-  faceAnalysis?: { confidence: number; age?: number; gender?: 'male' | 'female'; faceCount: number };
+  faceAnalysis?: {
+    confidence: number;
+    age?: number;
+    gender?: 'male' | 'female';
+    faceCount: number;
+  };
 }
 
 export interface ScanState {
@@ -68,13 +73,14 @@ export interface ScanState {
 
   // Onboarding
   onboardingChecklist: { hasRefs: boolean; hasFolder: boolean; modelLoaded: boolean | null };
-
 }
 
 export function useScanState(): ScanState {
   const [folder, setFolder] = useState<string>('');
   const [refPaths, setRefPaths] = useState<string>('');
-  const [modelStatus, setModelStatus] = useState<{ loaded: boolean; error: string | null } | null>(null);
+  const [modelStatus, setModelStatus] = useState<{ loaded: boolean; error: string | null } | null>(
+    null
+  );
   const [threshold, setThreshold] = useState<number>(0.6);
   const [topN, setTopN] = useState<number>(50);
   const [results, setResults] = useState<MatchResult[]>([]);
@@ -86,7 +92,7 @@ export function useScanState(): ScanState {
     threshold: 0.6,
     topN: 50,
     lastReferencePaths: [],
-    lastFolder: ''
+    lastFolder: '',
   });
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [lastRunSummary, setLastRunSummary] = useState<{
@@ -102,11 +108,19 @@ export function useScanState(): ScanState {
   const refPathsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isProcessing = status.includes('ing...');
-  const hasLastRunConfig = settings.lastFolder.trim().length > 0 && settings.lastReferencePaths.length > 0;
-  const lastFolderDisplay = settings.lastFolder ? settings.lastFolder.split(/[/\\]/).pop() || '' : '';
+  const hasLastRunConfig =
+    settings.lastFolder.trim().length > 0 && settings.lastReferencePaths.length > 0;
+  const lastFolderDisplay = settings.lastFolder
+    ? settings.lastFolder.split(/[/\\]/).pop() || ''
+    : '';
 
   const onboardingChecklist = {
-    hasRefs: refsLoaded > 0 || refPaths.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).length >= 3,
+    hasRefs:
+      refsLoaded > 0 ||
+      refPaths
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean).length >= 3,
     hasFolder: folder.trim().length > 0,
     modelLoaded: modelStatus ? modelStatus.loaded : null,
   };
@@ -130,11 +144,14 @@ export function useScanState(): ScanState {
   // App info
   useEffect(() => {
     if (!window.api) return;
-    window.api.getAppInfo().then((info: AppInfo) => {
-      setAppInfo(info);
-    }).catch(() => {
-      setAppInfo({ appName: '大海撈Ｂ', version: '獲取中...' });
-    });
+    window.api
+      .getAppInfo()
+      .then((info: AppInfo) => {
+        setAppInfo(info);
+      })
+      .catch(() => {
+        setAppInfo({ appName: '大海撈Ｂ', version: '獲取中...' });
+      });
   }, []);
 
   // AI model status polling
@@ -143,17 +160,22 @@ export function useScanState(): ScanState {
     let cancelled = false;
 
     const checkStatus = () => {
-      window.api?.getModelStatus().then((s: { loaded: boolean; error: string | null }) => {
-        if (cancelled) return;
-        setModelStatus(s);
-        if (!s.loaded && !s.error) {
-          setTimeout(checkStatus, 2000);
-        }
-      }).catch(() => {});
+      window.api
+        ?.getModelStatus()
+        .then((s: { loaded: boolean; error: string | null }) => {
+          if (cancelled) return;
+          setModelStatus(s);
+          if (!s.loaded && !s.error) {
+            setTimeout(checkStatus, 2000);
+          }
+        })
+        .catch(() => {});
     };
     checkStatus();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refsLoaded]);
 
   // Performance mode
@@ -169,16 +191,20 @@ export function useScanState(): ScanState {
       threshold,
       topN,
       lastReferencePaths: refPaths.split('\n').filter(p => p.trim()),
-      lastFolder: folder
+      lastFolder: folder,
     };
     setSettings(newSettings);
     localStorage.setItem('app-settings', JSON.stringify(newSettings));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threshold, topN, refPaths, folder]);
 
   // Setup progress listener
   useEffect(() => {
     if (!window.api) return;
-    const api = window.api as any;
+    const api = window.api as {
+      onScanProgress: (cb: (prog: ScanProgress) => void) => void;
+      removeScanProgressListener: () => void;
+    };
     api.onScanProgress((prog: ScanProgress) => {
       setProgress(prog);
     });
@@ -197,9 +223,12 @@ export function useScanState(): ScanState {
   };
 
   const getThresholdGuide = () => {
-    if (threshold >= 0.75) return { label: '精確', desc: '只留最像的，容易漏掉側臉或模糊照', color: '#ef4444' };
-    if (threshold >= 0.6) return { label: '平衡', desc: '精準度與找齊度兼顧，推薦大多數情況使用', color: '#f59e0b' };
-    if (threshold >= 0.45) return { label: '寬鬆', desc: '多找一些候選照片，建議搭配人工複核', color: '#3b82f6' };
+    if (threshold >= 0.75)
+      return { label: '精確', desc: '只留最像的，容易漏掉側臉或模糊照', color: '#ef4444' };
+    if (threshold >= 0.6)
+      return { label: '平衡', desc: '精準度與找齊度兼顧，推薦大多數情況使用', color: '#f59e0b' };
+    if (threshold >= 0.45)
+      return { label: '寬鬆', desc: '多找一些候選照片，建議搭配人工複核', color: '#3b82f6' };
     return { label: '最寬', desc: '盡量不漏掉，但會混入較多不相關照片', color: '#10b981' };
   };
 
@@ -211,39 +240,51 @@ export function useScanState(): ScanState {
 
   const getStatusText = () => {
     switch (status) {
-      case 'idle': return '就緒';
-      case 'embedding refs...': return '載入參考照片中...';
-      case 'refs ready': return `已載入 ${refsLoaded} 張參考照片`;
-      case 'scanning...': return '掃描照片中...';
-      case 'matching...': return '比對中...';
-      case 'done': return '完成';
-      case 'exporting...': return '匯出中...';
-      default: return status;
+      case 'idle':
+        return '就緒';
+      case 'embedding refs...':
+        return '載入參考照片中...';
+      case 'refs ready':
+        return `已載入 ${refsLoaded} 張參考照片`;
+      case 'scanning...':
+        return '掃描照片中...';
+      case 'matching...':
+        return '比對中...';
+      case 'done':
+        return '完成';
+      case 'exporting...':
+        return '匯出中...';
+      default:
+        return status;
     }
   };
 
   const getStatusType = (): 'idle' | 'processing' | 'success' | 'warning' | 'error' => {
     if (status === 'idle') return 'idle';
     if (status.includes('ing...')) return 'processing';
-    if (status.includes('ready') || status.includes('done') || status.includes('exported')) return 'success';
+    if (status.includes('ready') || status.includes('done') || status.includes('exported'))
+      return 'success';
     return 'idle';
   };
 
   // Callbacks
-  const handleRefFilesDrop = useCallback((files: string[]) => {
-    const imageFiles = files.filter(file =>
-      /\.(jpg|jpeg|png|gif|bmp|webp|heic|heif)$/i.test(file)
-    );
-    if (imageFiles.length > 0) {
-      const currentPaths = refPaths.split('\n').filter(p => p.trim());
-      const newPaths = [...new Set([...currentPaths, ...imageFiles])];
-      setRefPaths(newPaths.join('\n'));
-      setRefsLoaded(0);
-      setRefQualityResults([]);
-      setStatus('idle');
-      setError(null);
-    }
-  }, [refPaths]);
+  const handleRefFilesDrop = useCallback(
+    (files: string[]) => {
+      const imageFiles = files.filter(file =>
+        /\.(jpg|jpeg|png|gif|bmp|webp|heic|heif)$/i.test(file)
+      );
+      if (imageFiles.length > 0) {
+        const currentPaths = refPaths.split('\n').filter(p => p.trim());
+        const newPaths = [...new Set([...currentPaths, ...imageFiles])];
+        setRefPaths(newPaths.join('\n'));
+        setRefsLoaded(0);
+        setRefQualityResults([]);
+        setStatus('idle');
+        setError(null);
+      }
+    },
+    [refPaths]
+  );
 
   const handleFolderDrop = useCallback((folderPath: string) => {
     setFolder(folderPath);
@@ -271,7 +312,10 @@ export function useScanState(): ScanState {
   };
 
   const handleEmbedRefs = useCallback(async () => {
-    const files = refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const files = refPaths
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
     if (files.length === 0) {
       setError('請至少提供一張參考照片');
       return;
@@ -291,16 +335,17 @@ export function useScanState(): ScanState {
       }
       const result = await api.embedReferences(files);
       if (!result.ok) {
-        setError(`嵌入參考照片失敗: ${(result as any).error || '未知錯誤'}`);
+        const errorResult = result as { ok: false; error?: string };
+        setError(`嵌入參考照片失敗: ${errorResult.error || '未知錯誤'}`);
         setStatus('idle');
         return;
       }
       setRefsLoaded(result.data?.count || files.length);
 
       // Store per-file face detection results for quality feedback
-      const resData = result.data as any;
+      const resData = result.data as { perFileResults?: RefFileResult[] } | undefined;
       if (resData?.perFileResults) {
-        setRefQualityResults(resData.perFileResults as RefFileResult[]);
+        setRefQualityResults(resData.perFileResults);
       }
 
       const faceDetected = result.data?.faceDetected ?? 0;
@@ -310,12 +355,16 @@ export function useScanState(): ScanState {
       if (warning) {
         setError(`⚠️ ${warning}`);
       } else if (faceDetected > 0) {
-        setError(`✅ ${faceDetected} 張照片成功偵測到人臉` + (deterministicFallback > 0 ? `，${deterministicFallback} 張未偵測到` : ''));
+        setError(
+          `✅ ${faceDetected} 張照片成功偵測到人臉` +
+            (deterministicFallback > 0 ? `，${deterministicFallback} 張未偵測到` : '')
+        );
       }
 
       setStatus('refs ready');
-    } catch (err: any) {
-      setError(`錯誤: ${err?.message || '未知錯誤'}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '未知錯誤';
+      setError(`錯誤: ${errorMessage}`);
       setStatus('idle');
     }
   }, [refPaths]);
@@ -331,7 +380,10 @@ export function useScanState(): ScanState {
     }
 
     const api = window.api;
-    const files = refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const files = refPaths
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
     if (refsLoaded === 0) {
       if (files.length === 0) {
         setError('請至少提供一張參考照片');
@@ -342,21 +394,23 @@ export function useScanState(): ScanState {
       try {
         const embedResult = await api.embedReferences(files);
         if (!embedResult.ok) {
-          setError(`載入參考照片失敗: ${(embedResult as any).error || '未知錯誤'}`);
+          const errorResult = embedResult as { ok: false; error?: string };
+          setError(`載入參考照片失敗: ${errorResult.error || '未知錯誤'}`);
           setStatus('idle');
           return;
         }
         setRefsLoaded(embedResult.data?.count || files.length);
-        const perFileResults = (embedResult.data as any)?.perFileResults;
+        const perFileResults = embedResult.data?.perFileResults;
         if (Array.isArray(perFileResults)) {
-          setRefQualityResults(perFileResults as RefFileResult[]);
+          setRefQualityResults(perFileResults);
         }
         const warning = embedResult.data?.warning;
         if (warning) {
           setError(`⚠️ ${warning}`);
         }
-      } catch (err: any) {
-        setError(`載入參考照片錯誤: ${err?.message || '未知錯誤'}`);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : '未知錯誤';
+        setError(`載入參考照片錯誤: ${errorMessage}`);
         setStatus('idle');
         return;
       }
@@ -390,16 +444,11 @@ export function useScanState(): ScanState {
         return;
       }
 
-
       setStatus('matching...');
       setProgress(null);
 
       const matchResponse = await api.runMatch({ topN, threshold, strategy: multiRefStrategy });
       const matched = matchResponse.results;
-      const initialReviewScores = matched.reduce<Record<string, number>>((acc, item) => {
-        acc[item.path] = Math.round(item.score * 100);
-        return acc;
-      }, {});
       const elapsedMs = scanStartTimeRef.current ? Date.now() - scanStartTimeRef.current : 0;
       const scannedCount = typeof scanData?.scanned === 'number' ? scanData.scanned : 0;
       setLastRunSummary({ scanned: scannedCount, matched: matched.length, elapsedMs });
@@ -409,19 +458,22 @@ export function useScanState(): ScanState {
       if (matched.length === 0) {
         const faceDetected = scanData?.faceDetected ?? 0;
         if (faceDetected === 0 && scannedCount > 0) {
-          setError('⚠️ 這次掃描中尚未偵測到可用人臉，已用保守模式完成比對；建議改用更清晰正面照片、增加參考照，或降低門檻後再試一次。');
+          setError(
+            '⚠️ 這次掃描中尚未偵測到可用人臉，已用保守模式完成比對；建議改用更清晰正面照片、增加參考照，或降低門檻後再試一次。'
+          );
         } else {
           setError('未找到匹配的照片，請嘗試降低門檻值或增加參考照片數量');
         }
       }
       if (scanData?.skippedErrors && scanData.skippedErrors > 0) {
-        setScanWarnings((prev) => {
-          const warning = `已略過 ${scanData.skippedErrors} 張處理失敗照片，建議先看掃描摘要中的提醒後再重試。`;
+        setScanWarnings(prev => {
+          const warning = `已略過 ${scanData?.skippedErrors} 張處理失敗照片，建議先看掃描摘要中的提醒後再重試。`;
           return prev.includes(warning) ? prev : [...prev, warning];
         });
       }
-    } catch (err: any) {
-      setError(`錯誤: ${err?.message || '未知錯誤'}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '未知錯誤';
+      setError(`錯誤: ${errorMessage}`);
       setStatus('idle');
       setProgress(null);
       scanStartTimeRef.current = undefined;
@@ -479,7 +531,10 @@ export function useScanState(): ScanState {
     try {
       await window.api.clearEmbeddingCache();
       setError('✅ 快取已清除，重新掃描中...');
-      const files = refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      const files = refPaths
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean);
       if (files.length > 0) {
         const refResult = await window.api.embedReferences(files);
         if (refResult.ok) {
@@ -489,8 +544,9 @@ export function useScanState(): ScanState {
       if (folder) {
         handleRunScan();
       }
-    } catch (err: any) {
-      setError(`清除快取失敗: ${err?.message || '未知錯誤'}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '未知錯誤';
+      setError(`清除快取失敗: ${errorMessage}`);
       setStatus('idle');
     }
   }, [isProcessing, refPaths, folder, handleRunScan]);
@@ -509,19 +565,24 @@ export function useScanState(): ScanState {
       const result = await window.api.enhancePhoto(path);
       if (result.ok && result.data?.enhancedPath) {
         setRefPaths(prev => {
-          const lines = prev.split('\n').map(l => l.trim()).filter(Boolean);
+          const lines = prev
+            .split('\n')
+            .map(l => l.trim())
+            .filter(Boolean);
           const idx = lines.indexOf(path);
-          if (idx >= 0) lines[idx] = result.data!.enhancedPath;
+          if (idx >= 0 && result.data) lines[idx] = result.data.enhancedPath;
           return lines.join('\n');
         });
         setRefsLoaded(0);
         setStatus('idle');
         setError(`✅ 已增強照片，請點「重新載入」以更新識別結果`);
       } else {
-        setError(`增強失敗: ${(result as any).error || '未知錯誤'}`);
+        const errorResult = result as { ok: false; error?: string };
+        setError(`增強失敗: ${errorResult.error || '未知錯誤'}`);
       }
-    } catch (err: any) {
-      setError(`增強失敗: ${err?.message || '未知錯誤'}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '未知錯誤';
+      setError(`增強失敗: ${errorMessage}`);
     } finally {
       setEnhancingPath(null);
     }
@@ -535,16 +596,24 @@ export function useScanState(): ScanState {
   }, [results.length]);
 
   return {
-    folder, setFolder,
-    refPaths, setRefPaths,
-    refsLoaded, setRefsLoaded,
+    folder,
+    setFolder,
+    refPaths,
+    setRefPaths,
+    refsLoaded,
+    setRefsLoaded,
     refQualityResults,
-    threshold, setThreshold,
+    threshold,
+    setThreshold,
     topN,
-    results, setResults,
-    status, setStatus,
-    progress, setProgress,
-    error, setError,
+    results,
+    setResults,
+    status,
+    setStatus,
+    progress,
+    setProgress,
+    error,
+    setError,
     modelStatus,
     settings,
     appInfo,

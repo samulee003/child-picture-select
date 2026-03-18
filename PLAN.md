@@ -644,7 +644,7 @@ secureStore.set('app-settings', settings);
     <li>✓ 没有追踪、没有广告</li>
   </ul>
   <h4>技术细节</h4>
-  <p>The模型运行在 <code>@vladmandic/human</code> package，完全离线。</p>
+  <p>模型運行在 InsightFace SCRFD + ArcFace（ONNX），完全離線。</p>
 </PrivacyDetailsModal>
 ```
 
@@ -999,7 +999,7 @@ Release: v1.4.0
 // 可选的升级路径
 {
   "UI框架": "Electron + React + Vite",
-  "AI模型": "@vladmandic/human → face-api.js (更轻量)",
+  "AI模型": "InsightFace SCRFD + ArcFace (已採用，onnxruntime-node)",
   "数据库": "SQLite → better-sqlite3 + WAL",
   ".worker": "添加Web Worker for heavy processing",
   "multi-lingual": "i18n support (en/zh)",

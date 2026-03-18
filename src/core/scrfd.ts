@@ -5,8 +5,16 @@
  * Face Detector）輕量模型，偵測臉部 bounding box 和 5 個特徵點（keypoints）。
  *
  * 模型：det_500m.onnx（0.5 GF, WIDER FACE 訓練集）
- * 輸入：[1, 3, 640, 640] float32，BGR 通道順序，(pixel - 127.5) / 128.0 正規化
+ * 輸入：[1, 3, 640, 640] float32，BGR 通道順序，（pixel - 127.5) / 128.0 正規化
  * 輸出：9 個 tensor（每個 stride {8, 16, 32} 各 3 個：score, bbox, kps）
+ *
+ * 偵測流程：
+ *   1. sharp 讀取 → 可選裁切 → 可選縮放 → raw RGB
+ *   2. Resize 到 640x640（不保持比例）
+ *   3. 轉換為 NCHW float32，BGR 通道，（px-127.5)/128.0
+ *   4. ONNX 推論
+ *   5. 解析輸出：score（sigmoid）、bbox（distance-based）、kps
+ *   6. 置信度過濾 → NMS（IoU 0.4）
  */
 
 import sharp from 'sharp';
@@ -36,22 +44,19 @@ function resolveModelPath(): string | null {
   const { join } = require('path');
   const { existsSync } = require('fs');
 
-  const candidates: string[] = [
-    join(process.cwd(), 'models', 'insightface', MODEL_FILENAME),
-  ];
+  const candidates: string[] = [join(process.cwd(), 'models', 'insightface', MODEL_FILENAME)];
 
   try {
     const { app } = require('electron');
     const resourcesPath: string =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (process as any).resourcesPath ||
-      join(app.getAppPath(), '..', 'resources');
+      (process as any).resourcesPath || join(app.getAppPath(), '..', 'resources');
     candidates.push(join(resourcesPath, 'models', 'insightface', MODEL_FILENAME));
   } catch {
     // Not in Electron
   }
 
-  const found = candidates.find((p) => existsSync(p));
+  const found = candidates.find(p => existsSync(p));
   if (found) {
     logger.info(`SCRFD model found: ${found}`);
     return found;
@@ -59,7 +64,7 @@ function resolveModelPath(): string | null {
 
   logger.warn(
     `SCRFD model not found (${MODEL_FILENAME}). Run 'npm run download-models' to download it.\n` +
-    `Searched:\n${candidates.join('\n')}`
+      `Searched:\n${candidates.join('\n')}`
   );
   return null;
 }
@@ -69,9 +74,7 @@ function requireOrt(): any {
   const { join } = require('path');
   const { existsSync } = require('fs');
 
-  const candidates: string[] = [
-    join(process.cwd(), 'node_modules', 'onnxruntime-node'),
-  ];
+  const candidates: string[] = [join(process.cwd(), 'node_modules', 'onnxruntime-node')];
 
   try {
     const { app } = require('electron');
@@ -86,7 +89,7 @@ function requireOrt(): any {
     // Not in Electron
   }
 
-  const found = candidates.find((p) => existsSync(p));
+  const found = candidates.find(p => existsSync(p));
   if (found) {
     return require(found);
   }
@@ -98,13 +101,17 @@ function requireOrt(): any {
  */
 export async function loadSCRFD(): Promise<boolean> {
   if (session) return true;
-  if (sessionLoadAttempted) return false;
+  if (sessionLoadAttempted) {
+    logger.warn(`SCRFD load previously failed: ${sessionLoadError ?? 'unknown error'}`);
+    return false;
+  }
   sessionLoadAttempted = true;
 
   try {
     const modelPath = resolveModelPath();
     if (!modelPath) {
       sessionLoadError = `SCRFD model not found (${MODEL_FILENAME}). Run 'npm run download-models'.`;
+      logger.error(`❌ ${sessionLoadError}`);
       return false;
     }
 
@@ -117,13 +124,13 @@ export async function loadSCRFD(): Promise<boolean> {
     });
 
     logger.info(
-      `SCRFD loaded. Input: [${session.inputNames}] → Output: [${session.outputNames}] (${session.outputNames.length} tensors)`
+      `✅ SCRFD loaded. Input: [${session.inputNames}] → Output: [${session.outputNames}] (${session.outputNames.length} tensors)`
     );
     return true;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     sessionLoadError = message;
-    logger.error(`Failed to load SCRFD ONNX: ${message}`);
+    logger.error(`❌ Failed to load SCRFD ONNX: ${message}`);
     return false;
   }
 }
@@ -144,11 +151,7 @@ export function resetSCRFD(): void {
 /**
  * 生成 anchor 中心座標
  */
-function generateAnchors(
-  featH: number,
-  featW: number,
-  stride: number
-): [number, number][] {
+function generateAnchors(featH: number, featW: number, stride: number): [number, number][] {
   const anchors: [number, number][] = [];
   for (let row = 0; row < featH; row++) {
     for (let col = 0; col < featW; col++) {
@@ -180,10 +183,7 @@ function computeIoU(
 /**
  * NMS（Non-Maximum Suppression）
  */
-function nms(
-  faces: SCRFDFace[],
-  iouThreshold: number
-): SCRFDFace[] {
+function nms(faces: SCRFDFace[], iouThreshold: number): SCRFDFace[] {
   const sorted = [...faces].sort((a, b) => b.score - a.score);
   const keep: SCRFDFace[] = [];
 
@@ -219,7 +219,11 @@ export async function detectFacesSCRFD(
 ): Promise<SCRFDFace[]> {
   if (!session) {
     const loaded = await loadSCRFD();
-    if (!loaded) return [];
+    if (!loaded) {
+      throw new Error(
+        `SCRFD model not available: ${sessionLoadError ?? 'unknown error'}. Please restart the app.`
+      );
+    }
   }
 
   const confThreshold = options.minConfidence ?? 0.3;
@@ -247,7 +251,10 @@ export async function detectFacesSCRFD(
     }
 
     // 取得預處理後的原始尺寸（用於座標縮放）
-    const resizedBuf = await sharpInstance.removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const resizedBuf = await sharpInstance
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
     const origW = resizedBuf.info.width;
     const origH = resizedBuf.info.height;
 
@@ -326,10 +333,7 @@ export async function detectFacesSCRFD(
         for (let k = 0; k < 5; k++) {
           const dx = kpsData[a * 10 + k * 2];
           const dy = kpsData[a * 10 + k * 2 + 1];
-          kps.push([
-            (cx + dx * stride) * scaleX,
-            (cy + dy * stride) * scaleY,
-          ]);
+          kps.push([(cx + dx * stride) * scaleX, (cy + dy * stride) * scaleY]);
         }
 
         allFaces.push({
@@ -348,7 +352,12 @@ export async function detectFacesSCRFD(
     );
     return kept;
   } catch (err) {
-    logger.error(`SCRFD detection failed for ${imagePath}:`, err);
-    return [];
+    const msg =
+      err instanceof Error
+        ? `${err.message} (${err.stack?.split('\n')[1]?.trim() ?? ''})`
+        : String(err);
+    logger.error(`SCRFD detection failed for ${imagePath}: ${msg}`);
+    // 拋出錯誤讓上層知道是偵測引擎故障，不是「沒有臉」
+    throw new Error(`SCRFD detection error for ${imagePath}: ${msg}`);
   }
 }

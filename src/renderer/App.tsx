@@ -41,24 +41,25 @@ export function App() {
 
   // Scan state
   const scan = useScanState();
-  const referencePaths = Array.from(new Set(
-    scan.refPaths
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-  ));
+  const referencePaths = Array.from(
+    new Set(
+      scan.refPaths
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean)
+    )
+  );
   const selectedRefCount = referencePaths.length;
   const toFileSrc = (filePath: string) => encodeURI(`file:///${filePath.replace(/\\/g, '/')}`);
-  const errorType: 'success' | 'warning' | 'error' | 'info' | null =
-    !scan.error
-      ? null
-      : scan.error.startsWith('✅')
-        ? 'success'
-        : scan.error.startsWith('⚠️')
-          ? 'warning'
-          : scan.error.startsWith('錯誤:') || scan.error.includes('失敗')
-            ? 'error'
-            : 'info';
+  const errorType: 'success' | 'warning' | 'error' | 'info' | null = !scan.error
+    ? null
+    : scan.error.startsWith('✅')
+      ? 'success'
+      : scan.error.startsWith('⚠️')
+        ? 'warning'
+        : scan.error.startsWith('錯誤:') || scan.error.includes('失敗')
+          ? 'error'
+          : 'info';
 
   // Review state bound to scan results
   const review = useReviewState(scan.results);
@@ -75,18 +76,22 @@ export function App() {
       review.setReviewScores(initialScores);
     }
     prevResultsRef.current = scan.results;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.results]);
 
   // Check reminders after scan completes
   const prevStatusRef = useRef(scan.status);
   useEffect(() => {
     if (prevStatusRef.current !== 'done' && scan.status === 'done') {
-      window.api?.checkReminders?.().then(res => {
-        if (res?.ok && res.data?.newReminders && res.data.newReminders.length > 0) {
-          const top = res.data.newReminders[0];
-          setReminderBanner(top.message || top.title);
-        }
-      }).catch(() => {});
+      window.api
+        ?.checkReminders?.()
+        .then(res => {
+          if (res?.ok && res.data?.newReminders && res.data.newReminders.length > 0) {
+            const top = res.data.newReminders[0];
+            setReminderBanner(top.message || top.title);
+          }
+        })
+        .catch(() => {});
     }
     prevStatusRef.current = scan.status;
   }, [scan.status]);
@@ -109,18 +114,21 @@ export function App() {
     const tempError = scan.error;
     scan.setError('設定已儲存');
     setTimeout(() => scan.setError(tempError), 2000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.error]);
 
   const handleRun = useCallback(() => {
     if (!scan.isProcessing && scan.folder.trim() && (scan.refsLoaded > 0 || scan.refPaths.trim())) {
       scan.handleRunScan();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.isProcessing, scan.folder, scan.refsLoaded, scan.refPaths]);
 
   const handleExport = useCallback(() => {
     if (scan.results.length > 0 && !scan.isProcessing) {
       exportState.setIsExportPreviewOpen(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.results.length, scan.isProcessing]);
 
   const handleHelp = useCallback(() => setIsHelpOpen(true), []);
@@ -132,11 +140,13 @@ export function App() {
     exportState.setIsExportPreviewOpen(false);
     exportState.setIsExportSuccessOpen(false);
     exportState.setExportSummary(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.handleClear]);
 
   const handleNoMatchSwitchPending = useCallback(() => {
     scan.handleNoMatchSwitchPendingView();
     review.setReviewFilter('pending');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.handleNoMatchSwitchPendingView]);
 
   useKeyboardShortcuts([
@@ -145,7 +155,7 @@ export function App() {
     { ...commonShortcuts.export, action: handleExport },
     { ...commonShortcuts.clear, action: handleClear },
     { ...commonShortcuts.help, action: handleHelp },
-    { key: 'Escape', action: () => setIsHelpOpen(false) }
+    { key: 'Escape', action: () => setIsHelpOpen(false) },
   ]);
 
   const handleOnboardingDone = () => {
@@ -156,166 +166,290 @@ export function App() {
   const favoriteMatches = favorites.getFavoriteMatches(scan.results);
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100vh',
-      overflow: 'hidden',
-      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-      fontFamily: theme.typography.fontFamily.sans.join(', '),
-      color: theme.colors.neutral[800],
-    }}>
-      {/* Left Sidebar */}
-      <div style={{
-        width: '380px',
-        flexShrink: 0,
+    <div
+      style={{
         display: 'flex',
-        flexDirection: 'column',
-        borderRight: `1px solid rgba(0,0,0,0.06)`,
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.95) 100%)',
-        backdropFilter: 'blur(20px)',
-      }}>
-        {/* Compact Header */}
-        <div style={{
-          padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-          borderBottom: '1px solid rgba(0,0,0,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: theme.spacing[3],
+        height: '100vh',
+        overflow: 'hidden',
+        background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+        fontFamily: theme.typography.fontFamily.sans.join(', '),
+        color: theme.colors.neutral[800],
+      }}
+    >
+      {/* Left Sidebar */}
+      <div
+        style={{
+          width: '380px',
           flexShrink: 0,
-        }}>
-          <img src="logo.png" alt="Logo" style={{ width: '36px', height: '36px', borderRadius: '8px' }} />
+          display: 'flex',
+          flexDirection: 'column',
+          borderRight: `1px solid rgba(0,0,0,0.06)`,
+          background:
+            'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.95) 100%)',
+          backdropFilter: 'blur(20px)',
+        }}
+      >
+        {/* Compact Header */}
+        <div
+          style={{
+            padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: theme.spacing[3],
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src="logo.png"
+            alt="Logo"
+            style={{ width: '36px', height: '36px', borderRadius: '8px' }}
+          />
           <div style={{ flex: 1 }}>
-            <h1 style={{
-              margin: 0,
-              fontSize: theme.typography.fontSize.lg,
-              fontWeight: theme.typography.fontWeight.bold,
-              background: theme.gradients.primary,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}>大海撈Ｂ</h1>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: theme.typography.fontSize.lg,
+                fontWeight: theme.typography.fontWeight.bold,
+                background: theme.gradients.primary,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >
+              大海撈Ｂ
+            </h1>
           </div>
-          <StatusBadge status={scan.getStatusType()} size="sm">{scan.getStatusText()}</StatusBadge>
+          <StatusBadge status={scan.getStatusType()} size="sm">
+            {scan.getStatusText()}
+          </StatusBadge>
           {scan.modelStatus && (
-            <span style={{
-              fontSize: '10px',
-              color: scan.modelStatus.loaded ? '#10b981' : (scan.modelStatus.error ? '#ef4444' : '#f59e0b'),
-              fontWeight: 600,
-            }}>
-              {scan.modelStatus.loaded ? 'AI' : (scan.modelStatus.error ? '!' : 'AI…')}
+            <span
+              style={{
+                fontSize: '10px',
+                color: scan.modelStatus.loaded
+                  ? '#10b981'
+                  : scan.modelStatus.error
+                    ? '#ef4444'
+                    : '#f59e0b',
+                fontWeight: 600,
+              }}
+            >
+              {scan.modelStatus.loaded ? 'AI' : scan.modelStatus.error ? '!' : 'AI…'}
             </span>
           )}
         </div>
 
         {/* Scrollable content area */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: `${theme.spacing[4]} ${theme.spacing[4]}`,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: theme.spacing[4],
-        }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: `${theme.spacing[4]} ${theme.spacing[4]}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing[4],
+          }}
+        >
           {/* Model warning */}
           {scan.modelStatus && !scan.modelStatus.loaded && (
-            <div style={{
-              padding: theme.spacing[3],
-              borderRadius: theme.borderRadius.md,
-              background: scan.modelStatus.error ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-              border: `1px solid ${scan.modelStatus.error ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
-              fontSize: theme.typography.fontSize.xs,
-              color: scan.modelStatus.error ? '#ef4444' : '#f59e0b',
-            }}>
+            <div
+              style={{
+                padding: theme.spacing[3],
+                borderRadius: theme.borderRadius.md,
+                background: scan.modelStatus.error
+                  ? 'rgba(239, 68, 68, 0.1)'
+                  : 'rgba(245, 158, 11, 0.1)',
+                border: `1px solid ${scan.modelStatus.error ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                fontSize: theme.typography.fontSize.xs,
+                color: scan.modelStatus.error ? '#ef4444' : '#f59e0b',
+              }}
+            >
               <strong>{scan.modelStatus.error ? 'AI 載入失敗' : 'AI 載入中...'}</strong>
-              {scan.modelStatus.error && <div style={{ marginTop: 2, opacity: 0.8 }}>請重新啟動應用程式</div>}
+              {scan.modelStatus.error && (
+                <div style={{ marginTop: 2, opacity: 0.8 }}>請重新啟動應用程式</div>
+              )}
             </div>
           )}
 
           {/* Error Alert */}
           {scan.error && (
-            <div style={{
-              padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
-              borderRadius: theme.borderRadius.md,
-              background:
-                errorType === 'success' ? 'rgba(16,185,129,0.1)'
-                  : errorType === 'warning' ? 'rgba(245,158,11,0.1)'
-                    : errorType === 'info' ? 'rgba(59,130,246,0.08)'
-                      : 'rgba(239,68,68,0.08)',
-              border:
-                errorType === 'success' ? '1px solid rgba(16,185,129,0.25)'
-                  : errorType === 'warning' ? '1px solid rgba(245,158,11,0.25)'
-                    : errorType === 'info' ? '1px solid rgba(59,130,246,0.2)'
-                      : '1px solid rgba(239,68,68,0.2)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: theme.spacing[2],
-            }}>
-              <span style={{
-                fontSize: theme.typography.fontSize.xs,
-                color:
-                  errorType === 'success' ? '#10b981'
-                    : errorType === 'warning' ? '#d97706'
-                      : errorType === 'info' ? '#2563eb'
-                        : theme.colors.error[600],
-                lineHeight: 1.5,
-                flex: 1,
-              }}>{scan.error}</span>
-              <button onClick={() => scan.setError(null)} style={{
-                background: 'none', border: 'none', color: theme.colors.neutral[400],
-                cursor: 'pointer', fontSize: '16px', lineHeight: 1, flexShrink: 0,
-              }}>×</button>
+            <div
+              style={{
+                padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
+                borderRadius: theme.borderRadius.md,
+                background:
+                  errorType === 'success'
+                    ? 'rgba(16,185,129,0.1)'
+                    : errorType === 'warning'
+                      ? 'rgba(245,158,11,0.1)'
+                      : errorType === 'info'
+                        ? 'rgba(59,130,246,0.08)'
+                        : 'rgba(239,68,68,0.08)',
+                border:
+                  errorType === 'success'
+                    ? '1px solid rgba(16,185,129,0.25)'
+                    : errorType === 'warning'
+                      ? '1px solid rgba(245,158,11,0.25)'
+                      : errorType === 'info'
+                        ? '1px solid rgba(59,130,246,0.2)'
+                        : '1px solid rgba(239,68,68,0.2)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: theme.spacing[2],
+              }}
+            >
+              <span
+                style={{
+                  fontSize: theme.typography.fontSize.xs,
+                  color:
+                    errorType === 'success'
+                      ? '#10b981'
+                      : errorType === 'warning'
+                        ? '#d97706'
+                        : errorType === 'info'
+                          ? '#2563eb'
+                          : theme.colors.error[600],
+                  lineHeight: 1.5,
+                  flex: 1,
+                }}
+              >
+                {scan.error}
+              </span>
+              <button
+                onClick={() => scan.setError(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: theme.colors.neutral[400],
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
             </div>
           )}
 
           {/* ① Reference Photos */}
           <div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: theme.spacing[2], marginBottom: theme.spacing[2],
-            }}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '50%',
-                background: scan.refPaths.trim() ? '#10b981' : theme.colors.primary[500],
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: '12px', flexShrink: 0,
-              }}>{scan.refPaths.trim() ? '✓' : '1'}</div>
-              <span style={{
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.semibold,
-                color: theme.colors.neutral[800],
-              }}>參考照片</span>
-              <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[500], marginLeft: 'auto' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing[2],
+                marginBottom: theme.spacing[2],
+              }}
+            >
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: scan.refPaths.trim() ? '#10b981' : theme.colors.primary[500],
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '12px',
+                  flexShrink: 0,
+                }}
+              >
+                {scan.refPaths.trim() ? '✓' : '1'}
+              </div>
+              <span
+                style={{
+                  fontSize: theme.typography.fontSize.sm,
+                  fontWeight: theme.typography.fontWeight.semibold,
+                  color: theme.colors.neutral[800],
+                }}
+              >
+                參考照片
+              </span>
+              <span
+                style={{
+                  fontSize: theme.typography.fontSize.xs,
+                  color: theme.colors.neutral[500],
+                  marginLeft: 'auto',
+                }}
+              >
                 已選 {selectedRefCount} / 已載入 {scan.refsLoaded}
               </span>
             </div>
-            <DragDropZone onFilesDrop={scan.handleRefFilesDrop} accept="files" disabled={scan.isProcessing}>
+            <DragDropZone
+              onFilesDrop={scan.handleRefFilesDrop}
+              accept="files"
+              disabled={scan.isProcessing}
+            >
               <div
                 style={{
                   border: `2px dashed ${scan.refPaths.trim() ? theme.colors.primary[300] : theme.colors.neutral[300]}`,
                   borderRadius: theme.borderRadius.md,
                   padding: scan.refPaths.trim() ? theme.spacing[3] : theme.spacing[4],
                   textAlign: 'center',
-                  background: scan.refPaths.trim() ? 'rgba(58,123,170,0.04)' : 'rgba(255,255,255,0.5)',
+                  background: scan.refPaths.trim()
+                    ? 'rgba(58,123,170,0.04)'
+                    : 'rgba(255,255,255,0.5)',
                   cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                 }}
                 onClick={() => !scan.isProcessing && scan.handleBrowseFiles()}
               >
                 {scan.refPaths.trim() ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[2], justifyContent: 'center' }}>
-                    <span style={{ fontSize: theme.typography.fontSize.lg }}>{scan.refsLoaded > 0 ? '✅' : '📸'}</span>
-                    <span style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.primary[600], fontWeight: 600 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: theme.spacing[2],
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: theme.typography.fontSize.lg }}>
+                      {scan.refsLoaded > 0 ? '✅' : '📸'}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: theme.typography.fontSize.sm,
+                        color: theme.colors.primary[600],
+                        fontWeight: 600,
+                      }}
+                    >
                       已選 {selectedRefCount} 張 / 已載入 {scan.refsLoaded} 張
                     </span>
-                    <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400] }}>點擊新增</span>
+                    <span
+                      style={{
+                        fontSize: theme.typography.fontSize.xs,
+                        color: theme.colors.neutral[400],
+                      }}
+                    >
+                      點擊新增
+                    </span>
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: '28px', marginBottom: theme.spacing[2], opacity: 0.6 }}>📸</div>
-                    <div style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.primary[600], fontWeight: 600 }}>
+                    <div style={{ fontSize: '28px', marginBottom: theme.spacing[2], opacity: 0.6 }}>
+                      📸
+                    </div>
+                    <div
+                      style={{
+                        fontSize: theme.typography.fontSize.sm,
+                        color: theme.colors.primary[600],
+                        fontWeight: 600,
+                      }}
+                    >
                       點擊選擇小孩的照片
                     </div>
-                    <div style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
+                    <div
+                      style={{
+                        fontSize: theme.typography.fontSize.xs,
+                        color: theme.colors.neutral[400],
+                        marginTop: theme.spacing[1],
+                      }}
+                    >
                       建議 3-10 張清晰正面照 / 可拖放
                     </div>
                   </div>
@@ -324,17 +458,50 @@ export function App() {
             </DragDropZone>
             {scan.refPaths.trim() && (
               <div style={{ display: 'flex', gap: theme.spacing[2], marginTop: theme.spacing[2] }}>
-                <ModernButton variant="secondary" size="sm" onClick={scan.handleBrowseFiles} disabled={scan.isProcessing}>新增</ModernButton>
-                <ModernButton variant="ghost" size="sm" onClick={() => { scan.setRefPaths(''); scan.setRefsLoaded(0); scan.setStatus('idle'); scan.setError(null); }} disabled={scan.isProcessing}>清除</ModernButton>
+                <ModernButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={scan.handleBrowseFiles}
+                  disabled={scan.isProcessing}
+                >
+                  新增
+                </ModernButton>
+                <ModernButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    scan.setRefPaths('');
+                    scan.setRefsLoaded(0);
+                    scan.setStatus('idle');
+                    scan.setError(null);
+                  }}
+                  disabled={scan.isProcessing}
+                >
+                  清除
+                </ModernButton>
                 {scan.refsLoaded > 0 && (
-                  <ModernButton variant="primary" size="sm" loading={scan.status === 'embedding refs...'} disabled={scan.isProcessing} onClick={scan.handleEmbedRefs}>重新載入</ModernButton>
+                  <ModernButton
+                    variant="primary"
+                    size="sm"
+                    loading={scan.status === 'embedding refs...'}
+                    disabled={scan.isProcessing}
+                    onClick={scan.handleEmbedRefs}
+                  >
+                    重新載入
+                  </ModernButton>
                 )}
               </div>
             )}
 
             {referencePaths.length > 0 && (
               <div style={{ marginTop: theme.spacing[2] }}>
-                <div style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[500], marginBottom: theme.spacing[1] }}>
+                <div
+                  style={{
+                    fontSize: theme.typography.fontSize.xs,
+                    color: theme.colors.neutral[500],
+                    marginBottom: theme.spacing[1],
+                  }}
+                >
                   參考照預覽（已選 {selectedRefCount} 張）
                 </div>
                 <div
@@ -344,7 +511,7 @@ export function App() {
                     gap: theme.spacing[1],
                   }}
                 >
-                  {referencePaths.map((path) => (
+                  {referencePaths.map(path => (
                     <div
                       key={path}
                       title={path}
@@ -359,9 +526,14 @@ export function App() {
                       <img
                         src={toFileSrc(path)}
                         alt="參考照縮圖"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                        }}
                         loading="lazy"
-                        onError={(e) => {
+                        onError={e => {
                           (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
                         }}
                       />
@@ -370,7 +542,19 @@ export function App() {
                 </div>
               </div>
             )}
-            <textarea ref={scan.refPathsTextareaRef} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }} value={scan.refPaths} onChange={(e) => scan.setRefPaths(e.target.value)} tabIndex={-1} />
+            <textarea
+              ref={scan.refPathsTextareaRef}
+              style={{
+                position: 'absolute',
+                opacity: 0,
+                pointerEvents: 'none',
+                width: 0,
+                height: 0,
+              }}
+              value={scan.refPaths}
+              onChange={e => scan.setRefPaths(e.target.value)}
+              tabIndex={-1}
+            />
 
             {/* Reference photo quality feedback */}
             {scan.refQualityResults.length > 0 && scan.refsLoaded > 0 && (
@@ -379,7 +563,7 @@ export function App() {
                   results={scan.refQualityResults}
                   enhancingPath={scan.enhancingPath}
                   onEnhance={scan.handleEnhanceRefPhoto}
-                  onRemove={(path) => {
+                  onRemove={path => {
                     const lines = scan.refPaths.split('\n').filter(p => p.trim() !== path);
                     scan.setRefPaths(lines.join('\n'));
                     scan.setRefsLoaded(0);
@@ -392,26 +576,53 @@ export function App() {
 
           {/* ② Folder */}
           <div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: theme.spacing[2], marginBottom: theme.spacing[2],
-            }}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '50%',
-                background: scan.folder.trim() ? '#10b981' : theme.colors.secondary[500],
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: '12px', flexShrink: 0,
-              }}>{scan.folder.trim() ? '✓' : '2'}</div>
-              <span style={{
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.semibold,
-                color: theme.colors.neutral[800],
-              }}>搜尋資料夾</span>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing[2],
+                marginBottom: theme.spacing[2],
+              }}
+            >
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: scan.folder.trim() ? '#10b981' : theme.colors.secondary[500],
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '12px',
+                  flexShrink: 0,
+                }}
+              >
+                {scan.folder.trim() ? '✓' : '2'}
+              </div>
+              <span
+                style={{
+                  fontSize: theme.typography.fontSize.sm,
+                  fontWeight: theme.typography.fontWeight.semibold,
+                  color: theme.colors.neutral[800],
+                }}
+              >
+                搜尋資料夾
+              </span>
             </div>
-            <DragDropZone onFilesDrop={() => {}} onFolderDrop={scan.handleFolderDrop} accept="folders" disabled={scan.isProcessing}>
+            <DragDropZone
+              onFilesDrop={() => {}}
+              onFolderDrop={scan.handleFolderDrop}
+              accept="folders"
+              disabled={scan.isProcessing}
+            >
               {scan.folder.trim() ? (
                 <div
                   style={{
-                    display: 'flex', alignItems: 'center', gap: theme.spacing[2],
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: theme.spacing[2],
                     padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
                     borderRadius: theme.borderRadius.md,
                     border: '1px solid rgba(16,185,129,0.3)',
@@ -421,14 +632,26 @@ export function App() {
                   onClick={() => !scan.isProcessing && scan.handleBrowseFolder()}
                 >
                   <span style={{ color: '#10b981', fontSize: '16px' }}>📁</span>
-                  <span style={{
-                    flex: 1, fontSize: theme.typography.fontSize.xs,
-                    color: theme.colors.neutral[700],
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: theme.typography.fontSize.xs,
+                      color: theme.colors.neutral[700],
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {scan.folder.split(/[/\\]/).slice(-2).join('/')}
                   </span>
-                  <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400] }}>換</span>
+                  <span
+                    style={{
+                      fontSize: theme.typography.fontSize.xs,
+                      color: theme.colors.neutral[400],
+                    }}
+                  >
+                    換
+                  </span>
                 </div>
               ) : (
                 <div
@@ -442,11 +665,25 @@ export function App() {
                   }}
                   onClick={() => !scan.isProcessing && scan.handleBrowseFolder()}
                 >
-                  <div style={{ fontSize: '24px', marginBottom: theme.spacing[1], opacity: 0.5 }}>📁</div>
-                  <div style={{ fontSize: theme.typography.fontSize.sm, color: theme.colors.secondary[600], fontWeight: 600 }}>
+                  <div style={{ fontSize: '24px', marginBottom: theme.spacing[1], opacity: 0.5 }}>
+                    📁
+                  </div>
+                  <div
+                    style={{
+                      fontSize: theme.typography.fontSize.sm,
+                      color: theme.colors.secondary[600],
+                      fontWeight: 600,
+                    }}
+                  >
                     點擊選擇照片資料夾
                   </div>
-                  <div style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
+                  <div
+                    style={{
+                      fontSize: theme.typography.fontSize.xs,
+                      color: theme.colors.neutral[400],
+                      marginTop: theme.spacing[1],
+                    }}
+                  >
                     班級照、活動照的資料夾 / 可拖放
                   </div>
                 </div>
@@ -456,26 +693,50 @@ export function App() {
 
           {/* ③ Search mode */}
           <div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: theme.spacing[2], marginBottom: theme.spacing[2],
-            }}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '50%',
-                background: theme.colors.neutral[400],
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: '12px', flexShrink: 0,
-              }}>3</div>
-              <span style={{
-                fontSize: theme.typography.fontSize.sm,
-                fontWeight: theme.typography.fontWeight.semibold,
-                color: theme.colors.neutral[800],
-              }}>搜尋模式</span>
-              <span style={{
-                fontSize: theme.typography.fontSize.xs,
-                color: scan.getThresholdGuide().color,
-                fontWeight: 700,
-                marginLeft: 'auto',
-              }}>{scan.getThresholdGuide().label}</span>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing[2],
+                marginBottom: theme.spacing[2],
+              }}
+            >
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: theme.colors.neutral[400],
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '12px',
+                  flexShrink: 0,
+                }}
+              >
+                3
+              </div>
+              <span
+                style={{
+                  fontSize: theme.typography.fontSize.sm,
+                  fontWeight: theme.typography.fontWeight.semibold,
+                  color: theme.colors.neutral[800],
+                }}
+              >
+                搜尋模式
+              </span>
+              <span
+                style={{
+                  fontSize: theme.typography.fontSize.xs,
+                  color: scan.getThresholdGuide().color,
+                  fontWeight: 700,
+                  marginLeft: 'auto',
+                }}
+              >
+                {scan.getThresholdGuide().label}
+              </span>
             </div>
             <div style={{ display: 'flex', gap: theme.spacing[1], marginBottom: theme.spacing[2] }}>
               {[
@@ -488,49 +749,88 @@ export function App() {
                   onClick={() => scan.setThreshold(preset.value)}
                   disabled={scan.isProcessing}
                   style={{
-                    flex: 1, padding: `6px 0`,
+                    flex: 1,
+                    padding: `6px 0`,
                     borderRadius: theme.borderRadius.md,
                     border: `2px solid ${Math.abs(scan.threshold - preset.value) < 0.08 ? preset.color : 'rgba(0,0,0,0.08)'}`,
-                    background: Math.abs(scan.threshold - preset.value) < 0.08 ? `${preset.color}12` : 'transparent',
-                    color: Math.abs(scan.threshold - preset.value) < 0.08 ? preset.color : theme.colors.neutral[500],
+                    background:
+                      Math.abs(scan.threshold - preset.value) < 0.08
+                        ? `${preset.color}12`
+                        : 'transparent',
+                    color:
+                      Math.abs(scan.threshold - preset.value) < 0.08
+                        ? preset.color
+                        : theme.colors.neutral[500],
                     cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                     fontWeight: Math.abs(scan.threshold - preset.value) < 0.08 ? 700 : 500,
                     fontSize: theme.typography.fontSize.xs,
                     transition: 'all 0.15s',
                   }}
-                >{preset.label}</button>
+                >
+                  {preset.label}
+                </button>
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing[2] }}>
               <span style={{ fontSize: '10px', color: '#10b981' }}>多找</span>
               <input
-                type="range" min={0} max={1} step={0.01} value={scan.threshold}
-                onChange={(e) => scan.setThreshold(parseFloat(e.target.value))}
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={scan.threshold}
+                onChange={e => scan.setThreshold(parseFloat(e.target.value))}
                 style={{
-                  flex: 1, height: '6px', borderRadius: theme.borderRadius.full,
-                  outline: 'none', appearance: 'none',
-                  background: 'linear-gradient(to right, #10b981, #3b82f6 35%, #f59e0b 60%, #ef4444)',
+                  flex: 1,
+                  height: '6px',
+                  borderRadius: theme.borderRadius.full,
+                  outline: 'none',
+                  appearance: 'none',
+                  background:
+                    'linear-gradient(to right, #10b981, #3b82f6 35%, #f59e0b 60%, #ef4444)',
                 }}
                 disabled={scan.isProcessing}
               />
               <span style={{ fontSize: '10px', color: '#ef4444' }}>精準</span>
             </div>
-            <div style={{ fontSize: '11px', color: theme.colors.neutral[400], marginTop: theme.spacing[1] }}>
+            <div
+              style={{
+                fontSize: '11px',
+                color: theme.colors.neutral[400],
+                marginTop: theme.spacing[1],
+              }}
+            >
               {scan.getThresholdGuide().desc}
             </div>
 
             {/* Multi-ref fusion strategy — only shown when 2+ reference photos loaded */}
             {scan.refsLoaded >= 2 && (
               <div style={{ marginTop: theme.spacing[2] }}>
-                <div style={{ fontSize: '10px', color: theme.colors.neutral[500], marginBottom: '4px' }}>
+                <div
+                  style={{
+                    fontSize: '10px',
+                    color: theme.colors.neutral[500],
+                    marginBottom: '4px',
+                  }}
+                >
                   多照融合方式
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                  {([
-                    { value: 'best' as const, label: '最高分', title: '取多張中最相似的分數（預設）' },
-                    { value: 'average' as const, label: '平均分', title: '取多張的平均相似分' },
-                    { value: 'weighted' as const, label: '加權', title: '人臉照片給 2 倍權重，未偵測到人臉的給 1 倍' },
-                  ] as const).map(opt => (
+                  {(
+                    [
+                      {
+                        value: 'best' as const,
+                        label: '最高分',
+                        title: '取多張中最相似的分數（預設）',
+                      },
+                      { value: 'average' as const, label: '平均分', title: '取多張的平均相似分' },
+                      {
+                        value: 'weighted' as const,
+                        label: '加權',
+                        title: '人臉照片給 2 倍權重，未偵測到人臉的給 1 倍',
+                      },
+                    ] as const
+                  ).map(opt => (
                     <button
                       key={opt.value}
                       title={opt.title}
@@ -541,13 +841,21 @@ export function App() {
                         padding: '3px 0',
                         borderRadius: theme.borderRadius.sm,
                         border: `1px solid ${scan.multiRefStrategy === opt.value ? 'rgba(59,130,246,0.5)' : 'rgba(0,0,0,0.08)'}`,
-                        background: scan.multiRefStrategy === opt.value ? 'rgba(59,130,246,0.08)' : 'transparent',
-                        color: scan.multiRefStrategy === opt.value ? '#3b82f6' : theme.colors.neutral[500],
+                        background:
+                          scan.multiRefStrategy === opt.value
+                            ? 'rgba(59,130,246,0.08)'
+                            : 'transparent',
+                        color:
+                          scan.multiRefStrategy === opt.value
+                            ? '#3b82f6'
+                            : theme.colors.neutral[500],
                         cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                         fontSize: '10px',
                         fontWeight: scan.multiRefStrategy === opt.value ? 700 : 400,
                       }}
-                    >{opt.label}</button>
+                    >
+                      {opt.label}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -556,39 +864,60 @@ export function App() {
 
           {/* Export section */}
           {scan.results.length > 0 && (
-            <div style={{
-              padding: theme.spacing[3],
-              borderRadius: theme.borderRadius.md,
-              background: 'rgba(59,130,246,0.05)',
-              border: '1px solid rgba(59,130,246,0.15)',
-            }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: theme.spacing[2],
-                marginBottom: theme.spacing[2], flexWrap: 'wrap',
-              }}>
+            <div
+              style={{
+                padding: theme.spacing[3],
+                borderRadius: theme.borderRadius.md,
+                background: 'rgba(59,130,246,0.05)',
+                border: '1px solid rgba(59,130,246,0.15)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: theme.spacing[2],
+                  marginBottom: theme.spacing[2],
+                  flexWrap: 'wrap',
+                }}
+              >
                 <button
                   onClick={() => favorites.setExportOnlyFavorites(false)}
                   style={{
                     borderRadius: theme.borderRadius.sm,
                     border: `1px solid ${!favorites.exportOnlyFavorites ? 'rgba(59,130,246,0.5)' : 'rgba(0,0,0,0.1)'}`,
                     color: !favorites.exportOnlyFavorites ? '#3b82f6' : theme.colors.neutral[500],
-                    background: !favorites.exportOnlyFavorites ? 'rgba(59,130,246,0.1)' : 'transparent',
-                    padding: '3px 8px', cursor: 'pointer', fontSize: theme.typography.fontSize.xs,
+                    background: !favorites.exportOnlyFavorites
+                      ? 'rgba(59,130,246,0.1)'
+                      : 'transparent',
+                    padding: '3px 8px',
+                    cursor: 'pointer',
+                    fontSize: theme.typography.fontSize.xs,
                   }}
-                >全部</button>
+                >
+                  全部
+                </button>
                 <button
                   onClick={() => favorites.setExportOnlyFavorites(true)}
                   style={{
                     borderRadius: theme.borderRadius.sm,
                     border: `1px solid ${favorites.exportOnlyFavorites ? 'rgba(251,191,36,0.5)' : 'rgba(0,0,0,0.1)'}`,
                     color: favorites.exportOnlyFavorites ? '#f59e0b' : theme.colors.neutral[500],
-                    background: favorites.exportOnlyFavorites ? 'rgba(251,191,36,0.1)' : 'transparent',
-                    padding: '3px 8px', cursor: 'pointer', fontSize: theme.typography.fontSize.xs,
+                    background: favorites.exportOnlyFavorites
+                      ? 'rgba(251,191,36,0.1)'
+                      : 'transparent',
+                    padding: '3px 8px',
+                    cursor: 'pointer',
+                    fontSize: theme.typography.fontSize.xs,
                   }}
-                >收藏 {favoriteMatches.length}</button>
+                >
+                  收藏 {favoriteMatches.length}
+                </button>
               </div>
               <ModernButton
-                variant="secondary" size="md" fullWidth
+                variant="secondary"
+                size="md"
+                fullWidth
                 disabled={scan.isProcessing}
                 onClick={() => exportState.handlePrepareExport('default')}
               >
@@ -613,107 +942,189 @@ export function App() {
                 textAlign: 'left',
               }}
             >
-              載入上次設定：{scan.settings.lastReferencePaths.length} 張參考照 / {scan.lastFolderDisplay}
+              載入上次設定：{scan.settings.lastReferencePaths.length} 張參考照 /{' '}
+              {scan.lastFolderDisplay}
             </button>
           )}
         </div>
 
         {/* Sticky CTA */}
-        <div style={{
-          padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-          borderTop: '1px solid rgba(0,0,0,0.06)',
-          background: 'rgba(255,255,255,0.95)',
-          flexShrink: 0,
-        }}>
+        <div
+          style={{
+            padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+            background: 'rgba(255,255,255,0.95)',
+            flexShrink: 0,
+          }}
+        >
           <ModernButton
-            variant="success" size="lg" fullWidth
+            variant="success"
+            size="lg"
+            fullWidth
             loading={scan.isProcessing}
             disabled={
-              scan.isProcessing
-              || !scan.folder.trim()
-              || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')
-              || scan.modelStatus?.loaded === false
+              scan.isProcessing ||
+              !scan.folder.trim() ||
+              (scan.refsLoaded === 0 && scan.refPaths.trim() === '') ||
+              scan.modelStatus?.loaded === false
             }
             onClick={scan.handleRunScan}
           >
-            {scan.isProcessing ? '處理中...' : scan.refsLoaded === 0 && scan.refPaths.trim() ? '載入照片並搜尋' : '開始搜尋'}
+            {scan.isProcessing
+              ? '處理中...'
+              : scan.refsLoaded === 0 && scan.refPaths.trim()
+                ? '載入照片並搜尋'
+                : '開始搜尋'}
           </ModernButton>
-          <div style={{
-            display: 'flex', justifyContent: 'center', gap: theme.spacing[3], marginTop: theme.spacing[2],
-          }}>
-            <button onClick={handleHelp} style={{ background: 'none', border: 'none', color: theme.colors.neutral[400], cursor: 'pointer', fontSize: theme.typography.fontSize.xs }}>說明</button>
-            <button onClick={() => setIsHelpOpen(true)} style={{ background: 'none', border: 'none', color: theme.colors.neutral[400], cursor: 'pointer', fontSize: theme.typography.fontSize.xs }}>{scan.appInfo?.version ? `v${scan.appInfo.version}` : '關於'}</button>
-            <button onClick={() => setIsPrivacyOpen(true)} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontSize: theme.typography.fontSize.xs, fontWeight: 600 }} title="隱私保護設定">🔒 隱私</button>
-            <button onClick={() => window.api?.openExternal?.('https://buymeacoffee.com/samulee003')} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: theme.typography.fontSize.xs, fontWeight: 600 }}>☕ 支持</button>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: theme.spacing[3],
+              marginTop: theme.spacing[2],
+            }}
+          >
+            <button
+              onClick={handleHelp}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: theme.colors.neutral[400],
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+              }}
+            >
+              說明
+            </button>
+            <button
+              onClick={() => setIsHelpOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: theme.colors.neutral[400],
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+              }}
+            >
+              {scan.appInfo?.version ? `v${scan.appInfo.version}` : '關於'}
+            </button>
+            <button
+              onClick={() => setIsPrivacyOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#10b981',
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+                fontWeight: 600,
+              }}
+              title="隱私保護設定"
+            >
+              🔒 隱私
+            </button>
+            <button
+              onClick={() => window.api?.openExternal?.('https://buymeacoffee.com/samulee003')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#f59e0b',
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+                fontWeight: 600,
+              }}
+            >
+              ☕ 支持
+            </button>
           </div>
         </div>
       </div>
 
       {/* Right Main Content */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'transparent',
-      }}>
-        <div style={{
-          padding: theme.spacing[6],
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          position: 'relative',
           display: 'flex',
           flexDirection: 'column',
-          gap: theme.spacing[6],
-          flex: 1,
-          maxWidth: '1200px',
-          margin: '0 auto',
-          width: '100%',
-        }}>
+          background: 'transparent',
+        }}
+      >
+        <div
+          style={{
+            padding: theme.spacing[6],
+            display: 'flex',
+            flexDirection: 'column',
+            gap: theme.spacing[6],
+            flex: 1,
+            maxWidth: '1200px',
+            margin: '0 auto',
+            width: '100%',
+          }}
+        >
           <UpdateBanner />
 
           {/* Reminder Banner */}
           {reminderBanner && (
-            <div style={{
-              background: 'rgba(102, 126, 234, 0.15)',
-              border: '1px solid rgba(102, 126, 234, 0.35)',
-              borderRadius: '10px',
-              padding: '10px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              fontSize: '13px',
-              color: '#c7d2fe',
-            }}>
+            <div
+              style={{
+                background: 'rgba(102, 126, 234, 0.15)',
+                border: '1px solid rgba(102, 126, 234, 0.35)',
+                borderRadius: '10px',
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontSize: '13px',
+                color: '#c7d2fe',
+              }}
+            >
               <span>💡</span>
               <span style={{ flex: 1 }}>{reminderBanner}</span>
               <button
                 onClick={() => setReminderBanner(null)}
-                style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: 0 }}
-              >×</button>
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#818cf8',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
             </div>
           )}
 
           {/* Welcome State */}
-          {scan.results.length === 0 && !scan.status.includes('ing...') && scan.status !== 'done' && (
-            <WelcomeState
-              refPaths={scan.refPaths}
-              folder={scan.folder}
-              isProcessing={scan.isProcessing}
-              onBrowseFiles={scan.handleBrowseFiles}
-              onBrowseFolder={scan.handleBrowseFolder}
-              onRunScan={scan.handleRunScan}
-            />
-          )}
+          {scan.results.length === 0 &&
+            !scan.status.includes('ing...') &&
+            scan.status !== 'done' && (
+              <WelcomeState
+                refPaths={scan.refPaths}
+                folder={scan.folder}
+                isProcessing={scan.isProcessing}
+                onBrowseFiles={scan.handleBrowseFiles}
+                onBrowseFolder={scan.handleBrowseFolder}
+                onRunScan={scan.handleRunScan}
+              />
+            )}
 
           {/* AI Analysis Panel during scanning */}
           {scan.progress && (
             <div style={{ animation: 'slideIn 0.3s ease-out' }}>
               <AIAnalysisPanel progress={scan.progress} />
               {scan.status === 'scanning...' && (
-                <ScanControls key={scan.scanStartTimeRef.current} onCancelled={() => {
-                  scan.setStatus('idle');
-                  scan.setProgress(null);
-                  scan.setError('掃描已取消');
-                }} />
+                <ScanControls
+                  key={scan.scanStartTimeRef.current}
+                  onCancelled={() => {
+                    scan.setStatus('idle');
+                    scan.setProgress(null);
+                    scan.setError('掃描已取消');
+                  }}
+                />
               )}
             </div>
           )}
@@ -773,7 +1184,10 @@ export function App() {
             scanWarnings={scan.scanWarnings}
             favoriteMatches={favoriteMatches}
             onClearFavorites={() => favorites.setFavoritePaths([])}
-            refPaths={scan.refPaths.split(/\r?\n/).map(s => s.trim()).filter(Boolean)}
+            refPaths={scan.refPaths
+              .split(/\r?\n/)
+              .map(s => s.trim())
+              .filter(Boolean)}
           />
 
           {/* No matches */}

@@ -14,17 +14,17 @@ import { getThumbsDir } from './db';
  * 增强选项
  */
 export interface EnhancementOptions {
-  brightness?: number;      // 亮度调整 (0.5-2.0)
-  contrast?: number;        // 对比度调整 (0.5-1.5)
+  brightness?: number; // 亮度调整 (0.5-2.0)
+  contrast?: number; // 对比度调整 (0.5-1.5)
   sharpen?: {
-    amount?: number;        // 锐化强度 (0-1)
-    radius?: number;        // 锐化半径 (像素)
+    amount?: number; // 锐化强度 (0-1)
+    radius?: number; // 锐化半径 (像素)
   };
   cropToFit?: {
-    targetWidth?: number;   // 目标宽度
-    targetHeight?: number;  // 目标高度
+    targetWidth?: number; // 目标宽度
+    targetHeight?: number; // 目标高度
   };
-  normalize?: boolean;      // 自動歸一化
+  normalize?: boolean; // 自動歸一化
 }
 
 /**
@@ -56,10 +56,7 @@ export class PhotoEnhancer {
   /**
    * 智能增强单张照片
    */
-  async enhancePhoto(
-    photoPath: string,
-    options: EnhancementOptions = {}
-  ): Promise<EnhancedPhoto> {
+  async enhancePhoto(photoPath: string, options: EnhancementOptions = {}): Promise<EnhancedPhoto> {
     try {
       logger.info(`Enhancing photo: ${photoPath}`);
 
@@ -73,15 +70,15 @@ export class PhotoEnhancer {
       enhancedImage = enhancedImage.rotate();
 
       // 2. 增强亮度和对比度（如果需要）
-      const { mean, stdev, min, max } = await sharp(photoPath).stats();
-      
+      const { mean, stdev } = await sharp(photoPath).stats();
+
       // 理想亮度范围 (对于儿童照片)
-      const idealMean = 180;  // 稍微偏亮
+      const idealMean = 180; // 稍微偏亮
       const brightnessAdjustment = Math.min(1.5, Math.max(0.7, idealMean / (mean || 128)));
-      
+
       if (brightnessAdjustment > 1.05 || brightnessAdjustment < 0.95) {
         enhancedImage = enhancedImage.modulate({
-          brightness: brightnessAdjustment
+          brightness: brightnessAdjustment,
         });
         enhancements.push(`亮度調整: ${brightnessAdjustment.toFixed(2)}x`);
         logger.debug(`Applied brightness adjustment: ${brightnessAdjustment}`);
@@ -99,7 +96,7 @@ export class PhotoEnhancer {
       if (options.sharpen?.amount) {
         enhancedImage = enhancedImage.sharpen({
           sigma: options.sharpen.radius || 1,
-          xfactor: options.sharpen.amount * 10
+          xfactor: options.sharpen.amount * 10,
         });
         enhancements.push(`銳化: ${options.sharpen.amount.toFixed(2)}`);
         logger.debug(`Applied sharpening: ${options.sharpen.amount}`);
@@ -110,17 +107,17 @@ export class PhotoEnhancer {
       const maxDimension = 1920;
       const width = metadata.width || 1920;
       const height = metadata.height || 1080;
-      
+
       if (width > maxDimension || height > maxDimension) {
         const scale = Math.min(1, maxDimension / Math.max(width, height));
         const newWidth = Math.round(width * scale);
         const newHeight = Math.round(height * scale);
-        
+
         enhancedImage = enhancedImage.resize({
           width: newWidth,
           height: newHeight,
           fit: 'inside',
-          withoutEnlargement: true
+          withoutEnlargement: true,
         });
         enhancements.push(`調整尺寸: ${newWidth}x${newHeight}`);
         logger.debug(`Resized to: ${newWidth}x${newHeight}`);
@@ -129,29 +126,27 @@ export class PhotoEnhancer {
       // 6. 输出增强后的图片
       const basename = `enhanced_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
       const outputPath = join(this.ensureTempDir(), basename);
-      
+
       await enhancedImage
         .jpeg({
           quality: 85,
           progressive: true,
-          optimizeScans: true
+          optimizeScans: true,
         })
         .toFile(outputPath);
 
       logger.info(`Photo enhanced successfully: ${outputPath}`);
-      
+
       return {
         originalPath: photoPath,
         enhancedPath: outputPath,
-        enhancements
+        enhancements,
       };
     } catch (error) {
       logger.error(`Failed to enhance photo: ${photoPath}`, error);
-      throw new AppError(
-        `Failed to enhance photo: ${photoPath}`,
-        'ENHANCEMENT_ERROR',
-        { originalError: error }
-      );
+      throw new AppError(`Failed to enhance photo: ${photoPath}`, 'ENHANCEMENT_ERROR', {
+        originalError: error,
+      });
     }
   }
 
@@ -178,7 +173,9 @@ export class PhotoEnhancer {
       }
     }
 
-    logger.info(`Batch enhancement completed: ${successes.length} succeeded, ${failures.length} failed`);
+    logger.info(
+      `Batch enhancement completed: ${successes.length} succeeded, ${failures.length} failed`
+    );
 
     return { successes, failures };
   }
@@ -202,13 +199,16 @@ export class PhotoEnhancer {
   /**
    * 取得增強設定建議（基於品質評估）
    */
-  getEnhancementSuggestion(qualityScore: number, recommendedQuality: number = 70): EnhancementOptions {
+  getEnhancementSuggestion(
+    qualityScore: number,
+    recommendedQuality: number = 70
+  ): EnhancementOptions {
     const suggestions: EnhancementOptions = {};
-    
+
     if (qualityScore < recommendedQuality) {
       // 质量不足，需要增强
       const gap = recommendedQuality - qualityScore;
-      
+
       if (gap > 30) {
         // 差很多，需要全面增强
         suggestions.brightness = 1.3;
@@ -223,7 +223,7 @@ export class PhotoEnhancer {
         suggestions.brightness = 1.1;
       }
     }
-    
+
     return suggestions;
   }
 }

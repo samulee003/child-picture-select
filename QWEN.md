@@ -73,7 +73,7 @@ AI-child-picture/
 │   ├── types/                     # TypeScript 類型
 │   │   └── api.ts                 # API 類型定義
 │   ├── utils/                     # 工具函數
-│   │   ├── errorHandler.ts        # 錯誤處理
+│   │   ├── error-handler.ts       # 錯誤處理
 │   │   └── accessibility.ts       # 無障礙支持
 │   └── preload/                   # Preload 腳本
 │       └── index.ts
@@ -132,7 +132,7 @@ AI-child-picture/
 |------|------|
 | **框架** | Electron 31, React 18, TypeScript 5 |
 | **構建** | Vite 5, tsup, electron-builder |
-| **AI** | @vladmandic/human (人臉檢測) |
+| **AI** | InsightFace SCRFD + ArcFace (onnxruntime-node，人臉偵測與 512 維特徵) |
 | **數據庫** | better-sqlite3 11.7 |
 | **圖片處理** | sharp 0.33 |
 | **測試** | Vitest, Playwright |

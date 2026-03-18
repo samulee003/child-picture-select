@@ -1,5 +1,29 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.9 – 安全性與穩定性全面修復（2026-03-19）
+
+- **安全性修復**
+  - 新增 `src/utils/path-validator.ts`：路徑驗證模組，防止路徑遍歷攻擊
+  - 強化 `src/core/db.ts`：所有資料庫操作加入路徑驗證，確保只有合法路徑才能寫入
+  - 修復 `folder:open` IPC：加入路徑驗證和危險檔案類型檢查（禁止執行 .exe/.bat 等）
+  - 參數驗證：`match:run` 加入 threshold (0-1) 和 topN (1-1000) 範圍驗證
+
+- **穩定性修復**
+  - 新增 `src/main/scanController.ts`：掃描狀態管理器，解決競態條件問題
+  - 修復 `src/preload/index.ts`：事件監聽器使用 Set 管理，避免 `removeAllListeners` 洩漏
+  - 修復 `src/core/embeddings.ts`：Promise.race timeout 清理機制，防止內存洩漏
+  - 資料庫事務：新增 `withTransaction()` 和 `upsertPhotoAndFace()` 確保資料一致性
+  - 掃描取消：在批次處理和錯誤處理中加入 `scanCancelled` 檢查
+
+- **類型安全**
+  - `src/core/db.ts`：移除 `any` 類型，使用具體類型定義
+  - 統一錯誤處理：所有 `catch (err: any)` 改為 `catch (err)` 並正確轉換類型
+
+- **測試與建置**
+  - 10 個測試文件全部通過（93 個測試）
+  - TypeScript 類型檢查通過
+  - Lint 檢查通過
+
 ### v0.2.8 – 還原完整 InsightFace Pipeline（2026-03-18）
 
 - **偵測引擎：SSD MobileNet → SCRFD det_500m**
@@ -28,6 +52,11 @@
 
 - **測試**
   - 全部 96 個單元測試通過，`npm run typecheck` 通過。
+
+- **已知行為（2026-03-18 實測記錄）**
+  - 若參考照在人臉偵測階段（SCRFD）長時間無回應，會在約 30 秒後觸發 `FACE_DETECTION_TIMEOUT`，該張照片改用 deterministic embedding（檔案雜湊，非人臉特徵），流程仍會繼續跑完。
+  - 當所有參考照皆因超時或偵測失敗而降級為 deterministic embedding 時，目前版本會視為模型引擎不健康，阻擋後續掃描並記錄：`⚠️ 4/4 reference photos used DETERMINISTIC embedding`、`⚠️ NO reference photos had faces detected`、`❌ Blocking scan because model engine is not healthy.`。
+  - 實務上這會讓「全部難判斷的參考照」看起來像「載入失敗」，後續版本需評估是否改為允許在明確提示精準度風險的前提下繼續使用 deterministic 模式。
 
 ### v0.2.2 – 模型偵測穩定性與流程一致性修復（2026-03-17）
 
@@ -119,4 +148,3 @@
     - `npm run release:win`
     - `npm run release:check-sign` / `npm run release:win:with-sign`（有憑證時用於正式簽章）。
   - 新增 `app:about` IPC 與前端版本資訊 / 支援頁（說明視窗顯示目前版本、更新摘要與客服信箱 `support@findmykid.app`）。
-

@@ -1,202 +1,122 @@
 /**
- * 錯誤處理器測試
+ * 錯誤處理器測試（測試 error-handler.ts，生產環境實際使用）
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
-  createAppError,
-  categorizeError,
-  getRecoveryStrategy,
-  safeExecute,
-  getUserFriendlyMessage,
-  ErrorCode,
-} from '../../../src/utils/errorHandler';
+  AppError,
+  createErrorInfo,
+  isFileNotFoundError,
+  isPermissionError,
+  isNetworkError,
+} from '../../../src/utils/error-handler';
 
-describe('Error Handler', () => {
-  describe('createAppError', () => {
-    it('should create an AppError with correct properties', () => {
-      const error = createAppError('Test error', ErrorCode.FILE_NOT_FOUND, 'high');
+describe('Error Handler (error-handler)', () => {
+  describe('AppError', () => {
+    it('should create AppError with message only', () => {
+      const error = new AppError('Test error');
 
       expect(error).toBeInstanceOf(Error);
-      expect(error.code).toBe(ErrorCode.FILE_NOT_FOUND);
-      expect(error.severity).toBe('high');
-      expect(error.recoverable).toBe(true);
+      expect(error).toBeInstanceOf(AppError);
       expect(error.message).toBe('Test error');
+      expect(error.name).toBe('AppError');
+      expect(error.code).toBeUndefined();
+      expect(error.details).toBeUndefined();
     });
 
-    it('should set recoverable to false for critical errors', () => {
-      const error = createAppError('Critical error', ErrorCode.DATABASE_CORRUPTED, 'critical');
+    it('should create AppError with code', () => {
+      const error = new AppError('Not found', 'ENOENT');
 
-      expect(error.recoverable).toBe(false);
+      expect(error.code).toBe('ENOENT');
+      expect(error.message).toBe('Not found');
     });
 
-    it('should include context and original error', () => {
-      const originalError = new Error('Original');
-      const context = { component: 'TestComponent', action: 'test' };
-      
-      const error = createAppError(
-        'Test error',
-        ErrorCode.UNKNOWN,
-        'medium',
-        originalError,
-        context
-      );
+    it('should create AppError with details', () => {
+      const details = { path: '/foo/bar' };
+      const error = new AppError('File error', 'FILE_ERROR', details);
 
-      expect(error.originalError).toBe(originalError);
-      expect(error.context).toBeDefined();
-      expect(error.context?.component).toBe('TestComponent');
-    });
-
-    it('should set timestamp in context', () => {
-      const error = createAppError('Test error');
-
-      expect(error.context?.timestamp).toBeDefined();
-      expect(new Date(error.context!.timestamp!)).toBeInstanceOf(Date);
+      expect(error.details).toEqual(details);
     });
   });
 
-  describe('categorizeError', () => {
-    it('should categorize AppError correctly', () => {
-      const appError = createAppError('File not found', ErrorCode.FILE_NOT_FOUND);
-      const result = categorizeError(appError);
+  describe('createErrorInfo', () => {
+    it('should convert AppError to ErrorInfo', () => {
+      const error = new AppError('Test', 'TEST_CODE', { foo: 1 });
+      const info = createErrorInfo(error);
 
-      expect(result.code).toBe(ErrorCode.FILE_NOT_FOUND);
-      expect(result.userMessage).toBe('檔案未找到');
+      expect(info.message).toBe('Test');
+      expect(info.code).toBe('TEST_CODE');
+      expect(info.details).toEqual({ foo: 1 });
     });
 
-    it('should categorize ENOENT error', () => {
-      const error = new Error('File not found');
-      (error as any).code = 'ENOENT';
+    it('should convert plain Error to ErrorInfo', () => {
+      const error = new Error('Plain error');
+      const info = createErrorInfo(error);
 
-      const result = categorizeError(error);
-
-      expect(result.code).toBe(ErrorCode.FILE_NOT_FOUND);
-      expect(result.userMessage).toBe('檔案未找到');
+      expect(info.message).toBe('Plain error');
+      expect(info.code).toBe('UNKNOWN_ERROR');
+      expect(info.details).toBeDefined();
+      expect(info.details?.stack).toBeDefined();
+      expect(info.details?.name).toBe('Error');
     });
 
-    it('should categorize EACCES error', () => {
-      const error = new Error('Permission denied');
-      (error as any).code = 'EACCES';
+    it('should convert string to ErrorInfo', () => {
+      const info = createErrorInfo('String error');
 
-      const result = categorizeError(error);
-
-      expect(result.code).toBe(ErrorCode.FILE_ACCESS_DENIED);
-      expect(result.userMessage).toBe('無法存取檔案');
+      expect(info.message).toBe('String error');
+      expect(info.code).toBe('STRING_ERROR');
     });
 
-    it('should categorize memory error', () => {
-      const error = new Error('JavaScript heap out of memory');
+    it('should handle unknown error type', () => {
+      const info = createErrorInfo({ weird: 'object' });
 
-      const result = categorizeError(error);
-
-      expect(result.code).toBe(ErrorCode.LOW_MEMORY);
-      expect(result.userMessage).toBe('記憶體不足');
-    });
-
-    it('should categorize timeout error', () => {
-      const error = new Error('Request timed out');
-
-      const result = categorizeError(error);
-
-      expect(result.code).toBe(ErrorCode.TIMEOUT);
-      expect(result.userMessage).toBe('操作逾時');
-    });
-
-    it('should handle unknown error', () => {
-      const error = new Error('Unknown thing happened');
-
-      const result = categorizeError(error);
-
-      expect(result.code).toBe(ErrorCode.UNKNOWN);
-      expect(result.userMessage).toBe('Unknown thing happened');
+      expect(info.message).toBe('An unknown error occurred');
+      expect(info.code).toBe('UNKNOWN');
     });
   });
 
-  describe('getRecoveryStrategy', () => {
-    it('should provide retry strategy for timeout errors', () => {
-      const error = createAppError('Timeout', ErrorCode.TIMEOUT);
-      const strategy = getRecoveryStrategy(error);
-
-      expect(strategy.canRecover).toBe(true);
-      expect(strategy.retryCount).toBe(3);
-      expect(strategy.retryDelay).toBe(1000);
+  describe('isFileNotFoundError', () => {
+    it('should return true for ENOENT code', () => {
+      const error = new AppError('Not found', 'ENOENT');
+      expect(isFileNotFoundError(error)).toBe(true);
     });
 
-    it('should provide GC fallback for low memory', () => {
-      const error = createAppError('Low memory', ErrorCode.LOW_MEMORY);
-      const strategy = getRecoveryStrategy(error);
-
-      expect(strategy.canRecover).toBe(true);
-      expect(strategy.retryCount).toBe(1);
-      expect(strategy.fallbackAction).toBeDefined();
+    it('should return true when message includes ENOENT', () => {
+      expect(isFileNotFoundError(new Error('ENOENT: no such file'))).toBe(true);
     });
 
-    it('should not recover from file not found', () => {
-      const error = createAppError('Not found', ErrorCode.FILE_NOT_FOUND);
-      const strategy = getRecoveryStrategy(error);
-
-      expect(strategy.canRecover).toBe(false);
-    });
-
-    it('should not recover from database corrupted', () => {
-      const error = createAppError('Corrupted', ErrorCode.DATABASE_CORRUPTED);
-      const strategy = getRecoveryStrategy(error);
-
-      expect(strategy.canRecover).toBe(false);
+    it('should return false for other errors', () => {
+      expect(isFileNotFoundError(new AppError('Other', 'OTHER'))).toBe(false);
     });
   });
 
-  describe('getUserFriendlyMessage', () => {
-    it('should return user friendly message with suggestion', () => {
-      const error = createAppError('File not found', ErrorCode.FILE_NOT_FOUND);
-      const message = getUserFriendlyMessage(error);
-
-      expect(message).toContain('檔案未找到');
-      expect(message).toContain('請確認檔案路徑正確');
+  describe('isPermissionError', () => {
+    it('should return true for EACCES code', () => {
+      const error = new AppError('Access denied', 'EACCES');
+      expect(isPermissionError(error)).toBe(true);
     });
 
-    it('should return message without suggestion if none', () => {
-      const error = createAppError('Cancelled', ErrorCode.OPERATION_CANCELLED);
-      const message = getUserFriendlyMessage(error);
+    it('should return true when message includes permission', () => {
+      expect(isPermissionError(new Error('permission denied'))).toBe(true);
+    });
 
-      expect(message).toBe('操作已取消');
+    it('should return false for other errors', () => {
+      expect(isPermissionError(new AppError('Other'))).toBe(false);
     });
   });
 
-  describe('safeExecute', () => {
-    it('should return success result for successful execution', async () => {
-      const fn = vi.fn().mockResolvedValue('success');
-      
-      const result = await safeExecute(fn);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data).toBe('success');
-      }
+  describe('isNetworkError', () => {
+    it('should return true for NETWORK_ERROR code', () => {
+      const error = new AppError('Network fail', 'NETWORK_ERROR');
+      expect(isNetworkError(error)).toBe(true);
     });
 
-    it('should return error result for failed execution', async () => {
-      const fn = vi.fn().mockRejectedValue(new Error('Test error'));
-      
-      const result = await safeExecute(fn);
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error).toBeDefined();
-        expect(result.error.message).toContain('发生未知错误');
-      }
+    it('should return true when message includes network', () => {
+      expect(isNetworkError(new Error('network request failed'))).toBe(true);
     });
 
-    it('should include context in error', async () => {
-      const fn = vi.fn().mockRejectedValue(new Error('Fail'));
-      const context = { component: 'Test', action: 'testing' };
-      
-      const result = await safeExecute(fn, context);
-
-      if (!result.success) {
-        expect(result.error.context).toBeDefined();
-        expect(result.error.context?.component).toBe('Test');
-      }
+    it('should return false for other errors', () => {
+      expect(isNetworkError(new AppError('Other'))).toBe(false);
     });
   });
 });

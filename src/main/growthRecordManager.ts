@@ -27,7 +27,7 @@ const resolvePaths = () => {
       if (app && typeof app.getPath === 'function') {
         return path.join(app.getPath('userData'), 'growth-data');
       }
-    } catch (_err) {
+    } catch {
       // 測試環境 fallback
     }
     return path.join(os.tmpdir(), 'find-my-kid-offline-growth-data');
@@ -127,10 +127,7 @@ export class GrowthRecordManager {
   /**
    * 建立成長紀錄
    */
-  createGrowthRecord(
-    childName: string,
-    collectionName: string
-  ): GrowthRecord {
+  createGrowthRecord(childName: string, collectionName: string): GrowthRecord {
     const now = new Date().toISOString();
     return {
       id: randomUUID(),
@@ -199,7 +196,7 @@ export class GrowthRecordManager {
     try {
       const data = await fs.readJson(this.paths.remindersFile);
       return { reminders: data.reminders || [] };
-    } catch (error) {
+    } catch {
       return { reminders: [] };
     }
   }
@@ -240,13 +237,16 @@ export class GrowthRecordManager {
         (Date.now() - new Date(lastSession.createdAt).getTime()) / (1000 * 60 * 60 * 24)
       );
 
-      if (daysSinceLastScan > 30 && !existingReminders.some(r => r.type === 'coverage_gap' && !r.isRead)) {
+      if (
+        daysSinceLastScan > 30 &&
+        !existingReminders.some(r => r.type === 'coverage_gap' && !r.isRead)
+      ) {
         const newReminder: Reminder = {
           id: randomUUID(),
           type: 'coverage_gap',
           title: '间隔提醒',
           message: `距离上次记录已 ${daysSinceLastScan} 天，孩子又长大了！`,
-        recommendedAction: '建議多拍幾張日常照片來記錄成長',
+          recommendedAction: '建議多拍幾張日常照片來記錄成長',
           priority: daysSinceLastScan > 60 ? 'high' : 'medium',
           isRead: false,
           createdAt: new Date().toISOString(),
@@ -276,7 +276,7 @@ export class GrowthRecordManager {
     try {
       const data = await fs.readJson(this.paths.familyFile);
       return { members: data.members || [] };
-    } catch (error) {
+    } catch {
       return { members: [] };
     }
   }
@@ -308,7 +308,7 @@ export class GrowthRecordManager {
     try {
       const data = await fs.readJson(this.paths.albumsFile);
       return { albums: data.albums || [] };
-    } catch (error) {
+    } catch {
       return { albums: [] };
     }
   }
@@ -335,19 +335,16 @@ export class GrowthRecordManager {
   /**
    * 將掃描工作階段更新到成長紀錄
    */
-  async updateRecordFromSession(
-    recordId: string,
-    session: ScanSession
-  ): Promise<void> {
+  async updateRecordFromSession(recordId: string, session: ScanSession): Promise<void> {
     try {
       const record = await this.getGrowthRecord(recordId);
-      
+
       record.record.totalPhotos += session.results.length;
       record.record.matchedPhotos += session.results.filter(
         r => r.score >= session.threshold
       ).length;
       record.record.endDate = session.createdAt;
-      
+
       // 添加事件
       const event: GrowthEvent = {
         id: randomUUID(),
@@ -363,22 +360,20 @@ export class GrowthRecordManager {
         },
       };
       record.record.events.push(event);
-      
+
       // 更新統計
       const startDate = new Date(record.record.startDate);
       const endDate = new Date(record.record.endDate);
       const monthsRecorded = Math.ceil(
         (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30)
       );
-      
+
       record.record.statistics = {
         monthsRecorded: Math.max(1, monthsRecorded),
-        avgPhotosPerMonth: Math.round(
-          record.record.matchedPhotos / Math.max(1, monthsRecorded)
-        ),
+        avgPhotosPerMonth: Math.round(record.record.matchedPhotos / Math.max(1, monthsRecorded)),
         lastScanDate: session.createdAt,
       };
-      
+
       await this.saveGrowthRecord(record.record);
     } catch (error) {
       logger.error('Failed to update record from session', { error: String(error) });
