@@ -72,6 +72,10 @@ contextBridge.exposeInMainWorld('api', {
 
   // 隱私設定
   clearOldSessions: (olderThanDays: number) => ipcRenderer.invoke('privacy:clear-old-sessions', olderThanDays),
+
+  // 診斷工具
+  getDiagnosticsInfo: () => ipcRenderer.invoke('diagnostics:get-info'),
+  getLogTail: (lines?: number) => ipcRenderer.invoke('diagnostics:get-log-tail', lines),
 });
 
 export {};

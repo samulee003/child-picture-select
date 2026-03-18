@@ -328,14 +328,22 @@ export function getModelStatus(): { loaded: boolean; error: string | null } {
 
 /**
  * 將圖片 buffer 轉為 tensor（使用 sharp 解碼 + human.tf）
+ * 強制輸出 RGB 3-channel 以確保 human.detect() 能正確處理
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function bufferToTensor(human: any, imageBuffer: Buffer) {
   const { data, info } = await sharp(imageBuffer)
+    .removeAlpha()   // 移除 alpha channel，確保輸出為 RGB
+    .toColorspace('srgb')
     .raw()
     .toBuffer({ resolveWithObject: true });
 
   const { width, height, channels } = info;
+
+  if (channels !== 3) {
+    logger.warn(`bufferToTensor: unexpected channel count ${channels} (expected 3); proceeding anyway`);
+  }
+
   return human.tf.tensor3d(
     new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
     [height, width, channels]
