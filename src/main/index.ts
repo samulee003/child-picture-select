@@ -240,30 +240,19 @@ function wireIpc() {
     const today = new Date().toISOString().split('T')[0];
     const logFilePath = pathJoin(logsDir, `app-${today}.log`);
 
-    // 模型檔案檢查（@vladmandic/face-api model 目錄）
-    const modelsDir = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'model');
+    // InsightFace 模型檔案檢查（SCRFD + ArcFace ONNX）
+    const modelsDir = pathJoin(process.cwd(), 'models', 'insightface');
     let modelFiles: string[] = [];
     try {
       modelFiles = readdirSync(modelsDir);
     } catch { /* not found */ }
 
-    const recognitionModelExists = modelFiles.some(f => f.startsWith('face_recognition_model'));
-    const facedetectExists = modelFiles.some(f => f.startsWith('ssd_mobilenetv1_model'));
+    const recognitionModelExists = modelFiles.includes('w600k_mbf.onnx');
+    const facedetectExists = modelFiles.includes('det_500m.onnx');
 
-    // WASM 檔案檢查
-    const wasmDir = pathJoin(process.cwd(), 'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist');
-    const wasmExists = fsExistsSync(pathJoin(wasmDir, 'tfjs-backend-wasm.wasm'));
-
-    // face-api WASM build 檢查
-    const faceApiWasmPath = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js');
-    const faceApiWasmExists = fsExistsSync(faceApiWasmPath);
-
-    // canvas 套件檢查
-    let canvasAvailable = false;
-    try {
-      require('canvas');
-      canvasAvailable = true;
-    } catch { /* not available */ }
+    // onnxruntime-node 檢查
+    const ortDir = pathJoin(process.cwd(), 'node_modules', 'onnxruntime-node');
+    const wasmExists = fsExistsSync(ortDir);
 
     return {
       ok: true,
@@ -277,8 +266,8 @@ function wireIpc() {
         modelFilesFound: modelFiles.length,
         modelsDir,
         wasmBackendExists: wasmExists,
-        faceApiWasmBuildExists: faceApiWasmExists,
-        canvasAvailable,
+        faceApiWasmBuildExists: wasmExists,
+        canvasAvailable: false,
         nodeVersion: process.version,
         platform: process.platform,
       },

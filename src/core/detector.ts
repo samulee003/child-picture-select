@@ -1,17 +1,24 @@
 /**
- * 臉部偵測模組
+ * 臉部偵測模組 — 完整 InsightFace Pipeline
  *
- * 偵測：@vladmandic/face-api SSD MobileNet V1（比 BlazeFace 對亞洲兒童效果更好）
- * 識別：InsightFace ArcFace w600k_mbf ONNX（512 維，對亞洲人臉辨識遠優於 FaceNet）
+ * 偵測：SCRFD det_500m.onnx（取代 SSD MobileNet，偵測精度更高）
+ * 對齊：Umeyama 5-point similarity transform（ArcFace 準確率的關鍵）
+ * 識別：InsightFace ArcFace w600k_mbf.onnx（512 維特徵向量）
  *
  * 流程：
- *   sharp 預處理 → face-api SSD MobileNet 偵測 → ArcFace ONNX 提取 512 維特徵
+ *   sharp 預處理 → SCRFD 偵測（bbox + 5 kps）
+ *   → Umeyama 5-point alignment → 112×112 aligned face
+ *   → ArcFace ONNX 提取 512 維特徵
+ *
+ * 公開介面（FaceDetection）保持不變，不影響上層 embeddings.ts / main/index.ts。
  */
 
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 import sharp from 'sharp';
-import { extractArcFaceEmbedding, loadArcFace } from './arcface';
+import { detectFacesSCRFD, loadSCRFD, getSCRFDStatus, resetSCRFD } from './scrfd';
+import { alignFace } from './align';
+import { extractArcFaceEmbeddingFromAligned, loadArcFace, getArcFaceStatus } from './arcface';
 
 export interface FaceDetection {
   bbox: [number, number, number, number]; // x, y, width, height
@@ -34,8 +41,6 @@ export interface DetectorOptions {
   overrideDetectorMinConfidence?: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let faceapi: any = null;
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
 
@@ -60,132 +65,46 @@ async function withTimeout<T>(
   }
 }
 
-function resolveFaceApiModelPath(): string {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { join } = require('path');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { existsSync } = require('fs');
-
-  const devPath = join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'model');
-  if (existsSync(devPath)) return devPath;
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { app } = require('electron');
-    const appPath = app.getAppPath();
-    const unpackedPath = join(
-      appPath.replace('app.asar', 'app.asar.unpacked'),
-      'node_modules', '@vladmandic', 'face-api', 'model'
-    );
-    if (existsSync(unpackedPath)) return unpackedPath;
-  } catch {
-    // Not in Electron
-  }
-
-  throw new Error('face-api model directory not found. Make sure @vladmandic/face-api is installed.');
-}
-
-/**
- * 載入 face-api SSD MobileNet（偵測用）
- * 注意：只載入 ssdMobilenetv1，不載入 faceLandmark68Net 或 faceRecognitionNet。
- *       識別功能由獨立的 ArcFace ONNX 模組處理。
- */
-async function loadFaceApi() {
-  if (faceapi) return faceapi;
-  if (modelLoadAttempted) return null;
-  modelLoadAttempted = true;
-
-  try {
-    logger.info('Loading @vladmandic/face-api SSD MobileNet (detection only)...');
-
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { join } = require('path');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { existsSync } = require('fs');
-
-    const candidates = [
-      join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js'),
-      join(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node.js'),
-    ];
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { app } = require('electron');
-      const unpacked = app.getAppPath().replace('app.asar', 'app.asar.unpacked');
-      candidates.push(
-        join(unpacked, 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js'),
-        join(unpacked, 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node.js'),
-      );
-    } catch {
-      // Not in Electron
-    }
-
-    for (const c of candidates) {
-      logger.info(`face-api candidate: ${c} → ${existsSync(c) ? 'FOUND' : 'NOT FOUND'}`);
-    }
-
-    const faceApiPath = candidates.find((c) => existsSync(c));
-    if (!faceApiPath) {
-      throw new Error(`Cannot find @vladmandic/face-api. Searched:\n${candidates.join('\n')}`);
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const loaded = require(faceApiPath);
-    faceapi = loaded.default || loaded;
-
-    // Node.js 環境注入 canvas
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const nodeCanvas = require('canvas');
-      faceapi.env.monkeyPatch({
-        Canvas: nodeCanvas.Canvas,
-        Image: nodeCanvas.Image,
-        ImageData: nodeCanvas.ImageData,
-      });
-      logger.info('Node.js canvas patched into face-api env');
-    } catch (canvasErr) {
-      logger.warn('canvas npm package not available:', canvasErr);
-    }
-
-    const modelPath = resolveFaceApiModelPath();
-
-    // WASM backend 初始化（必須在載入模型前）
-    logger.info('Initializing TensorFlow.js backend...');
-    await faceapi.tf.ready();
-    logger.info(`TF.js backend ready: ${faceapi.tf.getBackend()}`);
-
-    // 只載入偵測模型（SSD MobileNet）
-    logger.info(`Loading SSD MobileNet V1 from: ${modelPath}`);
-    await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
-
-    logger.info('face-api SSD MobileNet loaded (detection only)');
-
-    // 同步預熱 ArcFace ONNX（不 await，讓它在背景載入）
-    loadArcFace().catch((err) =>
-      logger.warn('ArcFace pre-warm failed (will retry on first use):', err)
-    );
-
-    return faceapi;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    modelLoadError = message;
-    logger.error(`Failed to load face-api SSD MobileNet: ${message}`);
-    return null;
-  }
-}
-
 /**
  * 預先載入模型（app ready 後呼叫）
+ * 同時載入 SCRFD（偵測）和 ArcFace（識別）
  */
 export async function preloadModel(): Promise<void> {
   try {
-    if (modelLoadAttempted && !faceapi) {
+    if (modelLoadAttempted && modelLoadError) {
+      // 允許重試
       modelLoadAttempted = false;
       modelLoadError = null;
+      resetSCRFD();
     }
-    await loadFaceApi();
+    modelLoadAttempted = true;
+
+    logger.info('Loading InsightFace pipeline: SCRFD (detection) + ArcFace (recognition)...');
+
+    const [scrfdOk, arcfaceOk] = await Promise.all([
+      loadSCRFD(),
+      loadArcFace(),
+    ]);
+
+    if (!scrfdOk) {
+      const status = getSCRFDStatus();
+      modelLoadError = `SCRFD load failed: ${status.error}`;
+      logger.error(modelLoadError);
+      return;
+    }
+
+    if (!arcfaceOk) {
+      const status = getArcFaceStatus();
+      modelLoadError = `ArcFace load failed: ${status.error}`;
+      logger.error(modelLoadError);
+      return;
+    }
+
+    logger.info('InsightFace pipeline loaded: SCRFD + ArcFace ready');
   } catch (err) {
-    logger.error('Failed to preload face detection model:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    modelLoadError = message;
+    logger.error('Failed to preload InsightFace pipeline:', err);
   }
 }
 
@@ -193,47 +112,63 @@ export async function preloadModel(): Promise<void> {
  * 取得模型載入狀態（供 UI 顯示）
  */
 export function getModelStatus(): { loaded: boolean; error: string | null } {
+  const scrfd = getSCRFDStatus();
+  const arcface = getArcFaceStatus();
   return {
-    loaded: faceapi !== null,
-    error: modelLoadError,
+    loaded: scrfd.loaded && arcface.loaded,
+    error: modelLoadError || scrfd.error || arcface.error,
   };
 }
 
 /**
  * 從圖片偵測臉部，並對每個偵測到的臉部提取 ArcFace 512 維特徵
+ *
+ * Pipeline: SCRFD → 5-point alignment → ArcFace
  */
 export async function detectFaces(
   imagePath: string,
   options: DetectorOptions = {}
 ): Promise<FaceDetection[]> {
-  const fa = await loadFaceApi();
-
-  if (!fa) {
-    logger.debug('face-api not available, skipping face detection');
-    return [];
+  // 確保模型已載入
+  const status = getModelStatus();
+  if (!status.loaded) {
+    await preloadModel();
+    const retryStatus = getModelStatus();
+    if (!retryStatus.loaded) {
+      logger.debug('InsightFace pipeline not available, skipping face detection');
+      return [];
+    }
   }
 
   try {
     logger.debug(`Processing image for face detection: ${imagePath}`);
 
-    const maxEdge = options.maxSize || 1280;
-    let sharpInstance = sharp(imagePath);
+    const confThreshold = options.overrideDetectorMinConfidence ?? options.minConfidence ?? 0.3;
 
-    const isHeic =
-      imagePath.toLowerCase().endsWith('.heic') || imagePath.toLowerCase().endsWith('.heif');
-    if (isHeic) {
-      try {
-        sharpInstance = sharp(imagePath, { sequentialRead: true });
-      } catch (heicError) {
-        throw new AppError(
-          `HEIC format not supported: ${imagePath}`,
-          'HEIC_NOT_SUPPORTED',
-          { originalError: heicError }
-        );
-      }
+    // 1. SCRFD 偵測 → SCRFDFace[]（含 bbox [x1,y1,x2,y2] 和 5 kps）
+    const scrfdFaces = await withTimeout(
+      detectFacesSCRFD(imagePath, {
+        minConfidence: confThreshold,
+        cropTopFraction: options.cropTopFraction,
+        maxSize: options.maxSize,
+      }),
+      FACE_DETECTION_TIMEOUT_MS,
+      'FACE_DETECTION_TIMEOUT',
+      `Face detection timed out for ${imagePath}`
+    );
+
+    if (scrfdFaces.length === 0) {
+      logger.debug(`No faces detected in ${imagePath}`);
+      return [];
     }
 
-    // 裁切上方區域（全身照臉部偵測用）
+    logger.debug(
+      `SCRFD found ${scrfdFaces.length} face(s) in ${imagePath}, running alignment + ArcFace...`
+    );
+
+    // 2. 讀取圖片為 raw RGB buffer（alignment 和 ArcFace 共用）
+    let sharpInstance = sharp(imagePath);
+
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
       const meta = await sharp(imagePath).metadata();
       const imgW = meta.width || 1000;
@@ -242,73 +177,60 @@ export async function detectFaces(
       sharpInstance = sharp(imagePath).extract({ left: 0, top: 0, width: imgW, height: cropH });
     }
 
-    // sharp 預處理 → PNG buffer（偵測與 ArcFace 共用同一張縮放後的圖片）
-    const imageBuffer: Buffer = await withTimeout(
-      sharpInstance
-        .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
-        .png()
-        .toBuffer(),
+    if (options.maxSize) {
+      sharpInstance = sharpInstance.resize(options.maxSize, options.maxSize, {
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
+    }
+
+    const imgRaw = await withTimeout<{ data: Buffer; info: { width: number; height: number } }>(
+      sharpInstance.removeAlpha().raw().toBuffer({ resolveWithObject: true }),
       FACE_DETECTION_TIMEOUT_MS,
       'FACE_DETECTION_TIMEOUT',
       `Image preprocessing timed out for ${imagePath}`
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createCanvas, loadImage } = require('canvas');
-    const img = await loadImage(imageBuffer);
-    const imgWidth = img.width as number;
-    const imgHeight = img.height as number;
-    const canvas = createCanvas(imgWidth, imgHeight);
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-    ctx.drawImage(img as unknown as HTMLImageElement, 0, 0);
+    const imgW = imgRaw.info.width;
+    const imgH = imgRaw.info.height;
 
-    const minConf = options.overrideDetectorMinConfidence ?? options.minConfidence ?? 0.3;
-    const detectionOptions = new fa.SsdMobilenetv1Options({
-      minConfidence: minConf,
-      maxResults: 10,
-    });
-
-    // SSD MobileNet 偵測（只取 bbox + score，不跑 landmark/descriptor）
-    const rawDetections = await withTimeout(
-      fa.detectAllFaces(canvas, detectionOptions),
-      FACE_DETECTION_TIMEOUT_MS,
-      'FACE_DETECTION_TIMEOUT',
-      `Face detection timed out for ${imagePath}`
-    ) as unknown[];
-
-    if (!rawDetections || rawDetections.length === 0) {
-      logger.debug(`No faces detected in ${imagePath}`);
-      return [];
-    }
-
-    logger.debug(`Found ${rawDetections.length} face(s) in ${imagePath}, extracting ArcFace embeddings...`);
-
+    // Post-filter: 用 minConfidence 過濾（可能和 overrideDetectorMinConfidence 不同）
     const postMinConf = options.minConfidence ?? 0.01;
     const results: FaceDetection[] = [];
 
-    // 對每個偵測到的臉部依序提取 ArcFace embedding（避免並行 ORT session 競爭）
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const d of rawDetections as any[]) {
-      if (d.score < postMinConf) continue;
+    // 3. 對每個臉依序做 alignment + ArcFace（避免並行 ORT session 競爭）
+    for (const face of scrfdFaces) {
+      if (face.score < postMinConf) continue;
 
+      // 5-point alignment → 112×112 aligned face buffer
+      const alignedBuffer = await alignFace(
+        imgRaw.data,
+        imgW,
+        imgH,
+        face.kps
+      );
+
+      // ArcFace embedding extraction
+      const embedding = await extractArcFaceEmbeddingFromAligned(alignedBuffer);
+
+      // 將 bbox 從 [x1, y1, x2, y2] 轉換為 [x, y, width, height]（公開介面格式）
+      const [x1, y1, x2, y2] = face.bbox;
       const bbox: [number, number, number, number] = [
-        d.detection.box.x,
-        d.detection.box.y,
-        d.detection.box.width,
-        d.detection.box.height,
+        x1,
+        y1,
+        x2 - x1,
+        y2 - y1,
       ];
-
-      const embedding = await extractArcFaceEmbedding(imageBuffer, bbox, imgWidth, imgHeight);
 
       results.push({
         bbox,
         embedding: embedding ?? [],
-        confidence: d.score,
+        confidence: face.score,
       });
     }
 
     logger.debug(
-      `ArcFace extraction complete for ${imagePath}: ${results.length} face(s) with embeddings`
+      `InsightFace pipeline complete for ${imagePath}: ${results.length} face(s) with embeddings`
     );
     return results;
   } catch (err) {
