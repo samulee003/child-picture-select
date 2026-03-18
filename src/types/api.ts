@@ -246,12 +246,12 @@ export interface DiagnosticsInfo {
   logFileExists: boolean;
   modelLoaded: boolean;
   modelError: string | null;
-  faceresModelExists: boolean;
+  recognitionModelExists: boolean;
   facedetectModelExists: boolean;
   modelFilesFound: number;
   modelsDir: string;
   wasmBackendExists: boolean;
-  humanWasmBuildExists: boolean;
+  faceApiWasmBuildExists: boolean;
   canvasAvailable: boolean;
   nodeVersion: string;
   platform: string;

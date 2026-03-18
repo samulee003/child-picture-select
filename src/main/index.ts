@@ -240,23 +240,23 @@ function wireIpc() {
     const today = new Date().toISOString().split('T')[0];
     const logFilePath = pathJoin(logsDir, `app-${today}.log`);
 
-    // 模型檔案檢查
-    const modelsDir = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'human', 'models');
+    // 模型檔案檢查（@vladmandic/face-api model 目錄）
+    const modelsDir = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'model');
     let modelFiles: string[] = [];
     try {
       modelFiles = readdirSync(modelsDir);
     } catch { /* not found */ }
 
-    const faceresExists = modelFiles.some(f => f === 'faceres.json');
-    const facedetectExists = modelFiles.some(f => f.startsWith('blazeface'));
+    const recognitionModelExists = modelFiles.some(f => f.startsWith('face_recognition_model'));
+    const facedetectExists = modelFiles.some(f => f.startsWith('ssd_mobilenetv1_model'));
 
     // WASM 檔案檢查
     const wasmDir = pathJoin(process.cwd(), 'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist');
     const wasmExists = fsExistsSync(pathJoin(wasmDir, 'tfjs-backend-wasm.wasm'));
 
-    // human WASM build 檢查
-    const humanWasmPath = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'human', 'dist', 'human.node-wasm.js');
-    const humanWasmExists = fsExistsSync(humanWasmPath);
+    // face-api WASM build 檢查
+    const faceApiWasmPath = pathJoin(process.cwd(), 'node_modules', '@vladmandic', 'face-api', 'dist', 'face-api.node-wasm.js');
+    const faceApiWasmExists = fsExistsSync(faceApiWasmPath);
 
     // canvas 套件檢查
     let canvasAvailable = false;
@@ -272,12 +272,12 @@ function wireIpc() {
         logFileExists: fsExistsSync(logFilePath),
         modelLoaded: modelStatus.loaded,
         modelError: modelStatus.error,
-        faceresModelExists: faceresExists,
+        recognitionModelExists,
         facedetectModelExists: facedetectExists,
         modelFilesFound: modelFiles.length,
         modelsDir,
         wasmBackendExists: wasmExists,
-        humanWasmBuildExists: humanWasmExists,
+        faceApiWasmBuildExists: faceApiWasmExists,
         canvasAvailable,
         nodeVersion: process.version,
         platform: process.platform,

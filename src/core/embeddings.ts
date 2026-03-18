@@ -143,14 +143,14 @@ export async function fileToEmbeddingWithSource(filePath: string, options: Embed
       );
 
       if (!bestFace.embedding || bestFace.embedding.length === 0) {
-        // 偵測到臉但沒有 embedding — 通常代表 faceres 描述模型未載入
+        // 偵測到臉但沒有 embedding — 通常代表 face recognition model 未載入
         logger.error(
           `❌ Face detected (confidence=${bestFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
-          ' — the faceres description model may have failed to load.' +
-          ' Check that faceres.json and its weight shards exist in the models directory.'
+          ' — the face recognition model may have failed to load.' +
+          ' Check that face_recognition_model weights exist in the models directory.'
         );
         fallbackReason = 'detection_error';
-        detectionErrorCode = 'FACERES_MODEL_MISSING';
+        detectionErrorCode = 'RECOGNITION_MODEL_MISSING';
       }
 
       if (bestFace.embedding && bestFace.embedding.length > 0) {

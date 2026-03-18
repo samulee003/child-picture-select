@@ -37,7 +37,7 @@ describe('fileToDeterministicEmbedding', () => {
 
   it('returns fixed-length unit-normalized vectors', async () => {
     const emb = await fileToDeterministicEmbedding(tmp1);
-    expect(emb.length).toBe(EMBEDDING_DIMS); // 1024 to match faceres model
+    expect(emb.length).toBe(EMBEDDING_DIMS); // 128 to match FaceNet recognition model
     const norm = Math.sqrt(emb.reduce((s, v) => s + v * v, 0));
     expect(norm).toBeGreaterThan(0.99);
     expect(norm).toBeLessThan(1.01);
@@ -98,7 +98,7 @@ describe('fileToEmbedding', () => {
   it('falls back to deterministic embedding when face detection fails', { timeout: 30000 }, async () => {
     // fileToEmbedding 會在臉部偵測失敗時降級到 deterministic embedding
     const emb = await fileToEmbedding(testImagePath);
-    expect(emb.length).toBe(EMBEDDING_DIMS); // 1024 維，匹配 faceres 模型
+    expect(emb.length).toBe(EMBEDDING_DIMS); // 128 維，匹配 FaceNet 模型
     expect(emb.every(v => typeof v === 'number')).toBe(true);
   });
 
