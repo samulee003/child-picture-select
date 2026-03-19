@@ -142,12 +142,20 @@ export function sanitizePath(inputPath: string): string {
 }
 
 export function isValidImagePath(path: string): boolean {
-  const result = validatePath(path, {
+  // 檢查路徑是否存在且為文件（不限制擴展名大小寫）
+  const basicResult = validatePath(path, {
     mustExist: true,
     mustBeFile: true,
-    allowedExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'],
   });
-  return result.valid;
+
+  if (!basicResult.valid) {
+    return false;
+  }
+
+  // 手動檢查擴展名（不區分大小寫）
+  const ext = extname(path).toLowerCase();
+  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'];
+  return allowedExtensions.includes(ext);
 }
 
 export function isValidFolderPath(path: string): boolean {

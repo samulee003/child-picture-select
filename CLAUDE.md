@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.8
+- **Version**: 0.2.9
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
@@ -56,7 +56,7 @@ npm run format:check  # Prettier check only
 
 ### Building & Packaging
 ```bash
-npm run build            # Full build (main + preload + renderer)
+npm run build            # Full build via scripts/build.mjs (main + preload + renderer)
 npm run clean            # Remove dist/ and out/
 npm run dist:win         # Windows installer (.exe)
 npm run dist:mac         # macOS (.dmg)
@@ -89,6 +89,7 @@ src/
 │
 ├── main/                    # Electron main process
 │   ├── index.ts             # IPC handlers and app lifecycle (600+ lines)
+│   ├── scanController.ts    # Scan state management (pause/resume/cancel)
 │   ├── growthRecordManager.ts  # Growth records and session tracking
 │   └── secureStore.ts       # Secure local storage
 │
@@ -117,9 +118,9 @@ src/
 ├── utils/
 │   ├── logger.ts            # Centralized logging
 │   ├── error-handler.ts     # AppError class
+│   ├── path-validator.ts    # Path traversal prevention
 │   └── accessibility.ts     # Accessibility utilities
 │
-├── components/              # Legacy shared components (EnhancedPreview, SetupWizard)
 └── gui/                     # Legacy GUI directory
 
 tests/
@@ -232,15 +233,22 @@ When multiple reference photos are provided, results are fused via:
   "semi": true,
   "singleQuote": true,
   "printWidth": 100,
-  "trailingComma": "es5"
+  "trailingComma": "es5",
+  "tabWidth": 2,
+  "useTabs": false,
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "endOfLine": "lf"
 }
 ```
 
-### ESLint Rules
+### ESLint Rules (flat config in `eslint.config.js`)
 - React hooks rules enforced (`rules-of-hooks` error, `exhaustive-deps` warn)
 - `no-console` warns — use `logger.ts` instead (allows `warn`/`error`)
-- `no-explicit-any` and `ban-ts-comment` are **warn**, not **error**
+- `no-explicit-any`, `ban-ts-comment`, and `no-non-null-assertion` are **warn**, not **error**
+- `no-require-imports` is **off**
 - `prefer-const` and `no-var` are **error**
+- Unused vars matching `^_` pattern are ignored
 
 ---
 
@@ -256,7 +264,7 @@ When multiple reference photos are provided, results are fused via:
 - PascalCase filenames for components (e.g., `MatchResultCard.tsx`)
 - Glassmorphism styling via inline CSS and `theme.ts`
 - Virtual scrolling for results list via `react-window`
-- Keyboard shortcuts: Ctrl+S, Ctrl+R, Ctrl+E, Ctrl+C, F1
+- Keyboard shortcuts: Ctrl+S, Ctrl+R, Ctrl+E, Ctrl+C, F1, Esc
 
 ### Key Components
 - `OnboardingWizard` — Initial setup wizard for new users
@@ -292,6 +300,7 @@ logger.error('Face detection failed', error);
 - `umeyama2D(src, dst)` — Analytic 2×2 SVD similarity transform
 - `ARCFACE_DST_5PT` — Standard ArcFace 112×112 template coordinates
 - Uses Sharp `.affine()` with inverse mapping for efficient bicubic warp
+- Auto-crops face region when input exceeds 4MP to avoid Sharp pixel limit
 
 ### `src/core/arcface.ts`
 - `loadArcFace()` — Load `w600k_mbf.onnx` via onnxruntime-node
@@ -322,7 +331,10 @@ logger.error('Face detection failed', error);
 - SQLite singleton with WAL mode; schema migrates from v1→v3 automatically
 - `upsertFace(path, embedding, source)` — Store embedding with source tracking
 - `getFacesByPath(path)` — Retrieve cached embeddings
+- `withTransaction(fn)` — Wrap operations in a DB transaction
+- `upsertPhotoAndFace(path, embedding, source)` — Combined photo+face upsert
 - Auto-invalidates legacy cache entries missing the `source` column
+- All DB operations validate paths via `path-validator.ts`
 
 ### `src/core/performance.ts`
 - `processBatch<T, R>(items, fn, opts)` — Process with concurrency + progress callback
@@ -334,13 +346,21 @@ logger.error('Face detection failed', error);
 - Session tracking for scan sessions
 - Reminder generation for growth checkpoints
 
+### `src/main/scanController.ts`
+- Scan state machine: idle → scanning → paused → cancelled
+- Prevents race conditions in scan lifecycle
+
+### `src/utils/path-validator.ts`
+- `validatePath(p)` — Rejects path traversal (`..`, null bytes, etc.)
+- Used by DB operations and IPC handlers
+
 ---
 
 ## Security & Privacy Rules
 
 1. **Never add cloud uploads** — all processing must stay local
 2. **Only allow HTTPS** in `shell:open-external` IPC handler
-3. **Validate file paths** with `existsSync` before reading
+3. **Validate file paths** with `existsSync` before reading; use `path-validator.ts` for traversal prevention
 4. **Context isolation** must remain enabled in preload
 5. **No telemetry** — the app intentionally has zero analytics
 6. **GDPR support** — `growth:export-data` IPC enables user data export
@@ -353,12 +373,15 @@ logger.error('Face detection failed', error);
 - Test files: `*.test.ts` / `*.test.tsx`
 - Located in `src/core/` (co-located) and `tests/unit/`
 - Run with `npm test`
+- `globals: true` in vitest config — `describe`, `it`, `expect` available without imports
 - Uses node environment; sharp and better-sqlite3 are inlined for test runs
+- Single test: `npx vitest run src/core/similarity.test.ts`
 
 ### E2E Tests (Playwright)
-- Located in `tests/e2e/`
+- Located in `tests/e2e/` (`*.spec.ts` files)
 - Tests full scan → match → export workflows
 - Run with `npm run test:e2e`
+- 60s timeout per test, headless mode, baseURL `http://localhost:5173`
 
 ### Before Committing
 Always run:
@@ -405,6 +428,12 @@ npm test
 
 10. **`perFileResults` type assertion** — In `src/main/index.ts`, `perFileResults` uses `as any` cast to avoid TS2339. This is intentional to handle IPC boundary types safely.
 
+11. **asar unpacking for native modules** — `onnxruntime-node` depends on `onnxruntime-common`. Both must be in `asarUnpack` in `package.json`. If `onnxruntime-common` stays inside `app.asar`, `require('onnxruntime-common')` from the unpacked `onnxruntime-node` will fail with `Cannot find module 'onnxruntime-common'`. This only manifests in installed builds (not dev mode).
+
+12. **Reference embedding timeout** — `embed:references` has a per-file timeout of 300s (line ~500 in `src/main/index.ts`). High-quality photos (e.g., 96% JPG) with 5 retry attempts can take significant time. The inner `detectFacesWithTimeout` has 120s per attempt.
+
+13. **Sharp affine pixel limit** — Sharp's `.affine()` has an internal pixel limit (~4MP tested). Phone cameras producing 6000×4000 (24MP) images will trigger `Input image exceeds pixel limit`. `align.ts` handles this by auto-cropping the face region (keypoints bbox + 50% padding) before applying the affine transform. The constant `AFFINE_MAX_PIXELS = 4_000_000` controls the threshold.
+
 ---
 
 ## Documentation Files
@@ -430,9 +459,9 @@ npm test
 2. Update `CHANGELOG.md`
 3. Run `npm run release:check` (pre-release validation)
 4. Run `npm run release:win` (unsigned) or `npm run release:win:with-sign` (code-signed)
-5. Installer output: `dist-electron/大海撈Ｂ-{version}-Setup.exe`
-6. GitHub Releases are handled via `electron-builder` with the GitHub provider
-7. CI/CD: GitHub Actions workflow handles Windows builds automatically on push
+5. Installer output: `dist-electron/da-hai-lao-b-{version}-Setup.exe`
+6. GitHub Releases are handled via `electron-builder` with the GitHub provider (`samulee003/child-picture-select`)
+7. CI/CD: GitHub Actions (`ci.yml`) — pushes to `main`/`develop` trigger typecheck → lint → test → build → release. Manual release via `release-win.yml` workflow dispatch.
 
 **Code signing** requires env vars: `CSC_LINK` and `CSC_KEY_PASSWORD`
 
@@ -440,7 +469,8 @@ npm test
 
 ## System Requirements (Development)
 
-- **Node.js**: 22+
+- **Node.js**: 20+ (CI tests on 20.x and 22.x)
 - **OS**: Windows 10/11 64-bit (primary), macOS, Linux
 - **RAM**: 4GB minimum, 8GB recommended for large scans
+- **Supported image formats**: JPG, JPEG, PNG, GIF, BMP, WEBP, HEIC, HEIF
 - **Python**: 3.8+ (legacy test scripts only)

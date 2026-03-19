@@ -10,13 +10,11 @@ export function UpdateBanner() {
 
   useEffect(() => {
     if (!window.api?.onUpdateStatus) return;
-    window.api.onUpdateStatus((status: UpdateStatus) => {
+    const unsubscribe = window.api.onUpdateStatus((status: UpdateStatus) => {
       setUpdateStatus(status);
       setDismissed(false);
     });
-    return () => {
-      window.api?.removeUpdateListener?.();
-    };
+    return unsubscribe;
   }, []);
 
   useEffect(() => {

@@ -22,8 +22,8 @@ function handleScanProgress(_event: Electron.IpcRendererEvent, progress: unknown
   scanProgressCallbacks.forEach(cb => {
     try {
       cb(progress as Parameters<ScanProgressCallback>[0]);
-    } catch {
-      // Ignore callback errors
+    } catch (err) {
+      console.error('[preload] scan:progress callback error:', err);
     }
   });
 }
@@ -32,8 +32,8 @@ function handleUpdateStatus(_event: Electron.IpcRendererEvent, status: unknown):
   updateStatusCallbacks.forEach(cb => {
     try {
       cb(status as Parameters<UpdateStatusCallback>[0]);
-    } catch {
-      // Ignore callback errors
+    } catch (err) {
+      console.error('[preload] update:status callback error:', err);
     }
   });
 }

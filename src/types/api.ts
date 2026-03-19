@@ -268,13 +268,13 @@ export interface ElectronAPI extends GrowthApi {
   runMatch: (opts: { topN: number; threshold: number; strategy?: 'best' | 'average' | 'weighted' }) => Promise<MatchRunResponse>;
   exportCopy: (files: string[], outDir: string) => Promise<ExportCopyResponse>;
   openFolder: (folderPath: string) => Promise<{ ok: boolean; error?: string }>;
-  onScanProgress: (callback: (progress: ScanProgress) => void) => void;
+  onScanProgress: (callback: (progress: ScanProgress) => void) => (() => void);
   removeScanProgressListener: () => void;
   clearEmbeddingCache: () => Promise<{ ok: boolean; error?: string }>;
   setPerformanceMode: (mode: 'default' | 'eco') => Promise<{ ok: boolean; data?: { mode: 'default' | 'eco' }; error?: string }>;
   openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
   getModelStatus: () => Promise<{ loaded: boolean; error: string | null }>;
-  assessPhotoQuality: (filePath: string) => Promise<QualityMetrics>;
+  assessPhotoQuality: (filePath: string) => Promise<{ ok: boolean; data?: QualityMetrics; error?: string }>;
   enhancePhoto: (filePath: string) => Promise<EnhancePhotoResponse>;
   // GDPR 資料匯出
   exportAllData: () => Promise<ApiResponse<{ filePath: string }>>;
@@ -286,7 +286,7 @@ export interface ElectronAPI extends GrowthApi {
   checkForUpdate: () => Promise<ApiResponse>;
   downloadUpdate: () => Promise<ApiResponse>;
   installUpdate: () => Promise<ApiResponse>;
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => void;
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => (() => void);
   removeUpdateListener: () => void;
   // 診斷工具
   getDiagnosticsInfo: () => Promise<ApiResponse<DiagnosticsInfo>>;

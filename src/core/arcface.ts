@@ -45,22 +45,19 @@ function resolveModelPath(): string | null {
   const { join } = require('path');
   const { existsSync } = require('fs');
 
-  const candidates: string[] = [
-    join(process.cwd(), 'models', 'insightface', MODEL_FILENAME),
-  ];
+  const candidates: string[] = [join(process.cwd(), 'models', 'insightface', MODEL_FILENAME)];
 
   try {
     const { app } = require('electron');
     const resourcesPath: string =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (process as any).resourcesPath ||
-      join(app.getAppPath(), '..', 'resources');
+      (process as any).resourcesPath || join(app.getAppPath(), '..', 'resources');
     candidates.push(join(resourcesPath, 'models', 'insightface', MODEL_FILENAME));
   } catch {
     // Not in Electron
   }
 
-  const found = candidates.find((p) => existsSync(p));
+  const found = candidates.find(p => existsSync(p));
   if (found) {
     logger.info(`ArcFace model found: ${found}`);
     return found;
@@ -68,7 +65,7 @@ function resolveModelPath(): string | null {
 
   logger.warn(
     `ArcFace model not found. Run 'npm run download-models' to download it.\n` +
-    `Searched:\n${candidates.join('\n')}`
+      `Searched:\n${candidates.join('\n')}`
   );
   return null;
 }
@@ -81,24 +78,24 @@ function requireOrt(): any {
   const { join } = require('path');
   const { existsSync } = require('fs');
 
-  const candidates: string[] = [
-    join(process.cwd(), 'node_modules', 'onnxruntime-node'),
-  ];
+  const candidates: string[] = [join(process.cwd(), 'node_modules', 'onnxruntime-node')];
 
   try {
     const { app } = require('electron');
-    candidates.push(
-      join(
-        app.getAppPath().replace('app.asar', 'app.asar.unpacked'),
-        'node_modules',
-        'onnxruntime-node'
-      )
-    );
+    // 使用正則表達式替換所有 app.asar（處理 Windows 反斜杠路徑）
+    const appPath = app.getAppPath().replace(/app\.asar/g, 'app.asar.unpacked');
+    candidates.push(join(appPath, 'node_modules', 'onnxruntime-node'));
+
+    // 額外檢查 resourcesPath 路徑（更可靠的打包後路徑）
+    const resourcesPath = (process as any).resourcesPath;
+    if (resourcesPath) {
+      candidates.push(join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'onnxruntime-node'));
+    }
   } catch {
     // Not in Electron
   }
 
-  const found = candidates.find((p) => existsSync(p));
+  const found = candidates.find(p => existsSync(p));
   if (found) {
     return require(found);
   }
@@ -224,7 +221,7 @@ export async function extractArcFaceEmbedding(
     for (const v of embedding) norm += v * v;
     norm = Math.sqrt(norm) + 1e-12;
 
-    return embedding.map((v) => v / norm);
+    return embedding.map(v => v / norm);
   } catch (err) {
     logger.error('ArcFace embedding extraction failed:', err);
     return null;
@@ -284,7 +281,7 @@ export async function extractArcFaceEmbeddingFromAligned(
     for (const v of embedding) norm += v * v;
     norm = Math.sqrt(norm) + 1e-12;
 
-    return embedding.map((v) => v / norm);
+    return embedding.map(v => v / norm);
   } catch (err) {
     logger.error('ArcFace aligned embedding extraction failed:', err);
     return null;

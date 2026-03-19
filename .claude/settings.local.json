@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run:*)",
+      "Bash(npx electron-builder:*)",
+      "Bash(powershell:*)",
+      "Bash(cmd.exe /c 'rd /s /q \"\"%LOCALAPPDATA%\\\\Programs\\\\大海撈Ｂ\"\" 2>nul & echo done')",
+      "Read(//d/AI-child-picture/$LOCALAPPDATA/**)",
+      "Bash(rm -rf \"$LOCALAPPDATA/Programs/大海撈Ｂ\")",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(echo \"Not in Programs\" find \"$LOCALAPPDATA\" -name \"大海撈Ｂ.exe\")",
+      "Read(//d/AI-child-picture/$APPDATA/find-my-kid-offline/**)",
+      "Read(//c/Users/emily/AppData/Roaming/find-my-kid-offline/**)",
+      "Bash(npm test:*)"
+    ]
+  }
+}

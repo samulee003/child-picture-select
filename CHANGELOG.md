@@ -2,6 +2,15 @@
 
 ### v0.2.9 – 安全性與穩定性全面修復（2026-03-19）
 
+- **打包修復**
+  - 修復 `onnxruntime-common` 未加入 `asarUnpack`，導致打包安裝後 AI 模型載入失敗（`Cannot find module 'onnxruntime-common'`）。
+  - 參考照 embedding 超時從 60 秒提升至 300 秒，適應高畫質大圖處理需求。
+
+- **高解析度圖片修復**
+  - 修復 `src/core/align.ts`：Sharp `.affine()` 在高像素圖片（>4MP）上拋出 `Input image exceeds pixel limit`，導致臉部對齊失敗、所有 5 次重試超時。
+  - 新增預裁切機制：圖片超過 4MP 時，先以關鍵點 bounding box + 50% padding 裁切臉部區域，再執行仿射對齊，避免超出 Sharp 像素限制。
+  - 典型案例：手機拍攝的 6000×4000 JPG（24MP），即使壓縮後只有 4.4MB，像素數仍超過 Sharp affine 上限。
+
 - **安全性修復**
   - 新增 `src/utils/path-validator.ts`：路徑驗證模組，防止路徑遍歷攻擊
   - 強化 `src/core/db.ts`：所有資料庫操作加入路徑驗證，確保只有合法路徑才能寫入

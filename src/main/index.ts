@@ -91,6 +91,10 @@ function setPhotoEmbedding(
   embedding: Embedding,
   source: 'face' | 'deterministic' | 'unknown' = 'unknown'
 ) {
+  if (!embedding || embedding.length === 0) {
+    logger.warn(`Refusing to store empty embedding for ${path}`);
+    return;
+  }
   if (photoEmbeddings.has(path)) {
     photoEmbeddings.delete(path);
   }
@@ -106,24 +110,32 @@ async function ensureModelReady(
   context: 'references' | 'batch'
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const status = getModelStatus();
+  logger.info(
+    `Checking model status for ${context}: loaded=${status.loaded}, error=${status.error || 'none'}`
+  );
+
   if (status.loaded) return { ok: true };
 
   logger.warn(`Model not loaded when running ${context}, attempting to load...`);
   await preloadModel();
   const retryStatus = getModelStatus();
+  logger.info(
+    `Model reload result: loaded=${retryStatus.loaded}, error=${retryStatus.error || 'none'}`
+  );
+
   if (retryStatus.loaded) return { ok: true };
 
-  if (context === 'references') {
-    return {
-      ok: false,
-      error: `AI 模型載入失敗，無法進行臉部辨識。${retryStatus.error ? `\n錯誤：${retryStatus.error}` : ''}\n\n請嘗試重新啟動應用程式。`,
-    };
-  }
+  // 構建詳細的錯誤信息
+  const baseError =
+    context === 'references' ? 'AI 模型載入失敗，無法進行臉部辨識。' : 'AI 模型未載入，無法掃描。';
 
-  return {
-    ok: false,
-    error: `AI 模型未載入，無法掃描。${retryStatus.error ? `\n錯誤：${retryStatus.error}` : ''}\n\n請重新啟動應用程式。`,
-  };
+  let errorMsg = baseError;
+  if (retryStatus.error) {
+    errorMsg += `\n錯誤：${retryStatus.error}`;
+  }
+  errorMsg += '\n\n請嘗試以下步驟：\n1. 重新啟動應用程式\n2. 如果問題持續，請重新安裝應用程式';
+
+  return { ok: false, error: errorMsg };
 }
 
 function wakePausedScan(sessionId: number) {
@@ -312,6 +324,17 @@ function wireIpc() {
     const ortDir = pathJoin(process.cwd(), 'node_modules', 'onnxruntime-node');
     const wasmExists = fsExistsSync(ortDir);
 
+    // 檢查打包後的資源路徑
+    const resourcesPath = (process as any).resourcesPath;
+    let unpackedOrtExists = false;
+    let resourcesModelsExists = false;
+    if (resourcesPath) {
+      unpackedOrtExists = fsExistsSync(
+        pathJoin(resourcesPath, 'app.asar.unpacked', 'node_modules', 'onnxruntime-node')
+      );
+      resourcesModelsExists = fsExistsSync(pathJoin(resourcesPath, 'models', 'insightface'));
+    }
+
     return {
       ok: true,
       data: {
@@ -328,6 +351,12 @@ function wireIpc() {
         canvasAvailable: false,
         nodeVersion: process.version,
         platform: process.platform,
+        // 打包後的診斷信息
+        appPath: app.getAppPath(),
+        resourcesPath,
+        unpackedOrtExists,
+        resourcesModelsExists,
+        isPackaged: !isDev,
       },
     };
   });
@@ -432,9 +461,7 @@ function wireIpc() {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: '選擇參考照片',
       properties: ['openFile', 'multiSelections'],
-      filters: [
-        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] },
-      ],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
     });
     if (canceled) return null;
     return filePaths;
@@ -493,7 +520,7 @@ function wireIpc() {
                 reject(
                   new AppError(`Reference embedding timed out for: ${f}`, 'REFERENCE_EMBED_TIMEOUT')
                 ),
-              60_000
+              300_000
             )
           ),
         ]);
@@ -526,21 +553,37 @@ function wireIpc() {
 
       // 若偵測引擎異常才阻擋；若只是沒抓到臉，允許以降級模式繼續（維持舊版可用體感）
       if (faceCount === 0) {
-        logger.warn(
-          `⚠️ NO reference photos had faces detected; continue in deterministic fallback mode.`
-        );
+        logger.warn(`⚠️ NO reference photos had faces detected; checking model health...`);
         const modelStatus = getModelStatus();
-        if (
-          !modelStatus.loaded ||
-          modelStatus.error ||
-          detectionErrorFallbackCount === files.length
-        ) {
+        logger.info(
+          `Model status: loaded=${modelStatus.loaded}, error=${modelStatus.error || 'none'}`
+        );
+
+        // 如果模型載入失敗或所有照片都回傳 detection_error，才阻擋掃描
+        const shouldBlock =
+          !modelStatus.loaded || modelStatus.error || detectionErrorFallbackCount === files.length;
+
+        if (shouldBlock) {
           logger.error(`❌ Blocking scan because model engine is not healthy.`);
           referenceEmbeddings.length = 0;
+
+          // 提供更詳細的錯誤信息
+          let errorMsg = 'AI 模型目前不可用，無法正確辨識人臉。';
+          if (modelStatus.error) {
+            errorMsg += `\n錯誤：${modelStatus.error}`;
+          }
+          if (detectionErrorFallbackCount === files.length) {
+            errorMsg += '\n所有照片的臉部偵測都失敗，可能是模型檔案損壞或遺失。';
+          }
+          errorMsg +=
+            '\n\n請嘗試以下步驟：\n1. 重新啟動應用程式\n2. 如果問題持續，請重新安裝應用程式';
+
           return {
             ok: false,
-            error: `AI 模型目前不可用，無法正確辨識人臉。${modelStatus.error ? `\n錯誤：${modelStatus.error}` : ''}${detectionErrorFallbackCount === files.length ? '\n偵測引擎回傳錯誤，已自動改用降級模式。' : ''}\n\n請重新啟動應用程式後再試一次。`,
+            error: errorMsg,
           };
+        } else {
+          logger.info('✅ Model is healthy, allowing deterministic fallback mode');
         }
       }
 
@@ -602,9 +645,15 @@ function wireIpc() {
       const warnings: string[] = [];
       const scanStartTs = Date.now();
 
-      // 如果要求清除快取，清除相關的記憶體 embeddings
+      // 如果要求清除快取，清除 SQLite + 記憶體快取
       if (clearCache) {
         logger.info('Clearing embedding cache as requested');
+        try {
+          const d = getDb();
+          d.exec('DELETE FROM faces');
+        } catch (err) {
+          logger.warn('Failed to clear SQLite cache:', err);
+        }
       }
       // 每次新掃描都重建本次 in-memory 索引，避免混入前一次資料夾結果
       photoEmbeddings.clear();
@@ -901,7 +950,7 @@ function wireIpc() {
 
       const refDims = referenceEmbeddings.map(r => r.length);
       logger.info(
-        `match:run: ${referenceEmbeddings.length} refs (dims: ${[...new Set(refDims)].join(',')}, strategy: ${strategy}), ${photoEmbeddings.size} photos, threshold=${opts?.threshold ?? 0}`
+        `match:run: ${referenceEmbeddings.length} refs (dims: ${[...new Set(refDims)].join(',')}, strategy: ${strategy}), ${photoEmbeddings.size} photos, threshold=${threshold}`
       );
 
       for (const [path, emb] of photoEmbeddings.entries()) {
@@ -938,7 +987,7 @@ function wireIpc() {
           score = Math.max(0, score - DETERMINISTIC_SCORE_PENALTY);
         }
         if (score > maxScoreOverall) maxScoreOverall = score;
-        if (score >= (opts?.threshold ?? 0)) {
+        if (score >= threshold) {
           const photo = getPhoto(path);
           const thumbPath = photo?.thumbPath || null;
           results.push({ path, score, thumbPath: thumbPath || undefined, source, bestRefIndex });
@@ -951,7 +1000,7 @@ function wireIpc() {
         );
       }
       logger.info(
-        `match:run: ${results.length} matches found (best score: ${maxScoreOverall.toFixed(4)}, threshold: ${opts?.threshold ?? 0})`
+        `match:run: ${results.length} matches found (best score: ${maxScoreOverall.toFixed(4)}, threshold: ${threshold})`
       );
       if (results.length === 0 && maxScoreOverall > -1) {
         logger.warn(

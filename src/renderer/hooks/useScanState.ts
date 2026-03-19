@@ -107,7 +107,11 @@ export function useScanState(): ScanState {
   const scanStartTimeRef = useRef<number>();
   const refPathsTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isProcessing = status.includes('ing...');
+  const isProcessing =
+    status === 'embedding refs...' ||
+    status === 'scanning...' ||
+    status === 'matching...' ||
+    status === 'exporting...';
   const hasLastRunConfig =
     settings.lastFolder.trim().length > 0 && settings.lastReferencePaths.length > 0;
   const lastFolderDisplay = settings.lastFolder
@@ -202,15 +206,12 @@ export function useScanState(): ScanState {
   useEffect(() => {
     if (!window.api) return;
     const api = window.api as {
-      onScanProgress: (cb: (prog: ScanProgress) => void) => void;
-      removeScanProgressListener: () => void;
+      onScanProgress: (cb: (prog: ScanProgress) => void) => () => void;
     };
-    api.onScanProgress((prog: ScanProgress) => {
+    const unsubscribe = api.onScanProgress((prog: ScanProgress) => {
       setProgress(prog);
     });
-    return () => {
-      api.removeScanProgressListener();
-    };
+    return unsubscribe;
   }, []);
 
   // Helpers
@@ -505,7 +506,7 @@ export function useScanState(): ScanState {
 
   const lowerThresholdForRetry = useCallback((): boolean => {
     const next = Math.max(0, parseFloat((threshold - 0.08).toFixed(2)));
-    if (next === threshold) {
+    if (Math.abs(next - threshold) < 1e-9) {
       setError('門檻已經是最低值，建議增加參考照片再重新掃描');
       return false;
     }

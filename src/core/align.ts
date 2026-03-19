@@ -185,6 +185,12 @@ export function umeyama2D(
  * @param outputSize    輸出尺寸（預設 112）
  * @returns 對齊後的 112×112 RGB raw Buffer
  */
+/**
+ * Sharp affine 的像素上限。超過此值時先裁切臉部區域再做仿射變換。
+ * Sharp 的 affine 在非常大的圖片上會拋 "Input image exceeds pixel limit"。
+ */
+const AFFINE_MAX_PIXELS = 4_000_000; // ~4MP，保守值
+
 export async function alignFace(
   imageBuffer: Buffer,
   imageWidth: number,
@@ -192,8 +198,68 @@ export async function alignFace(
   kps: [number, number][],
   outputSize: number = ALIGN_SIZE
 ): Promise<Buffer> {
+  // 如果圖片像素數超過 Sharp affine 限制，先裁切臉部區域再做仿射
+  const totalPixels = imageWidth * imageHeight;
+  let workBuffer = imageBuffer;
+  let workW = imageWidth;
+  let workH = imageHeight;
+  let workKps = kps;
+
+  if (totalPixels > AFFINE_MAX_PIXELS) {
+    // 計算所有關鍵點的 bounding box，加 padding 後裁切
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [kx, ky] of kps) {
+      if (kx < minX) minX = kx;
+      if (kx > maxX) maxX = kx;
+      if (ky < minY) minY = ky;
+      if (ky > maxY) maxY = ky;
+    }
+
+    // 加上 padding（臉部區域的 50%），確保有足夠上下文
+    const kpsW = maxX - minX;
+    const kpsH = maxY - minY;
+    const padX = kpsW * 0.5;
+    const padY = kpsH * 0.5;
+
+    const cropLeft = Math.max(0, Math.floor(minX - padX));
+    const cropTop = Math.max(0, Math.floor(minY - padY));
+    const cropRight = Math.min(imageWidth, Math.ceil(maxX + padX));
+    const cropBottom = Math.min(imageHeight, Math.ceil(maxY + padY));
+    const cropW = cropRight - cropLeft;
+    const cropH = cropBottom - cropTop;
+
+    if (cropW > 0 && cropH > 0) {
+      try {
+        workBuffer = await sharp(imageBuffer, {
+          raw: { width: imageWidth, height: imageHeight, channels: 3 },
+        })
+          .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
+          .removeAlpha()
+          .raw()
+          .toBuffer();
+
+        workW = cropW;
+        workH = cropH;
+        // 調整關鍵點座標到裁切後的空間
+        workKps = kps.map(([kx, ky]) => [kx - cropLeft, ky - cropTop] as [number, number]);
+
+        logger.debug(
+          `alignFace: cropped ${imageWidth}x${imageHeight} → ${cropW}x${cropH} ` +
+          `(${totalPixels}MP → ${cropW * cropH}MP) to stay within Sharp affine pixel limit`
+        );
+      } catch (cropErr) {
+        logger.warn('alignFace: crop failed, attempting affine on full image:', cropErr);
+        // 裁切失敗就用原圖繼續嘗試
+        workBuffer = imageBuffer;
+        workW = imageWidth;
+        workH = imageHeight;
+        workKps = kps;
+      }
+    }
+  }
+
   // 計算 forward matrix: src_face → 112×112 canvas
-  const M = umeyama2D(kps, ARCFACE_DST_5PT);
+  const M = umeyama2D(workKps, ARCFACE_DST_5PT);
 
   // Sharp .affine() 需要逆映射（output → input）
   // M2 = [[m00, m01], [m10, m11]], det(M2) = m00*m11 - m01*m10
@@ -204,7 +270,7 @@ export async function alignFace(
   if (Math.abs(det) < 1e-12) {
     logger.warn('Degenerate affine transform, falling back to identity');
     // Fallback: 直接 resize 到 outputSize
-    return sharp(imageBuffer, { raw: { width: imageWidth, height: imageHeight, channels: 3 } })
+    return sharp(workBuffer, { raw: { width: workW, height: workH, channels: 3 } })
       .resize(outputSize, outputSize, { fit: 'fill' })
       .removeAlpha()
       .raw()
@@ -225,8 +291,8 @@ export async function alignFace(
   try {
     // NOTE: sharp.affine() 在某些邊界條件下可能會輸出非預期尺寸（非固定 112×112）。
     // 因此這裡採用「雙保險」：先 affine 輸出 raw + 寬高資訊，再以 raw 輸入強制 resize 成固定輸出。
-    const affineOut = await sharp(imageBuffer, {
-      raw: { width: imageWidth, height: imageHeight, channels: 3 },
+    const affineOut = await sharp(workBuffer, {
+      raw: { width: workW, height: workH, channels: 3 },
     })
       .affine(
         [[inv00, inv01], [inv10, inv11]],
@@ -266,7 +332,7 @@ export async function alignFace(
   } catch (err) {
     logger.error('Face alignment affine transform failed:', err);
     // Fallback: 直接 resize
-    return sharp(imageBuffer, { raw: { width: imageWidth, height: imageHeight, channels: 3 } })
+    return sharp(workBuffer, { raw: { width: workW, height: workH, channels: 3 } })
       .resize(outputSize, outputSize, { fit: 'fill' })
       .removeAlpha()
       .raw()

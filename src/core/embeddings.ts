@@ -128,86 +128,107 @@ export async function fileToEmbeddingWithSource(
     };
 
     // Attempt 1：SCRFD 標準（minConfidence=0.3, inputSize=640）
-    let faces = await detectFacesWithTimeout(
-      'attempt#1',
-      detectFaces(filePath, {
-        enableAgeGender: true,
-        maxSize: options.maxSize,
-        minConfidence: options.minConfidence ?? 0.3,
-      })
-    );
-    logger.info(
-      `🧠 detectFaces attempt #1 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
-    );
+    let faces: Awaited<ReturnType<typeof detectFaces>> = [];
+    try {
+      faces = await detectFacesWithTimeout(
+        'attempt#1',
+        detectFaces(filePath, {
+          enableAgeGender: true,
+          maxSize: options.maxSize,
+          minConfidence: options.minConfidence ?? 0.3,
+        })
+      );
+      logger.info(
+        `🧠 detectFaces attempt #1 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
+      );
+    } catch (err) {
+      logger.warn(`⚠️ detectFaces attempt #1 failed: ${filePath}`, err);
+    }
 
     // Attempt 2：降低信心度（minConfidence=0.1）
     if (faces.length === 0 && options.retryOnNoFace) {
       logger.info(`Retry #2: lower confidence (0.1): ${filePath}`);
-      faces = await detectFacesWithTimeout(
-        'attempt#2',
-        detectFaces(filePath, {
-          enableAgeGender: true,
-          maxSize: options.maxSize,
-          minConfidence: 0.1,
-          overrideDetectorMinConfidence: 0.1,
-        })
-      );
-      logger.info(
-        `🧠 detectFaces attempt #2 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
-      );
+      try {
+        faces = await detectFacesWithTimeout(
+          'attempt#2',
+          detectFaces(filePath, {
+            enableAgeGender: true,
+            maxSize: options.maxSize,
+            minConfidence: 0.1,
+            overrideDetectorMinConfidence: 0.1,
+          })
+        );
+        logger.info(
+          `🧠 detectFaces attempt #2 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
+        );
+      } catch (err) {
+        logger.warn(`⚠️ detectFaces attempt #2 failed: ${filePath}`, err);
+      }
     }
 
     // Attempt 3：裁切上方 55% + minConfidence=0.1（全身照臉部通常在上方）
     if (faces.length === 0 && options.retryOnNoFace) {
       logger.info(`Retry #3: portrait crop (top 55%) + conf=0.1: ${filePath}`);
-      faces = await detectFacesWithTimeout(
-        'attempt#3',
-        detectFaces(filePath, {
-          enableAgeGender: true,
-          maxSize: options.maxSize,
-          minConfidence: 0.1,
-          overrideDetectorMinConfidence: 0.1,
-          cropTopFraction: 0.55,
-        })
-      );
-      logger.info(
-        `🧠 detectFaces attempt #3 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
-      );
+      try {
+        faces = await detectFacesWithTimeout(
+          'attempt#3',
+          detectFaces(filePath, {
+            enableAgeGender: true,
+            maxSize: options.maxSize,
+            minConfidence: 0.1,
+            overrideDetectorMinConfidence: 0.1,
+            cropTopFraction: 0.55,
+          })
+        );
+        logger.info(
+          `🧠 detectFaces attempt #3 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
+        );
+      } catch (err) {
+        logger.warn(`⚠️ detectFaces attempt #3 failed: ${filePath}`, err);
+      }
     }
 
     // Attempt 4：裁切上方 38% + minConfidence=0.05（頭部特寫，抓遮擋的臉）
     if (faces.length === 0 && options.retryOnNoFace) {
       logger.info(`Retry #4: tight head crop (top 38%) + conf=0.05: ${filePath}`);
-      faces = await detectFacesWithTimeout(
-        'attempt#4',
-        detectFaces(filePath, {
-          enableAgeGender: true,
-          maxSize: options.maxSize,
-          minConfidence: 0.05,
-          overrideDetectorMinConfidence: 0.05,
-          cropTopFraction: 0.38,
-        })
-      );
-      logger.info(
-        `🧠 detectFaces attempt #4 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
-      );
+      try {
+        faces = await detectFacesWithTimeout(
+          'attempt#4',
+          detectFaces(filePath, {
+            enableAgeGender: true,
+            maxSize: options.maxSize,
+            minConfidence: 0.05,
+            overrideDetectorMinConfidence: 0.05,
+            cropTopFraction: 0.38,
+          })
+        );
+        logger.info(
+          `🧠 detectFaces attempt #4 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
+        );
+      } catch (err) {
+        logger.warn(`⚠️ detectFaces attempt #4 failed: ${filePath}`, err);
+      }
     }
 
     // Attempt 5：全圖最大解析度 + minConfidence=0.05（最後手段）
     if (faces.length === 0 && options.retryOnNoFace) {
       logger.info(`Retry #5: full image max resolution + conf=0.05: ${filePath}`);
-      faces = await detectFacesWithTimeout(
-        'attempt#5',
-        detectFaces(filePath, {
-          enableAgeGender: true,
-          maxSize: 3072,
-          minConfidence: 0.05,
-          overrideDetectorMinConfidence: 0.05,
-        })
-      );
-      logger.info(
-        `🧠 detectFaces attempt #5 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
-      );
+      try {
+        faces = await detectFacesWithTimeout(
+          'attempt#5',
+          detectFaces(filePath, {
+            enableAgeGender: true,
+            maxSize: 3072,
+            minConfidence: 0.05,
+            overrideDetectorMinConfidence: 0.05,
+          })
+        );
+        logger.info(
+          `🧠 detectFaces attempt #5 done: faces=${faces.length}, ms=${Date.now() - startedAt}: ${filePath}`
+        );
+      } catch (err) {
+        logger.warn(`⚠️ detectFaces attempt #5 failed: ${filePath}`, err);
+      }
     }
     if (faces.length > 0) {
       // 使用信心度最高的臉部

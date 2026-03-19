@@ -171,19 +171,12 @@ export function closeDb(): void {
 
 /**
  * 在資料庫事務中執行多個操作
- * 確保所有操作都成功，否則回滾
+ * 使用 better-sqlite3 內建 transaction API（自動 commit/rollback）
  */
 export function withTransaction<T>(fn: () => T): T {
   const d = getDb();
-  d.exec('BEGIN TRANSACTION');
-  try {
-    const result = fn();
-    d.exec('COMMIT');
-    return result;
-  } catch (error) {
-    d.exec('ROLLBACK');
-    throw error;
-  }
+  const txn = d.transaction(fn);
+  return txn();
 }
 
 /**

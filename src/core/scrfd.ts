@@ -78,13 +78,15 @@ function requireOrt(): any {
 
   try {
     const { app } = require('electron');
-    candidates.push(
-      join(
-        app.getAppPath().replace('app.asar', 'app.asar.unpacked'),
-        'node_modules',
-        'onnxruntime-node'
-      )
-    );
+    // 使用正則表達式替換所有 app.asar（處理 Windows 反斜杠路徑）
+    const appPath = app.getAppPath().replace(/app\.asar/g, 'app.asar.unpacked');
+    candidates.push(join(appPath, 'node_modules', 'onnxruntime-node'));
+
+    // 額外檢查 resourcesPath 路徑（更可靠的打包後路徑）
+    const resourcesPath = (process as any).resourcesPath;
+    if (resourcesPath) {
+      candidates.push(join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'onnxruntime-node'));
+    }
   } catch {
     // Not in Electron
   }
@@ -245,19 +247,28 @@ export async function detectFacesSCRFD(
     let sharpInstance = sharp(imagePath);
 
     // 3. 如果需要裁切上方區域（全身照）
+    let effectiveW = originalW;
+    let effectiveH = originalH;
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
       const cropH = Math.round(originalH * options.cropTopFraction);
       sharpInstance = sharpInstance.extract({ left: 0, top: 0, width: originalW, height: cropH });
-      logger.debug(`Cropped top ${options.cropTopFraction * 100}%`);
+      effectiveH = cropH;
+      logger.debug(
+        `Cropped top ${options.cropTopFraction * 100}% (cropH=${cropH}, originalH=${originalH})`
+      );
     }
 
     // 4. 限制最大邊長（優化大圖處理速度）
-    if (maxSize && (originalW > maxSize || originalH > maxSize)) {
+    // 需要追蹤 resize 後的實際尺寸，座標映射才正確
+    if (maxSize && (effectiveW > maxSize || effectiveH > maxSize)) {
+      const ratio = Math.min(maxSize / effectiveW, maxSize / effectiveH);
+      effectiveW = Math.round(effectiveW * ratio);
+      effectiveH = Math.round(effectiveH * ratio);
       sharpInstance = sharpInstance.resize(maxSize, maxSize, {
         fit: 'inside',
         withoutEnlargement: true,
       });
-      logger.debug(`Resized to max ${maxSize}px`);
+      logger.debug(`Resized to max ${maxSize}px (effective: ${effectiveW}x${effectiveH})`);
     }
 
     // 5. 一次性處理：removeAlpha -> resize to inputSize -> raw buffer
@@ -269,8 +280,9 @@ export async function detectFacesSCRFD(
       .toBuffer({ resolveWithObject: true });
 
     // 計算縮放比例（用於座標映射）
-    const scaleX = originalW / processedBuf.info.width;
-    const scaleY = originalH / processedBuf.info.height;
+    // 使用 effectiveW/effectiveH（裁切+maxSize 後的實際尺寸）而非原始尺寸
+    const scaleX = effectiveW / processedBuf.info.width;
+    const scaleY = effectiveH / processedBuf.info.height;
 
     logger.debug(`Image preprocessing completed in ${Date.now() - startTime}ms`);
 
