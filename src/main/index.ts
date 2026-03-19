@@ -235,7 +235,8 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
 
 // ==================== Auto-Update ====================
 function setupAutoUpdater() {
-  autoUpdater.autoDownload = false;
+  // 家長友善：偵測到更新後自動在背景下載，減少操作步驟
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
