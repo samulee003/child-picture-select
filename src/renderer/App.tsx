@@ -1009,6 +1009,22 @@ export function App() {
               {scan.appInfo?.version ? `v${scan.appInfo.version}` : '關於'}
             </button>
             <button
+              onClick={() => {
+                window.api?.checkForUpdate?.().catch(() => {});
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+                fontWeight: 600,
+              }}
+              title="手動檢查是否有新版本"
+            >
+              檢查更新
+            </button>
+            <button
               onClick={() => setIsPrivacyOpen(true)}
               style={{
                 background: 'none',

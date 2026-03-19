@@ -215,16 +215,14 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
       await listImagesRecursively(full, acc);
     } else {
       const lower = entry.name.toLowerCase();
-      // Support more image formats including HEIC and WebP
+      // Support common image formats
       if (
         lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
         lower.endsWith('.png') ||
         lower.endsWith('.gif') ||
         lower.endsWith('.bmp') ||
-        lower.endsWith('.webp') ||
-        lower.endsWith('.heic') ||
-        lower.endsWith('.heif')
+        lower.endsWith('.webp')
       ) {
         acc.push(full);
       }
@@ -235,7 +233,8 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
 
 // ==================== Auto-Update ====================
 function setupAutoUpdater() {
-  autoUpdater.autoDownload = false;
+  // 家長友善：偵測到更新後自動在背景下載，減少操作步驟
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
@@ -434,7 +433,7 @@ function wireIpc() {
       title: '選擇參考照片',
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif'] },
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] },
       ],
     });
     if (canceled) return null;

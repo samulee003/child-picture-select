@@ -11,7 +11,7 @@ type ScanProgressCallback = (progress: { current: number; total: number; path: s
 type UpdateStatusCallback = (status: {
   status: string;
   version?: string;
-  progress?: number;
+  percent?: number;
   error?: string;
 }) => void;
 
