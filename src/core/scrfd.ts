@@ -228,48 +228,56 @@ export async function detectFacesSCRFD(
 
   const confThreshold = options.minConfidence ?? 0.3;
   const inputSize = options.inputSize ?? INPUT_SIZE;
+  // 默認最大尺寸限制，避免處理超大圖導致內存不足或超時
+  const maxSize = options.maxSize ?? 2048;
 
   try {
-    // 1. 讀取圖片，取得原始尺寸
+    logger.debug(`SCRFD processing: ${imagePath}, maxSize=${maxSize}, inputSize=${inputSize}`);
+    const startTime = Date.now();
+
+    // 1. 讀取圖片元數據
+    const meta = await sharp(imagePath).metadata();
+    const originalW = meta.width || 1000;
+    const originalH = meta.height || 1000;
+    logger.debug(`Original image size: ${originalW}x${originalH}`);
+
+    // 2. 建立處理鏈
     let sharpInstance = sharp(imagePath);
 
-    // 可選：裁切上方區域（全身照）
+    // 3. 如果需要裁切上方區域（全身照）
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
-      const meta = await sharp(imagePath).metadata();
-      const imgW = meta.width || 1000;
-      const imgH = meta.height || 1000;
-      const cropH = Math.round(imgH * options.cropTopFraction);
-      sharpInstance = sharp(imagePath).extract({ left: 0, top: 0, width: imgW, height: cropH });
+      const cropH = Math.round(originalH * options.cropTopFraction);
+      sharpInstance = sharpInstance.extract({ left: 0, top: 0, width: originalW, height: cropH });
+      logger.debug(`Cropped top ${options.cropTopFraction * 100}%`);
     }
 
-    // 可選：先限制最大邊長
-    if (options.maxSize) {
-      sharpInstance = sharpInstance.resize(options.maxSize, options.maxSize, {
+    // 4. 限制最大邊長（優化大圖處理速度）
+    if (maxSize && (originalW > maxSize || originalH > maxSize)) {
+      sharpInstance = sharpInstance.resize(maxSize, maxSize, {
         fit: 'inside',
         withoutEnlargement: true,
       });
+      logger.debug(`Resized to max ${maxSize}px`);
     }
 
-    // 取得預處理後的原始尺寸（用於座標縮放）
-    const resizedBuf = await sharpInstance
+    // 5. 一次性處理：removeAlpha -> resize to inputSize -> raw buffer
+    // 避免中間 buffer 減少記憶體使用
+    const processedBuf = await sharpInstance
       .removeAlpha()
+      .resize(inputSize, inputSize, { fit: 'fill' })
       .raw()
       .toBuffer({ resolveWithObject: true });
-    const origW = resizedBuf.info.width;
-    const origH = resizedBuf.info.height;
 
-    // 2. Resize 到 inputSize × inputSize（不保持比例，SCRFD 設計如此）
-    const rawBuf = await sharp(resizedBuf.data, {
-      raw: { width: origW, height: origH, channels: 3 },
-    })
-      .resize(inputSize, inputSize, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
+    // 計算縮放比例（用於座標映射）
+    const scaleX = originalW / processedBuf.info.width;
+    const scaleY = originalH / processedBuf.info.height;
 
-    // 3. 轉換為 NCHW float32，BGR 通道，(px - 127.5) / 128.0
+    logger.debug(`Image preprocessing completed in ${Date.now() - startTime}ms`);
+
+    // 6. 轉換為 NCHW float32，BGR 通道
     const pixelCount = inputSize * inputSize;
     const inputData = new Float32Array(3 * pixelCount);
+    const rawBuf = processedBuf.data;
 
     for (let i = 0; i < pixelCount; i++) {
       const r = rawBuf[i * 3];
@@ -281,7 +289,7 @@ export async function detectFacesSCRFD(
       inputData[2 * pixelCount + i] = (r - SCRFD_MEAN) / SCRFD_STD;
     }
 
-    // 4. ONNX 推論
+    // 7. ONNX 推論
     const inputName = session.inputNames[0] as string;
     const tensor = new ort.Tensor('float32', inputData, [1, 3, inputSize, inputSize]);
     const results = await session.run({ [inputName]: tensor });
@@ -295,8 +303,6 @@ export async function detectFacesSCRFD(
     const outputTensors = outputNames.map((name: string) => results[name]);
 
     const allFaces: SCRFDFace[] = [];
-    const scaleX = origW / inputSize;
-    const scaleY = origH / inputSize;
 
     for (let si = 0; si < STRIDES.length; si++) {
       const stride = STRIDES[si];

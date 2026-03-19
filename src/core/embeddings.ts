@@ -100,7 +100,7 @@ export async function fileToEmbeddingWithSource(
       label: string,
       promise: Promise<ReturnType<typeof detectFaces> extends Promise<infer T> ? T : never>
     ) => {
-      const timeoutMs = 30_000;
+      const timeoutMs = 120_000; // 增加到 120 秒，小孩照片通常都是高畫質大圖
       let timeoutId: NodeJS.Timeout | undefined;
 
       try {

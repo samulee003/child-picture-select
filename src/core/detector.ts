@@ -44,7 +44,7 @@ export interface DetectorOptions {
 let modelLoadAttempted = false;
 let modelLoadError: string | null = null;
 
-const FACE_DETECTION_TIMEOUT_MS = 30000;
+const FACE_DETECTION_TIMEOUT_MS = 120000; // 增加到 120 秒，小孩照片通常都是高畫質大圖
 
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -81,10 +81,7 @@ export async function preloadModel(): Promise<void> {
 
     logger.info('Loading InsightFace pipeline: SCRFD (detection) + ArcFace (recognition)...');
 
-    const [scrfdOk, arcfaceOk] = await Promise.all([
-      loadSCRFD(),
-      loadArcFace(),
-    ]);
+    const [scrfdOk, arcfaceOk] = await Promise.all([loadSCRFD(), loadArcFace()]);
 
     if (!scrfdOk) {
       const status = getSCRFDStatus();
@@ -203,24 +200,14 @@ export async function detectFaces(
       if (face.score < postMinConf) continue;
 
       // 5-point alignment → 112×112 aligned face buffer
-      const alignedBuffer = await alignFace(
-        imgRaw.data,
-        imgW,
-        imgH,
-        face.kps
-      );
+      const alignedBuffer = await alignFace(imgRaw.data, imgW, imgH, face.kps);
 
       // ArcFace embedding extraction
       const embedding = await extractArcFaceEmbeddingFromAligned(alignedBuffer);
 
       // 將 bbox 從 [x1, y1, x2, y2] 轉換為 [x, y, width, height]（公開介面格式）
       const [x1, y1, x2, y2] = face.bbox;
-      const bbox: [number, number, number, number] = [
-        x1,
-        y1,
-        x2 - x1,
-        y2 - y1,
-      ];
+      const bbox: [number, number, number, number] = [x1, y1, x2 - x1, y2 - y1];
 
       results.push({
         bbox,
@@ -239,11 +226,9 @@ export async function detectFaces(
       return [];
     }
     logger.error(`Face detection failed for ${imagePath}:`, err);
-    throw new AppError(
-      `Face detection failed for ${imagePath}`,
-      'FACE_DETECTION_ERROR',
-      { originalError: err }
-    );
+    throw new AppError(`Face detection failed for ${imagePath}`, 'FACE_DETECTION_ERROR', {
+      originalError: err,
+    });
   }
 }
 
