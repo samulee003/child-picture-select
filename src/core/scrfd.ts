@@ -158,7 +158,8 @@ function generateAnchors(featH: number, featW: number, stride: number): [number,
   for (let row = 0; row < featH; row++) {
     for (let col = 0; col < featW; col++) {
       for (let k = 0; k < ANCHORS_PER_CELL; k++) {
-        anchors.push([col * stride, row * stride]);
+        // InsightFace SCRFD 使用 cell 中心點（+0.5），而非 cell 左上角
+        anchors.push([(col + 0.5) * stride, (row + 0.5) * stride]);
       }
     }
   }
