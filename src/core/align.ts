@@ -288,9 +288,17 @@ export async function alignFace(
   const invTx = -(inv00 * mtx + inv01 * mty);
   const invTy = -(inv10 * mtx + inv11 * mty);
 
+  // 計算 libvips 的自動偏移量：libvips 對輸入圖片四個角落套用正向 Umeyama 矩陣 M，
+  // 取最小 x/y 值（若為負）作為輸出座標的偏移，確保輸出從 (0,0) 開始。
+  // 臉部在 affine 輸出中的實際位置是 (shiftX, shiftY)...(shiftX+112, shiftY+112)，
+  // 而非 (0,0)...(112,112)。必須用 extract() 而非 resize() 取出正確區域。
+  const corners: [number, number][] = [[0, 0], [workW, 0], [0, workH], [workW, workH]];
+  const fwdX = corners.map(([x, y]) => m00 * x + m01 * y + mtx);
+  const fwdY = corners.map(([x, y]) => m10 * x + m11 * y + mty);
+  const shiftX = Math.round(Math.max(0, -Math.min(...fwdX)));
+  const shiftY = Math.round(Math.max(0, -Math.min(...fwdY)));
+
   try {
-    // NOTE: sharp.affine() 在某些邊界條件下可能會輸出非預期尺寸（非固定 112×112）。
-    // 因此這裡採用「雙保險」：先 affine 輸出 raw + 寬高資訊，再以 raw 輸入強制 resize 成固定輸出。
     const affineOut = await sharp(workBuffer, {
       raw: { width: workW, height: workH, channels: 3 },
     })
@@ -309,26 +317,54 @@ export async function alignFace(
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    const resized = await sharp(affineOut.data, {
-      raw: {
-        width: affineOut.info.width,
-        height: affineOut.info.height,
-        channels: affineOut.info.channels,
-      },
-    })
-      .resize(outputSize, outputSize, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
+    const extractLeft = shiftX;
+    const extractTop = shiftY;
+    const canExtract =
+      extractLeft + outputSize <= affineOut.info.width &&
+      extractTop + outputSize <= affineOut.info.height;
+
+    let aligned: Buffer;
+    if (canExtract) {
+      // 正常路徑：從 affine 輸出中取出臉部所在的正確 112×112 區域
+      aligned = await sharp(affineOut.data, {
+        raw: {
+          width: affineOut.info.width,
+          height: affineOut.info.height,
+          channels: affineOut.info.channels,
+        },
+      })
+        .extract({ left: extractLeft, top: extractTop, width: outputSize, height: outputSize })
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+    } else {
+      // 邊界情況：affine 輸出比 outputSize 小（超大臉或極小圖片）。
+      // 此時臉部幾乎填滿整個 affineOut，resize 誤差相對可接受。
+      logger.debug(
+        `alignFace: affineOut (${affineOut.info.width}×${affineOut.info.height}) < extract region ` +
+        `(${extractLeft}+${outputSize}, ${extractTop}+${outputSize}), falling back to resize`
+      );
+      aligned = await sharp(affineOut.data, {
+        raw: {
+          width: affineOut.info.width,
+          height: affineOut.info.height,
+          channels: affineOut.info.channels,
+        },
+      })
+        .resize(outputSize, outputSize, { fit: 'fill' })
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+    }
 
     const expectedBytes = outputSize * outputSize * 3;
-    if (resized.length !== expectedBytes) {
+    if (aligned.length !== expectedBytes) {
       logger.warn(
-        `alignFace produced unexpected raw length after resize: got ${resized.length}, expected ${expectedBytes}`
+        `alignFace produced unexpected raw length: got ${aligned.length}, expected ${expectedBytes}`
       );
     }
 
-    return resized;
+    return aligned;
   } catch (err) {
     logger.error('Face alignment affine transform failed:', err);
     // Fallback: 直接 resize

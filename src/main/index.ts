@@ -551,7 +551,7 @@ function wireIpc() {
         logger.info(`✅ ${faceCount}/${files.length} reference photos had faces detected`);
       }
 
-      // 若偵測引擎異常才阻擋；若只是沒抓到臉，允許以降級模式繼續（維持舊版可用體感）
+      // 若偵測引擎異常才阻擋；若只是沒抓到臉，也需阻擋（deterministic embedding 無比對意義）
       if (faceCount === 0) {
         logger.warn(`⚠️ NO reference photos had faces detected; checking model health...`);
         const modelStatus = getModelStatus();
@@ -559,15 +559,11 @@ function wireIpc() {
           `Model status: loaded=${modelStatus.loaded}, error=${modelStatus.error || 'none'}`
         );
 
-        // 如果模型載入失敗或所有照片都回傳 detection_error，才阻擋掃描
-        const shouldBlock =
-          !modelStatus.loaded || modelStatus.error || detectionErrorFallbackCount === files.length;
+        referenceEmbeddings.length = 0;
 
-        if (shouldBlock) {
+        if (!modelStatus.loaded || modelStatus.error || detectionErrorFallbackCount === files.length) {
+          // 模型本身有問題
           logger.error(`❌ Blocking scan because model engine is not healthy.`);
-          referenceEmbeddings.length = 0;
-
-          // 提供更詳細的錯誤信息
           let errorMsg = 'AI 模型目前不可用，無法正確辨識人臉。';
           if (modelStatus.error) {
             errorMsg += `\n錯誤：${modelStatus.error}`;
@@ -577,13 +573,21 @@ function wireIpc() {
           }
           errorMsg +=
             '\n\n請嘗試以下步驟：\n1. 重新啟動應用程式\n2. 如果問題持續，請重新安裝應用程式';
-
+          return { ok: false, error: errorMsg };
+        } else {
+          // 模型正常但所有照片均無法偵測到人臉
+          // SHA256 deterministic embedding 無法代表臉部特徵，繼續掃描只會得到垃圾結果
+          logger.error(`❌ Blocking scan: model is healthy but no faces detected in any reference photo.`);
           return {
             ok: false,
-            error: errorMsg,
+            error:
+              '所有參考照片均無法偵測到人臉。\n\n' +
+              '請確認：\n' +
+              '1. 照片中有清楚的正面人臉\n' +
+              '2. 照片解析度足夠（建議 > 200×200 pixels）\n' +
+              '3. 臉部未被遮擋或過度側面\n\n' +
+              '建議換一張正面清晰的大頭照作為參考照片。',
           };
-        } else {
-          logger.info('✅ Model is healthy, allowing deterministic fallback mode');
         }
       }
 
@@ -954,10 +958,8 @@ function wireIpc() {
       );
 
       for (const [path, emb] of photoEmbeddings.entries()) {
-        // Check for any dimension mismatch (for logging only)
-        for (const ref of referenceEmbeddings) {
-          if (emb.length !== ref.length) dimensionAdjustedCount++;
-        }
+        // Check for any dimension mismatch (for logging only) — count per photo, not per reference
+        if (referenceEmbeddings.some(ref => emb.length !== ref.length)) dimensionAdjustedCount++;
 
         let score = multiReferenceSimilarity(emb, refObjects, strategy);
 

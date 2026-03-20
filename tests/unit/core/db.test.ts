@@ -110,16 +110,19 @@ describe('db embedding source persistence', () => {
     tempDirs.push(userDataPath);
     const dbModule = await loadDbModule(userDataPath);
 
-    dbModule.upsertFace('C:/a.jpg', [0.1, 0.2, 0.3], 'face');
-    dbModule.upsertFace('C:/b.jpg', [0.4, 0.5, 0.6], 'deterministic');
+    // Embeddings must be 512-dim (ArcFace output); getFacesByPath rejects other dimensions
+    const embA = Array.from({ length: 512 }, (_, i) => (i + 1) / 1000);
+    const embB = Array.from({ length: 512 }, (_, i) => (i + 100) / 1000);
+    dbModule.upsertFace('C:/a.jpg', embA, 'face');
+    dbModule.upsertFace('C:/b.jpg', embB, 'deterministic');
 
     const a = dbModule.getFacesByPath('C:/a.jpg');
     const b = dbModule.getFacesByPath('C:/b.jpg');
 
     expect(a[0]?.source).toBe('face');
     expect(b[0]?.source).toBe('deterministic');
-    expect(a[0]?.embedding).toEqual([0.1, 0.2, 0.3]);
-    expect(b[0]?.embedding).toEqual([0.4, 0.5, 0.6]);
+    expect(a[0]?.embedding).toEqual(embA);
+    expect(b[0]?.embedding).toEqual(embB);
 
     dbModule.closeDb();
   });
