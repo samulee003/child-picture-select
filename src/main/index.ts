@@ -227,14 +227,16 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
       await listImagesRecursively(full, acc);
     } else {
       const lower = entry.name.toLowerCase();
-      // Support common image formats
+      // Support common image formats (including HEIC/HEIF from iPhone)
       if (
         lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
         lower.endsWith('.png') ||
         lower.endsWith('.gif') ||
         lower.endsWith('.bmp') ||
-        lower.endsWith('.webp')
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif')
       ) {
         acc.push(full);
       }
