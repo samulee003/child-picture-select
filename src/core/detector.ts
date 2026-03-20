@@ -195,9 +195,24 @@ export async function detectFaces(
     const postMinConf = options.minConfidence ?? 0.01;
     const results: FaceDetection[] = [];
 
+    // Safety cap: limit ArcFace extractions to top-N faces by confidence.
+    // Real photos have at most a few dozen people; if SCRFD returns hundreds of
+    // detections (e.g. on screenshots, solid-color images, or low-quality scans)
+    // it is a sign of false positives — capping prevents runaway ArcFace iterations.
+    const MAX_FACES_PER_IMAGE = 20;
+    const candidateFaces = scrfdFaces
+      .filter(f => f.score >= postMinConf)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_FACES_PER_IMAGE);
+
+    if (scrfdFaces.length > MAX_FACES_PER_IMAGE) {
+      logger.debug(
+        `detectFaces: capped ${scrfdFaces.filter(f => f.score >= postMinConf).length} SCRFD candidates → top ${MAX_FACES_PER_IMAGE} by confidence for ArcFace`
+      );
+    }
+
     // 3. 對每個臉依序做 alignment + ArcFace（避免並行 ORT session 競爭）
-    for (const face of scrfdFaces) {
-      if (face.score < postMinConf) continue;
+    for (const face of candidateFaces) {
 
       // 5-point alignment → 112×112 aligned face buffer
       const alignedBuffer = await alignFace(imgRaw.data, imgW, imgH, face.kps);
