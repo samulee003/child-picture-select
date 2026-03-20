@@ -103,7 +103,7 @@ export function useExportState(deps: ExportDeps): ExportState {
       const copied = result.data?.copied || 0;
       const failed = result.data?.failed ?? Math.max(0, targets.length - copied);
       const failedPaths = result.data?.failedPaths || [];
-      setLastExportTargets(failedPaths.length > 0 ? failedPaths : targets);
+      setLastExportTargets(failedPaths.length > 0 ? failedPaths : []);
       const hasFailure = failed > 0 || !result.ok;
       setStatus(`exported (${copied} files)`);
       setExportSummary({

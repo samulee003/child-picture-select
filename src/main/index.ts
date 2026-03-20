@@ -461,7 +461,7 @@ function wireIpc() {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: '選擇參考照片',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'] }],
     });
     if (canceled) return null;
     return filePaths;
@@ -508,21 +508,24 @@ function wireIpc() {
       for (const f of files) {
         const startedAt = Date.now();
         logger.info(`🧩 Reference embedding start: ${f}`);
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         const result = await Promise.race([
           fileToEmbeddingWithSource(f, {
             maxSize: 1280,
             minConfidence: 0.01,
             retryOnNoFace: true,
+          }).finally(() => {
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
           }),
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
+          new Promise<never>((_resolve, reject) => {
+            timeoutId = setTimeout(
               () =>
                 reject(
                   new AppError(`Reference embedding timed out for: ${f}`, 'REFERENCE_EMBED_TIMEOUT')
                 ),
               300_000
-            )
-          ),
+            );
+          }),
         ]);
         logger.info(
           `🧩 Reference embedding done: ${f} (source=${result.source}, dims=${result.dimensions}, ms=${Date.now() - startedAt})`
@@ -664,6 +667,37 @@ function wireIpc() {
       photoEmbeddingSources.clear();
 
       logger.info(`Found ${total} images to process`);
+
+      // Handle empty folder — send completion event immediately
+      if (total === 0) {
+        logger.info('No images found in directory, completing scan');
+        mainWindow?.webContents.send('scan:progress', {
+          current: 0,
+          total: 0,
+          path: '',
+          thumbPath: null,
+          faceAnalysis: null,
+          photosPerSec: 0,
+          etaSeconds: 0,
+        });
+        return {
+          ok: true,
+          data: {
+            scanned: 0,
+            processed: 0,
+            cached: 0,
+            faceDetected: 0,
+            deterministicFallback: 0,
+            thumbnailErrors: 0,
+            readErrors: 0,
+            embeddingErrors: 0,
+            skippedErrors: 0,
+            avgPhotosPerSec: 0,
+            durationMs: Date.now() - scanStartTs,
+            warnings: ['資料夾中沒有找到任何支援的圖片檔案。'],
+          },
+        };
+      }
 
       // Adaptive batch size based on available memory
       const freeMem = require('os').freemem();
@@ -1078,7 +1112,7 @@ function wireIpc() {
       if (failedPaths.length > 0) {
         logger.warn(`Export completed with ${failedPaths.length} failures`);
         return {
-          ok: false,
+          ok: copied > 0,
           data: { copied, failed: failedPaths.length, failedPaths },
           error: `有 ${failedPaths.length} 張照片匯出失敗`,
         };

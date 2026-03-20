@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface ImagePreviewProps {
   src: string;
@@ -38,6 +38,23 @@ export function ImagePreview({
       setIsZoomed(!isZoomed);
     }
   };
+
+  const closeZoom = useCallback(() => setIsZoomed(false), []);
+
+  // Lock body scroll when zoomed and support ESC to close
+  useEffect(() => {
+    if (!isZoomed) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeZoom();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isZoomed, closeZoom]);
 
   const containerStyle: React.CSSProperties = {
     position: 'relative',
@@ -128,7 +145,7 @@ export function ImagePreview({
             justifyContent: 'center',
             cursor: 'pointer',
           }}
-          onClick={() => setIsZoomed(false)}
+          onClick={closeZoom}
         >
           <img src={src} alt={alt} style={zoomedImageStyle} onClick={e => e.stopPropagation()} />
           <div
@@ -147,7 +164,7 @@ export function ImagePreview({
               alignItems: 'center',
               justifyContent: 'center',
             }}
-            onClick={() => setIsZoomed(false)}
+            onClick={closeZoom}
           >
             ×
           </div>

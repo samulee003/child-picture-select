@@ -26,6 +26,7 @@ import { useReviewState } from './hooks/useReviewState';
 import { useFavorites } from './hooks/useFavorites';
 import { useExportState } from './hooks/useExportState';
 import { theme, animations } from './styles/theme';
+import { safeLocalStorageSet } from '../utils/safe-storage';
 
 export function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -159,7 +160,7 @@ export function App() {
   ]);
 
   const handleOnboardingDone = () => {
-    localStorage.setItem('onboardingCompleted', 'true');
+    safeLocalStorageSet('onboardingCompleted', 'true');
     setShowOnboarding(false);
   };
 

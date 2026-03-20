@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { MatchResult } from '../../types/api';
+import { safeLocalStorageSet } from '../../utils/safe-storage';
 
 export interface FavoritesState {
   favoritePaths: string[];
@@ -32,7 +33,7 @@ export function useFavorites(): FavoritesState {
 
   // Persist
   useEffect(() => {
-    localStorage.setItem('favoriteMatchPaths', JSON.stringify(favoritePaths));
+    safeLocalStorageSet('favoriteMatchPaths', JSON.stringify(favoritePaths));
   }, [favoritePaths]);
 
   const toggleFavorite = useCallback((path: string) => {
