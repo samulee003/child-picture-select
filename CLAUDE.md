@@ -71,6 +71,26 @@ npm run release:check    # Pre-release validation
 ## Directory Structure
 
 ```
+/ (project root)
+├── src/                     # Source code
+├── tests/                   # Test files (unit + e2e)
+├── electron/                # Alternate Electron entry point (preload/main)
+├── models/insightface/      # ONNX model files (det_500m.onnx, w600k_mbf.onnx)
+├── public/                  # Static assets
+├── resources/               # App resources (icons, logos)
+├── scripts/                 # Build scripts (*.mjs)
+├── docs/                    # Extended documentation
+├── .github/workflows/       # CI/CD (ci.yml, release-win.yml)
+├── index.html               # Renderer SPA entry
+├── vite.config.ts           # Vite config (dev server, :5173)
+├── vite.renderer.config.ts  # Vite renderer production build config
+├── vitest.config.ts         # Vitest configuration
+├── playwright.config.ts     # Playwright E2E configuration
+├── tsconfig.json            # TypeScript configuration
+├── eslint.config.js         # ESLint flat config
+│   # Legacy Python files (not active):
+├── main.py, build_exe.py, requirements.txt, run_ref_test.py, etc.
+
 src/
 ├── core/                    # AI and image processing logic
 │   ├── detector.ts          # Face detection orchestration (SCRFD → align → ArcFace)
@@ -85,10 +105,11 @@ src/
 │   ├── photoEnhancer.ts     # Photo enhancement
 │   ├── performance.ts       # Batch processing + concurrency management
 │   ├── detector.test.ts     # Unit tests (co-located)
-│   └── embeddings.test.ts   # Unit tests (co-located)
+│   ├── embeddings.test.ts   # Unit tests (co-located)
+│   └── similarity.test.ts   # Unit tests (co-located)
 │
 ├── main/                    # Electron main process
-│   ├── index.ts             # IPC handlers and app lifecycle (600+ lines)
+│   ├── index.ts             # IPC handlers and app lifecycle (~1,450 lines)
 │   ├── scanController.ts    # Scan state management (pause/resume/cancel)
 │   ├── growthRecordManager.ts  # Growth records and session tracking
 │   └── secureStore.ts       # Secure local storage
@@ -99,7 +120,7 @@ src/
 ├── renderer/                # React UI (Vite app)
 │   ├── App.tsx              # Root component
 │   ├── main.tsx             # React entry point
-│   ├── components/          # 30+ React components (PascalCase filenames)
+│   ├── components/          # 27 React components (PascalCase filenames)
 │   ├── hooks/               # Custom hooks
 │   │   ├── useScanState.ts      # Scan progress + results state
 │   │   ├── useReviewState.ts    # Manual review decisions
@@ -109,7 +130,7 @@ src/
 │   └── styles/theme.ts      # Glassmorphism theme + animations
 │
 ├── types/                   # TypeScript interfaces
-│   ├── api.ts               # IPC API types (core interfaces)
+│   ├── api.ts               # IPC API types (core interfaces, ~294 lines)
 │   ├── preload.d.ts         # Preload type declarations
 │   ├── window.ts            # Window augmentation
 │   ├── global.d.ts          # Global type declarations
@@ -121,7 +142,7 @@ src/
 │   ├── path-validator.ts    # Path traversal prevention
 │   └── accessibility.ts     # Accessibility utilities
 │
-└── gui/                     # Legacy GUI directory
+└── gui/                     # Legacy GUI directory (not active)
 
 tests/
 ├── unit/                    # Vitest unit tests
@@ -129,7 +150,7 @@ tests/
 │   ├── main/                # Main process tests (growthRecordManager)
 │   ├── core/                # Core logic tests (similarity, db)
 │   └── utils/               # Utility tests (errorHandler)
-└── e2e/                     # Playwright E2E tests (flow, UI specs)
+└── e2e/                     # Playwright E2E tests (flow.e2e.test.ts, ui.spec.ts)
 ```
 
 ---
@@ -186,27 +207,94 @@ When multiple reference photos are provided, results are fused via:
 
 ## Key IPC Channels
 
+### Core / App
+| Channel | Description |
+|---------|-------------|
+| `ping` | Health check → `'pong'` |
+| `app:about` | App info (name, version, changelog) |
+| `model:status` | Check if SCRFD + ArcFace models are loaded |
+| `scan:folder` | Set the target scan directory |
+
+### File Dialogs
+| Channel | Description |
+|---------|-------------|
+| `dialog:open-files` | Native multi-file picker |
+| `dialog:open-folder` | Native folder picker |
+| `folder:open` | Open a folder in the OS file explorer |
+| `shell:open-external` | Open URL in browser (HTTPS only) |
+
+### AI & Embeddings
 | Channel | Description |
 |---------|-------------|
 | `embed:references` | Extract embeddings from reference photos |
-| `embed:batch` | Scan folder + extract all embeddings |
-| `match:run` | Similarity matching with threshold/topN options |
+| `embed:batch` | Scan folder + extract all embeddings (cached) |
+| `match:run` | Cosine similarity matching with threshold/topN/strategy options |
+| `assess:photo-quality` | Evaluate reference photo quality → `QualityMetrics` |
+| `enhance:photo` | Photo enhancement pipeline |
+
+### Scan Control
+| Channel | Description |
+|---------|-------------|
 | `scan:pause` / `scan:resume` / `scan:cancel` | Scan flow control |
 | `scan:performance-mode` | Set `'default'` or `'eco'` batch mode |
 | `scan:clear-cache` | Clear SQLite embeddings cache |
+
+### Export
+| Channel | Description |
+|---------|-------------|
 | `export:copy` | Copy matched photos to output folder |
-| `dialog:open-files` | Native file picker |
-| `dialog:open-folder` | Native folder picker |
-| `model:status` | Check if AI model is loaded |
-| `assess:photo-quality` | Evaluate reference photo quality |
-| `enhance:photo` | Photo enhancement pipeline |
-| `growth:save` | Save a growth record |
-| `growth:get-all` | Retrieve all growth records |
-| `growth:delete` | Delete a growth record |
-| `growth:export-data` | GDPR data export |
-| `update:check` | Check for app updates |
+
+### App Updates
+| Channel | Description |
+|---------|-------------|
+| `update:check` | Check for available app updates |
 | `update:download` | Download pending update |
 | `update:install` | Install downloaded update |
+
+### Growth Records
+| Channel | Description |
+|---------|-------------|
+| `growth:save-record` | Save a growth record → `{id}` |
+| `growth:get-records` | Retrieve all growth records |
+| `growth:get-record` | Retrieve a single growth record by ID |
+| `growth:delete-record` | Delete a growth record |
+| `growth:add-event` | Add an event to an existing growth record |
+| `growth:save-session` | Save a scan session → `{id}` |
+| `growth:get-sessions` | Retrieve all scan sessions |
+
+### Reminders
+| Channel | Description |
+|---------|-------------|
+| `growth:get-reminders` | Get all pending reminders |
+| `growth:mark-reminder-read` | Mark a reminder as read |
+| `growth:dismiss-reminder` | Dismiss a reminder |
+| `growth:check-reminders` | Check for new reminders to generate |
+
+### Family & Sharing
+| Channel | Description |
+|---------|-------------|
+| `growth:get-family-members` | Retrieve family members list |
+| `growth:add-family-member` | Add a new family member |
+| `growth:get-shared-albums` | Retrieve shared albums |
+| `growth:create-shared-album` | Create a new shared album |
+
+### Privacy & Data
+| Channel | Description |
+|---------|-------------|
+| `data:export-all` | GDPR data export → writes file, returns `{filePath}` |
+| `privacy:clear-old-sessions` | Delete scan sessions older than N days |
+
+### Diagnostics
+| Channel | Description |
+|---------|-------------|
+| `diagnostics:get-info` | Model status, log paths, platform info |
+| `diagnostics:get-log-tail` | Last N lines of the app log file |
+
+### IPC Events (renderer ← main)
+| Event | Description |
+|-------|-------------|
+| `scan:progress` | Emitted during scan with `ScanProgress` payload |
+| `update:status` | Emitted during update check/download with `UpdateStatus` |
 
 ---
 
@@ -267,13 +355,52 @@ When multiple reference photos are provided, results are fused via:
 - Keyboard shortcuts: Ctrl+S, Ctrl+R, Ctrl+E, Ctrl+C, F1, Esc
 
 ### Key Components
+All components live in `src/renderer/components/` with PascalCase filenames.
+
+**Onboarding & Setup**
 - `OnboardingWizard` — Initial setup wizard for new users
-- `SwipeReview` — Swipe-based photo review interface
-- `AIAnalysisPanel` — AI face analysis display
-- `UpdateBanner` — Auto-update notification
+- `WelcomeState` — Empty-state welcome screen
+
+**Scan & Input**
 - `DragDropZone` — Reference photo drag-and-drop
-- `MatchResultCard` — Individual match result display
+- `ScanControls` — Scan start/pause/resume/cancel buttons
+- `ScanWarningsPanel` — Warnings surfaced during scan (e.g. low-quality refs)
+- `ModernProgress` — Animated progress bar with ETA display
+- `ProgressBar` — Simple progress bar primitive
+
+**Reference Photo Quality**
+- `ReferencePhotoQualityCard` — Per-photo quality score card
+- `RefPhotoFeedback` — Inline feedback on reference photo issues
+- `TaskReadinessCard` — Readiness summary before starting a scan
+
+**Results & Review**
+- `MatchResultCard` — Individual match result display with similarity score
+- `ResultsSection` — Results list container with virtual scrolling
+- `NoMatchesSection` — Empty-state when no matches found
+- `SwipeReview` — Swipe-based photo review interface
+
+**Export**
 - `ExportPreviewModal` — Export preview and confirmation
+- `ExportSuccessModal` — Success confirmation after export
+
+**AI & Analysis**
+- `AIAnalysisPanel` — AI face analysis display
+- `ImagePreview` — Full-size image preview modal
+
+**Settings & Privacy**
+- `PrivacySettingsPanel` — Privacy and data-retention settings
+
+**Updates & Info**
+- `UpdateBanner` — Auto-update notification
+- `HelpModal` — In-app help and FAQ
+
+**Layout & Primitives**
+- `ModernLayout` — App shell layout wrapper
+- `ModernButton` — Styled button primitive
+- `GlassCard` — Glassmorphism card container
+- `StatusBadge` — Status indicator chip
+- `LoadingSpinner` — Loading indicator
+- `ErrorBoundary` — React error boundary for crash isolation
 
 ### Logging
 Always use `logger.ts`, not `console.*`:
@@ -336,10 +463,20 @@ logger.error('Face detection failed', error);
 - Auto-invalidates legacy cache entries missing the `source` column
 - All DB operations validate paths via `path-validator.ts`
 
+### `src/core/thumbs.ts`
+- `generateThumbnail(filePath, outputPath, size?)` — Generate JPEG thumbnail via Sharp
+- Thumbnails cached in `thumbs/` subdirectory of the SQLite data directory
+- Default output size: 200×200 px (cover fit)
+
 ### `src/core/performance.ts`
 - `processBatch<T, R>(items, fn, opts)` — Process with concurrency + progress callback
 - `checkMemoryUsage()` — Triggers GC if heap > 1GB
 - `getMetrics()` — Returns performance telemetry
+
+### Co-located Tests in `src/core/`
+- `detector.test.ts` — SCRFD + ArcFace pipeline tests
+- `embeddings.test.ts` — Embedding extraction + fallback tests
+- `similarity.test.ts` — Cosine similarity + multi-reference fusion tests
 
 ### `src/main/growthRecordManager.ts`
 - CRUD operations for growth records (child photo milestones)
@@ -363,7 +500,7 @@ logger.error('Face detection failed', error);
 3. **Validate file paths** with `existsSync` before reading; use `path-validator.ts` for traversal prevention
 4. **Context isolation** must remain enabled in preload
 5. **No telemetry** — the app intentionally has zero analytics
-6. **GDPR support** — `growth:export-data` IPC enables user data export
+6. **GDPR support** — `data:export-all` IPC enables full user data export; `privacy:clear-old-sessions` removes old scan data
 
 ---
 
@@ -371,7 +508,7 @@ logger.error('Face detection failed', error);
 
 ### Unit Tests (Vitest)
 - Test files: `*.test.ts` / `*.test.tsx`
-- Located in `src/core/` (co-located) and `tests/unit/`
+- Located in `src/core/` (co-located: `detector.test.ts`, `embeddings.test.ts`, `similarity.test.ts`) and `tests/unit/`
 - Run with `npm test`
 - `globals: true` in vitest config — `describe`, `it`, `expect` available without imports
 - Uses node environment; sharp and better-sqlite3 are inlined for test runs
@@ -447,9 +584,38 @@ npm test
 | `CODE_REVIEW.md` | Code review guidelines |
 | `AGENTS.md` | AI agent instructions |
 | `QWEN.md` | Qwen model integration documentation |
+| `docs/README.md` | Docs index |
 | `docs/用戶指南.md` | Traditional Chinese user guide |
 | `docs/optimization-acceptance-spec.md` | Optimization acceptance criteria |
 | `docs/product-optimization-mvp.md` | MVP optimization plan |
+| `docs/Verification_Report.md` | QA/verification report |
+| `docs/notion-landing-page.md` | Product landing page copy |
+
+---
+
+## CI/CD Workflows
+
+### `ci.yml` (automatic)
+- **Triggers:** Push to `main` or `develop`, PR to `main`
+- **Test job** (ubuntu-latest, Node 20.x **and** 22.x matrix):
+  1. `npm ci`
+  2. `npm run typecheck`
+  3. `npm run lint:check`
+  4. `npm test`
+  5. `npm run build`
+- **Build Windows job** (windows-latest, Node 22.x) — depends on test:
+  - Runs `npm run dist:win`, uploads `.exe` + `.blockmap` artifact (90-day retention)
+- **Release job** — depends on test + build-windows, runs only on push to `main`:
+  - Downloads Windows installer artifact
+  - Creates/updates GitHub Release with auto-generated release notes
+  - Release body includes Traditional Chinese installation instructions
+
+### `release-win.yml` (manual dispatch)
+- **Trigger:** `workflow_dispatch` with inputs:
+  - `publish_release` (boolean, default: `true`) — whether to create a GitHub Release
+  - `prerelease` (boolean, default: `false`) — mark release as pre-release
+- Runs on windows-latest, Node 22.x
+- Builds installer, uploads artifact (30-day retention), optionally publishes release
 
 ---
 
@@ -461,7 +627,7 @@ npm test
 4. Run `npm run release:win` (unsigned) or `npm run release:win:with-sign` (code-signed)
 5. Installer output: `dist-electron/da-hai-lao-b-{version}-Setup.exe`
 6. GitHub Releases are handled via `electron-builder` with the GitHub provider (`samulee003/child-picture-select`)
-7. CI/CD: GitHub Actions (`ci.yml`) — pushes to `main`/`develop` trigger typecheck → lint → test → build → release. Manual release via `release-win.yml` workflow dispatch.
+7. Automated releases trigger via `ci.yml` on push to `main`; manual releases via `release-win.yml` workflow dispatch.
 
 **Code signing** requires env vars: `CSC_LINK` and `CSC_KEY_PASSWORD`
 
