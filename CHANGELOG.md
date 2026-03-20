@@ -1,5 +1,29 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.9 – 用戶旅程模擬修復 + 人臉對齊核心修復（2026-03-20）
+
+- **人臉辨識核心修復（CRITICAL）**
+  - 修復 `src/core/align.ts`：Sharp `.affine()` 自動擴展輸出畫布，導致後續 `.resize(112,112)` 將整張大圖壓縮至 20×20px 而非擷取正確臉部區域。現改為計算 libvips auto-shift（正向變換輸入角點）後以 `.extract(shiftX, shiftY, 112, 112)` 取出正確位置，確保 ArcFace 收到真正的 112×112 對齊臉部。
+  - 修復 `src/core/scrfd.ts`：SCRFD anchor 中心點誤用 `col*stride`（左上角）而非 `(col+0.5)*stride`（中心點），導致 5-point keypoint 偏移 4–16px，降低 Umeyama 對齊品質。
+  - 修復 `src/main/index.ts`：參考照全部人臉偵測失敗但模型健康時，仍允許以 SHA-256 deterministic embedding 繼續掃描，產生無意義的相似度分數。現改為回傳明確錯誤，要求使用者提供更清晰的參考照。
+  - 修復 `dimensionAdjustedCount` 重複計數問題（原每張照片 × 參考照數量，現正確為每張照片計一次）。
+
+- **快取版本升級**
+  - `src/core/db.ts`：`CURRENT_CACHE_VERSION` 從 3 升至 4，首次啟動後自動清除舊版（錯誤對齊產生的垃圾 embedding）並重建。
+  - 新增 `getFacesByPath()` 512-dim 維度驗證，靜默跳過維度不符的過時快取項目。
+
+- **用戶旅程模擬 — 10 個產品級 Bug 修復**
+  - **文件選擇**：修復 `dialog:open-files` IPC 缺少 HEIC/HEIF/BMP 格式，iPhone 用戶無法直接選取照片。
+  - **空資料夾掃描**：修復空資料夾掃描後 UI 永久停留在「掃描中...」狀態（缺少 `scan:progress` 完成事件）。
+  - **進度條除以零**：修復 `ModernProgress` 在 `max=0` 時顯示 100% 的問題。
+  - **匯出部分成功**：修復部分匯出成功時錯誤回報為「完全失敗」。
+  - **匯出重試**：修復完整成功後重試仍重新匯出所有已成功檔案的問題。
+  - **拖放非圖片**：修復非圖片檔案拖放時靜默丟棄無任何提示的問題，現顯示明確提示訊息。
+  - **ImagePreview 縮放**：修復縮放時未鎖定背景滾動且不支援 ESC 關閉。
+  - **CJK 輸入法衝突**：修復使用中文/日文輸入法時鍵盤快捷鍵（Ctrl+S 等）誤觸發的問題。
+  - **localStorage QuotaExceededError**：新增 `src/utils/safe-storage.ts`，localStorage 寫入失敗時靜默降級而非拋出未處理例外。
+  - **參考照超時計時器洩漏**：修復 `embed:references` 300 秒超時計時器在成功完成後未清除，導致計時器洩漏。
+
 ### v0.2.9 – 安全性與穩定性全面修復（2026-03-19）
 
 - **打包修復**

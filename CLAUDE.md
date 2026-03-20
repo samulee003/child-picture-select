@@ -140,6 +140,7 @@ src/
 │   ├── logger.ts            # Centralized logging
 │   ├── error-handler.ts     # AppError class
 │   ├── path-validator.ts    # Path traversal prevention
+│   ├── safe-storage.ts      # Safe localStorage wrapper (silently degrades on QuotaExceededError)
 │   └── accessibility.ts     # Accessibility utilities
 │
 └── gui/                     # Legacy GUI directory (not active)
@@ -421,12 +422,13 @@ logger.error('Face detection failed', error);
 - `resetSCRFD()` — Reset session for retry
 - Input: BGR, `(px-127.5)/128.0`, 640×640; outputs: 9 tensors (score/bbox/kps × stride 8/16/32)
 - Applies sigmoid to raw scores + IoU NMS (threshold 0.4)
+- Anchor centers use cell center `(col+0.5)*stride` per InsightFace convention — do NOT use `col*stride` (top-left), which causes 4–16px keypoint offsets
 
 ### `src/core/align.ts`
 - `alignFace(imageBuffer, imageWidth, imageHeight, kps, outputSize?)` — Umeyama → 112×112 aligned raw RGB buffer
 - `umeyama2D(src, dst)` — Analytic 2×2 SVD similarity transform
 - `ARCFACE_DST_5PT` — Standard ArcFace 112×112 template coordinates
-- Uses Sharp `.affine()` with inverse mapping for efficient bicubic warp
+- Uses Sharp `.affine()` with inverse mapping for efficient bicubic warp; computes libvips auto-shift by forward-transforming input corners, then uses `.extract(shiftX, shiftY, 112, 112)` to retrieve correct face region (NOT `.resize()` which squishes the auto-sized canvas)
 - Auto-crops face region when input exceeds 4MP to avoid Sharp pixel limit
 
 ### `src/core/arcface.ts`
@@ -570,6 +572,14 @@ npm test
 12. **Reference embedding timeout** — `embed:references` has a per-file timeout of 300s (line ~500 in `src/main/index.ts`). High-quality photos (e.g., 96% JPG) with 5 retry attempts can take significant time. The inner `detectFacesWithTimeout` has 120s per attempt.
 
 13. **Sharp affine pixel limit** — Sharp's `.affine()` has an internal pixel limit (~4MP tested). Phone cameras producing 6000×4000 (24MP) images will trigger `Input image exceeds pixel limit`. `align.ts` handles this by auto-cropping the face region (keypoints bbox + 50% padding) before applying the affine transform. The constant `AFFINE_MAX_PIXELS = 4_000_000` controls the threshold.
+
+14. **Sharp affine output canvas + `.extract()` required** — Sharp `.affine()` auto-sizes its output canvas based on the full transformed image. Do NOT use `.resize(112,112)` after `.affine()` — it squishes the whole canvas (e.g. 640×480) down to 112×112, reducing the face to ~20×20px. Instead compute the libvips auto-shift by forward-transforming the four input corners with the Umeyama M matrix, then use `.extract({ left: shiftX, top: shiftY, width: 112, height: 112 })` to retrieve the correct face region.
+
+15. **SCRFD anchor centers must use cell center** — SCRFD anchor generation must use `(col + 0.5) * stride` for center coordinates per InsightFace convention. Using `col * stride` (cell top-left) shifts all keypoints by 4–16px, degrading Umeyama alignment and ArcFace accuracy.
+
+16. **localStorage writes can throw** — Renderer-side `localStorage.setItem()` throws `QuotaExceededError` on storage-full or private-browsing contexts. Always use `src/utils/safe-storage.ts` (`safeSetItem` / `safeGetItem`) instead of `localStorage` directly to silently degrade rather than crash.
+
+17. **DB cache version** — `CURRENT_CACHE_VERSION` in `src/core/db.ts` is currently **4**. Bump this when introducing embedding-format changes that make cached values invalid, so existing users' caches are automatically cleared on upgrade.
 
 ---
 
