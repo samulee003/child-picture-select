@@ -3,6 +3,7 @@
  * 聚焦「先做什麼」與「下一步怎麼補救」
  */
 import React, { useMemo, useState } from 'react';
+import { safeLocalStorageSet } from '../../utils/safe-storage';
 import { theme } from '../styles/theme';
 
 interface OnboardingStep {
@@ -105,7 +106,7 @@ export function OnboardingWizard({ onComplete, onSkip, checklist }: OnboardingWi
   }, [checklist]);
 
   const finish = () => {
-    localStorage.setItem('onboardingCompleted', 'true');
+    safeLocalStorageSet('onboardingCompleted', 'true');
     onComplete?.();
   };
 
@@ -122,7 +123,7 @@ export function OnboardingWizard({ onComplete, onSkip, checklist }: OnboardingWi
   };
 
   const handleSkip = () => {
-    localStorage.setItem('onboardingCompleted', 'true');
+    safeLocalStorageSet('onboardingCompleted', 'true');
     onSkip?.();
   };
 

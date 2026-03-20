@@ -25,7 +25,8 @@ export function ModernProgress({
   color = 'primary',
   animated = true
 }: ModernProgressProps) {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+  const safeMax = max || 1;
+  const percentage = Math.min(100, Math.max(0, (value / safeMax) * 100));
   
   const sizeMap = {
     sm: { height: '4px', fontSize: '10px' },

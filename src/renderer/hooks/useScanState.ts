@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../../types/api';
+import { safeLocalStorageSet } from '../../utils/safe-storage';
 
 export type MultiRefStrategy = 'best' | 'average' | 'weighted';
 
@@ -198,7 +199,7 @@ export function useScanState(): ScanState {
       lastFolder: folder,
     };
     setSettings(newSettings);
-    localStorage.setItem('app-settings', JSON.stringify(newSettings));
+    safeLocalStorageSet('app-settings', JSON.stringify(newSettings));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threshold, topN, refPaths, folder]);
 
@@ -274,6 +275,10 @@ export function useScanState(): ScanState {
       const imageFiles = files.filter(file =>
         /\.(jpg|jpeg|png|gif|bmp|webp|heic|heif)$/i.test(file)
       );
+      const filteredCount = files.length - imageFiles.length;
+      if (filteredCount > 0) {
+        setError(`已過濾 ${filteredCount} 個不支援的檔案格式（僅支援 JPG、PNG、GIF、BMP、WebP、HEIC）`);
+      }
       if (imageFiles.length > 0) {
         const currentPaths = refPaths.split('\n').filter(p => p.trim());
         const newPaths = [...new Set([...currentPaths, ...imageFiles])];
@@ -281,7 +286,7 @@ export function useScanState(): ScanState {
         setRefsLoaded(0);
         setRefQualityResults([]);
         setStatus('idle');
-        setError(null);
+        if (filteredCount === 0) setError(null);
       }
     },
     [refPaths]

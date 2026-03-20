@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { safeLocalStorageSet } from '../../utils/safe-storage';
 import { theme } from '../styles/theme';
 import { GlassCard } from './GlassCard';
 
@@ -33,7 +34,7 @@ export function PrivacySettingsPanel({ onClose, onDeleteAllData, onExportAllData
   });
 
   useEffect(() => {
-    localStorage.setItem('privacy-settings', JSON.stringify(settings));
+    safeLocalStorageSet('privacy-settings', JSON.stringify(settings));
     if (settings.autoClearHistory && window.api && (window.api as any).clearOldSessions) {
       (window.api as any).clearOldSessions(settings.clearHistoryDays).catch(() => {});
     }
