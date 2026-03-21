@@ -246,18 +246,22 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
 }
 
 // ==================== Auto-Update ====================
+/** Track the version being downloaded so we can pass it to the renderer */
+let pendingUpdateVersion: string | undefined;
+
 function setupAutoUpdater() {
   // 家長友善：偵測到更新後自動在背景下載，減少操作步驟
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
-    logger.info('Checking for update...');
+    logger.info('[auto-update] checking-for-update');
     mainWindow?.webContents.send('update:status', { status: 'checking' });
   });
 
   autoUpdater.on('update-available', info => {
-    logger.info(`Update available: v${info.version}`);
+    pendingUpdateVersion = info.version;
+    logger.info(`[auto-update] update-available: v${info.version}`);
     mainWindow?.webContents.send('update:status', {
       status: 'available',
       version: info.version,
@@ -265,25 +269,33 @@ function setupAutoUpdater() {
     });
   });
 
-  autoUpdater.on('update-not-available', () => {
-    logger.info('No update available');
+  autoUpdater.on('update-not-available', info => {
+    logger.info(`[auto-update] update-not-available (latest: v${info?.version})`);
     mainWindow?.webContents.send('update:status', { status: 'not-available' });
   });
 
   autoUpdater.on('download-progress', progress => {
+    const pct = Math.round(progress.percent);
+    if (pct % 25 === 0 || pct >= 99) {
+      logger.info(`[auto-update] download-progress: ${pct}%`);
+    }
     mainWindow?.webContents.send('update:status', {
       status: 'downloading',
-      percent: Math.round(progress.percent),
+      percent: pct,
     });
   });
 
-  autoUpdater.on('update-downloaded', () => {
-    logger.info('Update downloaded, ready to install');
-    mainWindow?.webContents.send('update:status', { status: 'downloaded' });
+  autoUpdater.on('update-downloaded', info => {
+    const ver = info?.version || pendingUpdateVersion;
+    logger.info(`[auto-update] update-downloaded: v${ver}`);
+    mainWindow?.webContents.send('update:status', {
+      status: 'downloaded',
+      version: ver,
+    });
   });
 
   autoUpdater.on('error', err => {
-    logger.warn(`Auto-updater error: ${err?.message}\n${err?.stack}`);
+    logger.error(`[auto-update] error: ${err?.message}\n${err?.stack}`);
     mainWindow?.webContents.send('update:status', {
       status: 'error',
       error: err?.message || 'Unknown error',
@@ -417,7 +429,9 @@ function wireIpc() {
   });
 
   ipcMain.handle('update:install', async () => {
-    autoUpdater.quitAndInstall(false, true);
+    logger.info('[auto-update] quitAndInstall requested');
+    // isSilent=true for oneClick NSIS, isForceRunAfter=true to restart app
+    autoUpdater.quitAndInstall(true, true);
     return { ok: true };
   });
 
