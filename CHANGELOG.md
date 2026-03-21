@@ -1,5 +1,11 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.11 – GPU 加速 + 自動更新修復（2026-03-21）
+
+- **GPU 自動加速**：ONNX 推論自動偵測 GPU（Windows DirectML / Linux CUDA / macOS CoreML），有 GPU 就用 GPU，沒有則自動回退 CPU。AI 狀態標籤會顯示目前使用的加速器。
+- **自動更新修復**：CI Release 現在正確上傳 `latest.yml`，`electron-updater` 可正常偵測新版本。
+- **檢查更新按鈕改善**：點擊「檢查更新」後會顯示「檢查中…」/「已是最新」/「檢查失敗」狀態反饋。
+
 ### v0.2.10 – 批次掃描效能修復 + HEIC 支援（2026-03-21）
 
 - **HEIC/HEIF 掃描支援**：修復 `listImagesRecursively` 缺少 `.heic`/`.heif` 副檔名，iPhone 照片在資料夾掃描時被忽略。
