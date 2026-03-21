@@ -1,5 +1,13 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.10 – 批次掃描效能修復 + HEIC 支援（2026-03-21）
+
+- **HEIC/HEIF 掃描支援**：修復 `listImagesRecursively` 缺少 `.heic`/`.heif` 副檔名，iPhone 照片在資料夾掃描時被忽略。
+- **批次掃描效能優化**：`embed:batch` 改為 `retryOnNoFace: false`，非人臉照片不再重試 5 次，掃描速度提升約 5–7 倍。
+- **批次掃描逾時保護**：每張照片加入 60 秒 per-file timeout，單張卡住不會阻塞整個掃描。
+- **ArcFace 提取上限**：每張照片最多提取 20 張臉的 embedding，防止 SCRFD 在截圖/純色圖片產生大量假陽性時導致極端卡頓。
+- **runMatch strategy 修復**：修復 `preload` 層 `runMatch` 缺少 `strategy` 參數傳遞，多參考照策略（best/average/weighted）現可正常運作。
+
 ### v0.2.9 – 用戶旅程模擬修復 + 人臉對齊核心修復（2026-03-20）
 
 - **人臉辨識核心修復（CRITICAL）**
