@@ -246,45 +246,59 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
 }
 
 // ==================== Auto-Update ====================
+/**
+ * Persistent update state — survives renderer reconnects and component remounts.
+ * The renderer can query this via 'update:get-state' IPC at any time.
+ */
+let updateState: import('../types/api').UpdateStatus | null = null;
+
+function sendUpdateStatus(status: import('../types/api').UpdateStatus) {
+  updateState = status;
+  mainWindow?.webContents.send('update:status', status);
+}
+
 function setupAutoUpdater() {
   // 家長友善：偵測到更新後自動在背景下載，減少操作步驟
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // 不依賴 autoInstallOnAppQuit — 我們自己在 before-quit 處理安裝
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on('checking-for-update', () => {
-    logger.info('Checking for update...');
-    mainWindow?.webContents.send('update:status', { status: 'checking' });
+    logger.info('[auto-update] checking-for-update');
+    sendUpdateStatus({ status: 'checking' });
   });
 
   autoUpdater.on('update-available', info => {
-    logger.info(`Update available: v${info.version}`);
-    mainWindow?.webContents.send('update:status', {
+    logger.info(`[auto-update] update-available: v${info.version}`);
+    sendUpdateStatus({
       status: 'available',
       version: info.version,
-      releaseNotes: info.releaseNotes,
+      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
     });
   });
 
-  autoUpdater.on('update-not-available', () => {
-    logger.info('No update available');
-    mainWindow?.webContents.send('update:status', { status: 'not-available' });
+  autoUpdater.on('update-not-available', info => {
+    logger.info(`[auto-update] update-not-available (latest: v${info?.version})`);
+    sendUpdateStatus({ status: 'not-available' });
   });
 
   autoUpdater.on('download-progress', progress => {
-    mainWindow?.webContents.send('update:status', {
-      status: 'downloading',
-      percent: Math.round(progress.percent),
-    });
+    const pct = Math.round(progress.percent);
+    if (pct % 25 === 0 || pct >= 99) {
+      logger.info(`[auto-update] download-progress: ${pct}%`);
+    }
+    sendUpdateStatus({ status: 'downloading', percent: pct });
   });
 
-  autoUpdater.on('update-downloaded', () => {
-    logger.info('Update downloaded, ready to install');
-    mainWindow?.webContents.send('update:status', { status: 'downloaded' });
+  autoUpdater.on('update-downloaded', info => {
+    const ver = info?.version;
+    logger.info(`[auto-update] update-downloaded: v${ver}, file: ${info?.downloadedFile}`);
+    sendUpdateStatus({ status: 'downloaded', version: ver });
   });
 
   autoUpdater.on('error', err => {
-    logger.warn(`Auto-updater error: ${err?.message}\n${err?.stack}`);
-    mainWindow?.webContents.send('update:status', {
+    logger.error(`[auto-update] error: ${err?.message}\n${err?.stack}`);
+    sendUpdateStatus({
       status: 'error',
       error: err?.message || 'Unknown error',
     });
@@ -403,6 +417,7 @@ function wireIpc() {
       const result = await autoUpdater.checkForUpdates();
       return { ok: true, data: result?.updateInfo };
     } catch (err: any) {
+      logger.error(`[auto-update] check failed: ${err?.message}`);
       return { ok: false, error: err?.message || 'Check failed' };
     }
   });
@@ -417,8 +432,15 @@ function wireIpc() {
   });
 
   ipcMain.handle('update:install', async () => {
-    autoUpdater.quitAndInstall(false, true);
+    logger.info('[auto-update] quitAndInstall requested by user');
+    // isSilent=true for oneClick NSIS, isForceRunAfter=true to restart app
+    autoUpdater.quitAndInstall(true, true);
     return { ok: true };
+  });
+
+  // 讓 renderer 在 mount 時可以查詢目前的更新狀態（防止錯過 IPC 事件）
+  ipcMain.handle('update:get-state', () => {
+    return { ok: true, data: updateState };
   });
 
   // ==================== Scan Control IPC ====================
@@ -1514,8 +1536,28 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  wakePausedScan(currentScanSessionId);
-  closeDb();
+  // 必須用 try-catch：如果這裡丟出異常，後續的 event listener（包括
+  // electron-updater 的 autoInstallOnAppQuit）都不會執行，導致更新永遠不會安裝。
+  try {
+    wakePausedScan(currentScanSessionId);
+  } catch (err) {
+    logger.error('[before-quit] wakePausedScan failed:', err);
+  }
+  try {
+    closeDb();
+  } catch (err) {
+    logger.error('[before-quit] closeDb failed:', err);
+  }
+
+  // 手動觸發更新安裝（不依賴 autoInstallOnAppQuit，因為 listener 順序不可靠）
+  if (updateState?.status === 'downloaded') {
+    logger.info('[before-quit] update is downloaded, triggering quitAndInstall');
+    try {
+      autoUpdater.quitAndInstall(true, true);
+    } catch (err) {
+      logger.error('[before-quit] quitAndInstall failed:', err);
+    }
+  }
 });
 
 app.whenReady().then(async () => {

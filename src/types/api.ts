@@ -42,7 +42,7 @@ export type UpdateStatus =
   | { status: 'available'; version: string; releaseNotes?: string }
   | { status: 'not-available' }
   | { status: 'downloading'; percent: number }
-  | { status: 'downloaded' }
+  | { status: 'downloaded'; version?: string }
   | { status: 'error'; error: string };
 
 export interface ApiResponse<T = any> {
@@ -286,6 +286,7 @@ export interface ElectronAPI extends GrowthApi {
   checkForUpdate: () => Promise<ApiResponse>;
   downloadUpdate: () => Promise<ApiResponse>;
   installUpdate: () => Promise<ApiResponse>;
+  getUpdateState: () => Promise<ApiResponse<UpdateStatus | null>>;
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => (() => void);
   removeUpdateListener: () => void;
   // 診斷工具
