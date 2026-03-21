@@ -33,6 +33,7 @@ export function App() {
   const [isSwipeReview, setIsSwipeReview] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [reminderBanner, setReminderBanner] = useState<string | null>(null);
+  const [updateCheckLabel, setUpdateCheckLabel] = useState('檢查更新');
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('onboardingCompleted');
   });
@@ -1011,19 +1012,36 @@ export function App() {
             </button>
             <button
               onClick={() => {
-                window.api?.checkForUpdate?.().catch(() => {});
+                setUpdateCheckLabel('檢查中…');
+                window.api?.checkForUpdate?.().then(result => {
+                  if (result && !result.ok) {
+                    setUpdateCheckLabel('檢查失敗');
+                    setTimeout(() => setUpdateCheckLabel('檢查更新'), 3000);
+                  } else if (result?.data) {
+                    // UpdateBanner will handle showing the available update
+                    setUpdateCheckLabel('檢查更新');
+                  } else {
+                    setUpdateCheckLabel('已是最新');
+                    setTimeout(() => setUpdateCheckLabel('檢查更新'), 3000);
+                  }
+                }).catch(() => {
+                  setUpdateCheckLabel('檢查失敗');
+                  setTimeout(() => setUpdateCheckLabel('檢查更新'), 3000);
+                });
               }}
+              disabled={updateCheckLabel === '檢查中…'}
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#3b82f6',
-                cursor: 'pointer',
+                color: updateCheckLabel === '已是最新' ? '#10b981' : updateCheckLabel === '檢查失敗' ? '#ef4444' : '#3b82f6',
+                cursor: updateCheckLabel === '檢查中…' ? 'wait' : 'pointer',
                 fontSize: theme.typography.fontSize.xs,
                 fontWeight: 600,
+                opacity: updateCheckLabel === '檢查中…' ? 0.6 : 1,
               }}
               title="手動檢查是否有新版本"
             >
-              檢查更新
+              {updateCheckLabel}
             </button>
             <button
               onClick={() => setIsPrivacyOpen(true)}
