@@ -227,14 +227,16 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
       await listImagesRecursively(full, acc);
     } else {
       const lower = entry.name.toLowerCase();
-      // Support common image formats
+      // Support common image formats (including HEIC/HEIF from iPhone)
       if (
         lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
         lower.endsWith('.png') ||
         lower.endsWith('.gif') ||
         lower.endsWith('.bmp') ||
-        lower.endsWith('.webp')
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif')
       ) {
         acc.push(full);
       }
@@ -797,11 +799,32 @@ function wireIpc() {
 
             if (clearCache || !existing || existing.mtime !== mtime) {
               logger.debug(`Processing new/modified file: ${filePath}`);
-              const result = await fileToEmbeddingWithSource(filePath, {
-                maxSize: 1280,
-                minConfidence: 0.01,
-                retryOnNoFace: true,
-              });
+              // Batch scan: retryOnNoFace=false — retries are for reference photos only.
+              // For batch scanning, a single attempt is sufficient; non-face photos fall
+              // through to deterministic embedding immediately instead of 5× slower retries.
+              // Also apply a per-file timeout to prevent any single file from blocking the scan.
+              let batchFileTimeoutId: ReturnType<typeof setTimeout> | undefined;
+              const result = await Promise.race([
+                fileToEmbeddingWithSource(filePath, {
+                  maxSize: 1280,
+                  minConfidence: 0.01,
+                  retryOnNoFace: false,
+                }).finally(() => {
+                  if (batchFileTimeoutId !== undefined) clearTimeout(batchFileTimeoutId);
+                }),
+                new Promise<never>((_resolve, reject) => {
+                  batchFileTimeoutId = setTimeout(
+                    () =>
+                      reject(
+                        new AppError(
+                          `Batch file embedding timed out: ${filePath}`,
+                          'BATCH_FILE_TIMEOUT'
+                        )
+                      ),
+                    60_000
+                  );
+                }),
+              ]);
               faceAnalysis = result.faceAnalysis;
 
               let thumb: string | null = null;
@@ -829,11 +852,28 @@ function wireIpc() {
                 cached++;
               } else {
                 logger.debug(`No cached embedding found for: ${filePath}`);
-                const result = await fileToEmbeddingWithSource(filePath, {
-                  maxSize: 1280,
-                  minConfidence: 0.01,
-                  retryOnNoFace: true,
-                });
+                let cacheFileTimeoutId: ReturnType<typeof setTimeout> | undefined;
+                const result = await Promise.race([
+                  fileToEmbeddingWithSource(filePath, {
+                    maxSize: 1280,
+                    minConfidence: 0.01,
+                    retryOnNoFace: false,
+                  }).finally(() => {
+                    if (cacheFileTimeoutId !== undefined) clearTimeout(cacheFileTimeoutId);
+                  }),
+                  new Promise<never>((_resolve, reject) => {
+                    cacheFileTimeoutId = setTimeout(
+                      () =>
+                        reject(
+                          new AppError(
+                            `Batch file embedding timed out: ${filePath}`,
+                            'BATCH_FILE_TIMEOUT'
+                          )
+                        ),
+                      60_000
+                    );
+                  }),
+                ]);
                 faceAnalysis = result.faceAnalysis;
                 upsertFace(filePath, result.embedding, result.source);
                 setPhotoEmbedding(filePath, result.embedding, result.source);
