@@ -42,8 +42,8 @@ export function RefPhotoFeedback({ results, onRemove, onEnhance, enhancingPath }
   return (
     <div style={{
       borderRadius: theme.borderRadius.md,
-      border: '1px solid rgba(255,255,255,0.08)',
-      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(0,0,0,0.06)',
+      background: 'rgba(255,255,255,0.6)',
       overflow: 'hidden',
     }}>
       {/* Summary bar */}
@@ -52,13 +52,13 @@ export function RefPhotoFeedback({ results, onRemove, onEnhance, enhancingPath }
         display: 'flex',
         alignItems: 'center',
         gap: theme.spacing[2],
-        background: faceCount === results.length ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: faceCount === results.length ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)',
+        borderBottom: '1px solid rgba(0,0,0,0.04)',
       }}>
         <span style={{ fontSize: '14px' }}>{faceCount === results.length ? '✅' : '⚠️'}</span>
         <span style={{
           fontSize: theme.typography.fontSize.xs,
-          color: theme.colors.neutral[200],
+          color: theme.colors.neutral[700],
           fontWeight: 600,
         }}>
           {faceCount}/{results.length} 張偵測到人臉
@@ -87,7 +87,7 @@ export function RefPhotoFeedback({ results, onRemove, onEnhance, enhancingPath }
               display: 'flex',
               alignItems: 'center',
               gap: theme.spacing[2],
-              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              borderBottom: '1px solid rgba(0,0,0,0.03)',
               fontSize: theme.typography.fontSize.xs,
             }}
           >
@@ -109,7 +109,7 @@ export function RefPhotoFeedback({ results, onRemove, onEnhance, enhancingPath }
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: theme.colors.neutral[300],
+              color: theme.colors.neutral[600],
             }}>
               {getFileName(r.path)}
             </span>
@@ -171,9 +171,9 @@ export function RefPhotoFeedback({ results, onRemove, onEnhance, enhancingPath }
       {noFaceCount > 0 && (
         <div style={{
           padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
-          background: 'rgba(245,158,11,0.08)',
+          background: 'rgba(245,158,11,0.04)',
           fontSize: '10px',
-          color: theme.colors.neutral[300],
+          color: theme.colors.neutral[500],
           lineHeight: 1.5,
         }}>
           💡 紅點照片無法辨識人臉，建議替換為：正面清晰、光線充足、臉部無遮擋的照片

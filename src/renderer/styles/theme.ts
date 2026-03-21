@@ -1,24 +1,24 @@
 /**
- * Modern Dark Design System for Find My Kid Application
- * Dark glassmorphism with subtle gradients and high contrast
+ * Modern Design System for Find My Kid Application
+ * Contemporary UI with glassmorphism, gradients, and smooth animations
  */
 
 export const theme = {
-  // Color palette
+  // Soft, parent-friendly color palette
   colors: {
-    primary: {
+    primary: { // Ocean Blue
       50: '#f0f4f8',
       100: '#dbe7f0',
       200: '#bad1e4',
       300: '#8db5d4',
       400: '#5c96c1',
-      500: '#3a7baa',
+      500: '#3a7baa', 
       600: '#28628e',
       700: '#214e73',
       800: '#1e4361',
-      900: '#004060',
+      900: '#004060', // Main primary
     },
-    secondary: {
+    secondary: { // Soft Slate/Gray
       50: '#f8fafc',
       100: '#f1f5f9',
       200: '#e2e8f0',
@@ -30,17 +30,17 @@ export const theme = {
       800: '#1e293b',
       900: '#0f172a',
     },
-    success: {
-      50: '#f0fdf4',
-      100: '#dcfce7',
-      200: '#bbf7d0',
-      300: '#86efac',
-      400: '#4ade80',
-      500: '#22c55e',
-      600: '#16a34a',
-      700: '#15803d',
-      800: '#166534',
-      900: '#14532d',
+    success: { // Gold Accent
+      50: '#fdfbfa',
+      100: '#f9f5ea',
+      200: '#f2e8cf',
+      300: '#e8d4a6', 
+      400: '#e0c060', // Soft gold
+      500: '#cca533', // Main success/accent
+      600: '#b38822',
+      700: '#90651e',
+      800: '#79521d',
+      900: '#65441a',
     },
     warning: {
       50: '#fffbeb',
@@ -68,7 +68,7 @@ export const theme = {
     },
     neutral: {
       0: '#ffffff',
-      50: '#fafafa',
+      50: '#fcfcfc',
       100: '#f5f5f5',
       200: '#e5e5e5',
       300: '#d4d4d4',
@@ -79,42 +79,35 @@ export const theme = {
       800: '#262626',
       900: '#171717',
       950: '#0a0a0a',
-    },
+    }
   },
 
-  // Dark-mode gradients
+  // Soft gradients and clean backgrounds
   gradients: {
-    primary: 'linear-gradient(135deg, #5c96c1 0%, #004060 100%)',
-    secondary: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-    success: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-    glass: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)',
-    card: 'linear-gradient(145deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.03) 100%)',
-    background: 'linear-gradient(135deg, #0c1220 0%, #111827 50%, #0f172a 100%)',
+    primary: 'linear-gradient(135deg, #5c96c1 0%, #004060 100%)', // Ocean Blue gradient
+    secondary: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', // Very light gray gradient
+    success: 'linear-gradient(135deg, #e0c060 0%, #b38822 100%)', // Gold gradient
+    glass: 'linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.5) 100%)', // Opaque glass
+    card: 'linear-gradient(145deg, #ffffff 0%, #f8fafc 100%)', // Clean white card
+    background: 'linear-gradient(135deg, #f0f4f8 0%, #dbe7f0 50%, #f2e8cf 100%)', // Ocean Blue to Soft Gold background
   },
 
+  // Typography scale (unchanged)
   typography: {
     fontFamily: {
-      sans: [
-        'Noto Sans TC',
-        'PingFang TC',
-        'Microsoft JhengHei',
-        'system-ui',
-        '-apple-system',
-        'Segoe UI',
-        'sans-serif',
-      ],
+      sans: ['Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'monospace'],
     },
     fontSize: {
-      xs: '0.75rem',
-      sm: '0.875rem',
-      base: '1rem',
-      lg: '1.125rem',
-      xl: '1.25rem',
-      '2xl': '1.5rem',
-      '3xl': '1.875rem',
-      '4xl': '2.25rem',
-      '5xl': '3rem',
+      xs: '0.75rem',    // 12px
+      sm: '0.875rem',   // 14px
+      base: '1rem',      // 16px
+      lg: '1.125rem',   // 18px
+      xl: '1.25rem',    // 20px
+      '2xl': '1.5rem',   // 24px
+      '3xl': '1.875rem', // 30px
+      '4xl': '2.25rem',  // 36px
+      '5xl': '3rem',     // 48px
     },
     fontWeight: {
       light: 300,
@@ -127,47 +120,51 @@ export const theme = {
       tight: 1.25,
       normal: 1.5,
       relaxed: 1.75,
-    },
+    }
   },
 
+  // Spacing scale (unchanged)
   spacing: {
     0: '0',
-    1: '0.25rem',
-    2: '0.5rem',
-    3: '0.75rem',
-    4: '1rem',
-    5: '1.25rem',
-    6: '1.5rem',
-    8: '2rem',
-    10: '2.5rem',
-    12: '3rem',
-    16: '4rem',
-    20: '5rem',
-    24: '6rem',
+    1: '0.25rem',   // 4px
+    2: '0.5rem',    // 8px
+    3: '0.75rem',   // 12px
+    4: '1rem',      // 16px
+    5: '1.25rem',   // 20px
+    6: '1.5rem',    // 24px
+    8: '2rem',      // 32px
+    10: '2.5rem',   // 40px
+    12: '3rem',     // 48px
+    16: '4rem',     // 64px
+    20: '5rem',     // 80px
+    24: '6rem',     // 96px
   },
 
+  // Border radius (more rounded for friendliness)
   borderRadius: {
     none: '0',
-    sm: '0.375rem',
-    base: '0.75rem',
-    md: '1rem',
-    lg: '1.5rem',
-    xl: '2rem',
-    '2xl': '2.5rem',
+    sm: '0.375rem',  // 6px
+    base: '0.75rem', // 12px
+    md: '1rem',      // 16px
+    lg: '1.5rem',    // 24px
+    xl: '2rem',      // 32px
+    '2xl': '2.5rem', // 40px
     full: '9999px',
   },
 
+  // Subtle shadows (softer, lighter)
   shadows: {
-    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.2)',
-    base: '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
-    md: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15)',
-    lg: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.15)',
-    xl: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
-    '2xl': '0 35px 60px -15px rgba(0, 0, 0, 0.5)',
-    glass: '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
-    glow: '0 0 20px rgba(92, 150, 193, 0.3)',
+    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+    base: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+    md: '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025)',
+    lg: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02)',
+    xl: '0 25px 50px -12px rgba(0, 0, 0, 0.1)',
+    '2xl': '0 35px 60px -15px rgba(0, 0, 0, 0.15)',
+    glass: '0 8px 32px 0 rgba(0, 0, 0, 0.05)',
+    glow: '0 0 20px rgba(92, 150, 193, 0.3)', // Soft ocean blue glow
   },
 
+  // Animation durations
   transition: {
     fast: '150ms',
     base: '250ms',
@@ -175,26 +172,29 @@ export const theme = {
     slower: '500ms',
   },
 
+  // Animation easing functions
   easing: {
     linear: 'linear',
     easeIn: 'cubic-bezier(0.4, 0, 1, 1)',
     easeOut: 'cubic-bezier(0, 0, 0.2, 1)',
     easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
     bounce: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
-  },
+  }
 };
 
-// Modern component styles — dark glassmorphism
+// Modern component styles
 export const modernStyles = {
+  // Clean, light glass morphism card
   glassCard: {
     background: theme.gradients.glass,
     backdropFilter: 'blur(20px) saturate(150%)',
     WebkitBackdropFilter: 'blur(20px) saturate(150%)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    border: '1px solid rgba(255, 255, 255, 0.6)',
     borderRadius: theme.borderRadius.lg,
     boxShadow: theme.shadows.glass,
   },
 
+  // Modern button styles (softer colors, rounded)
   button: {
     base: {
       display: 'inline-flex',
@@ -206,7 +206,7 @@ export const modernStyles = {
       fontSize: theme.typography.fontSize.base,
       fontWeight: theme.typography.fontWeight.semibold,
       lineHeight: theme.typography.lineHeight.tight,
-      borderRadius: theme.borderRadius.full,
+      borderRadius: theme.borderRadius.full, // Very rounded for friendliness
       border: '1px solid transparent',
       cursor: 'pointer',
       transition: `all ${theme.transition.base} ${theme.easing.easeInOut}`,
@@ -227,14 +227,14 @@ export const modernStyles = {
       background: theme.colors.primary[500],
     },
     secondary: {
-      background: 'rgba(255, 255, 255, 0.08)',
-      color: theme.colors.neutral[200],
-      borderColor: 'rgba(255, 255, 255, 0.15)',
+      background: theme.colors.neutral[0],
+      color: theme.colors.neutral[700],
+      borderColor: theme.colors.neutral[200],
       boxShadow: theme.shadows.sm,
     },
     secondaryHover: {
-      background: 'rgba(255, 255, 255, 0.12)',
-      borderColor: 'rgba(255, 255, 255, 0.25)',
+      background: theme.colors.neutral[50],
+      borderColor: theme.colors.neutral[300],
       transform: 'translateY(-1px)',
     },
     success: {
@@ -244,14 +244,15 @@ export const modernStyles = {
     },
     ghost: {
       background: 'transparent',
-      color: theme.colors.neutral[300],
+      color: theme.colors.neutral[600],
     },
     ghostHover: {
-      background: 'rgba(255, 255, 255, 0.06)',
-      color: theme.colors.neutral[100],
+      background: theme.colors.neutral[100],
+      color: theme.colors.neutral[800],
     },
   },
 
+  // Clean, modern input styles
   input: {
     base: {
       width: '100%',
@@ -259,24 +260,25 @@ export const modernStyles = {
       fontFamily: theme.typography.fontFamily.sans.join(', '),
       fontSize: theme.typography.fontSize.base,
       lineHeight: theme.typography.lineHeight.normal,
-      backgroundColor: 'rgba(255, 255, 255, 0.06)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
+      backgroundColor: theme.colors.neutral[0],
+      border: `2px solid ${theme.colors.neutral[200]}`,
       borderRadius: theme.borderRadius.md,
-      color: theme.colors.neutral[100],
+      color: theme.colors.neutral[800],
       transition: `all ${theme.transition.base} ${theme.easing.easeInOut}`,
       outline: 'none',
     },
     focus: {
-      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      backgroundColor: theme.colors.neutral[0],
       borderColor: theme.colors.primary[400],
-      boxShadow: `0 0 0 3px rgba(92, 150, 193, 0.25)`,
+      boxShadow: `0 0 0 4px ${theme.colors.primary[100]}`,
     },
     textarea: {
       minHeight: '120px',
       resize: 'vertical' as const,
-    },
+    }
   },
 
+  // Friendly, light container
   container: {
     minHeight: '100vh',
     background: theme.gradients.background,
@@ -286,13 +288,14 @@ export const modernStyles = {
     overflow: 'hidden',
   },
 
+  // Layout limits
   layout: {
-    maxWidth: '1200px',
+    maxWidth: '1200px', // Slightly narrower for better focus
     margin: '0 auto',
     display: 'grid',
     gridTemplateColumns: '1fr',
     gap: theme.spacing[6],
-  },
+  }
 };
 
 // CSS keyframes for animations

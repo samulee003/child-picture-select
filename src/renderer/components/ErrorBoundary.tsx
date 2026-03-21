@@ -48,8 +48,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       // Default error UI
       const errorContainerStyle: React.CSSProperties = {
         padding: '32px',
-        backgroundColor: 'rgba(239,68,68,0.08)',
-        border: '1px solid rgba(239,68,68,0.2)',
+        backgroundColor: '#fff5f5',
+        border: '1px solid #fed7d7',
         borderRadius: '8px',
         margin: '16px'
       };
@@ -57,25 +57,25 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       const errorTitleStyle: React.CSSProperties = {
         fontSize: '18px',
         fontWeight: '600',
-        color: '#f87171',
+        color: '#c53030',
         marginBottom: '16px'
       };
 
       const errorMessageStyle: React.CSSProperties = {
         fontSize: '14px',
-        color: 'rgba(255,255,255,0.7)',
+        color: '#742a2a',
         marginBottom: '16px',
         fontFamily: 'monospace',
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: '#fff',
         padding: '12px',
         borderRadius: '4px',
-        border: '1px solid rgba(255,255,255,0.1)'
+        border: '1px solid #e2e8f0'
       };
 
       const buttonStyle: React.CSSProperties = {
-        backgroundColor: 'rgba(59,130,246,0.2)',
-        color: 'rgba(255,255,255,0.9)',
-        border: '1px solid rgba(59,130,246,0.4)',
+        backgroundColor: '#4a90e2',
+        color: 'white',
+        border: 'none',
         padding: '12px 24px',
         borderRadius: '6px',
         fontSize: '14px',
@@ -86,8 +86,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
       const secondaryButtonStyle: React.CSSProperties = {
         ...buttonStyle,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        border: '1px solid rgba(255,255,255,0.15)'
+        backgroundColor: '#718096'
       };
 
       return (
@@ -96,7 +95,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             應用程式發生錯誤
           </h2>
           
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', marginBottom: '16px' }}>
+          <p style={{ fontSize: '14px', color: '#4a5568', marginBottom: '16px' }}>
             很抱歉，應用程式遇到了一個意外錯誤。請嘗試重新整理頁面或重新啟動應用程式。
           </p>
 

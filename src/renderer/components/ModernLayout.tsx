@@ -126,7 +126,7 @@ export function ModernSection({
               margin: 0,
               fontSize: theme.typography.fontSize['2xl'],
               fontWeight: theme.typography.fontWeight.semibold,
-              color: theme.colors.neutral[100],
+              color: theme.colors.neutral[800],
               marginBottom: theme.spacing[2],
               display: 'flex',
               alignItems: 'center',
@@ -140,7 +140,7 @@ export function ModernSection({
               style={{
                 margin: 0,
                 fontSize: theme.typography.fontSize.sm,
-                color: theme.colors.neutral[400],
+                color: theme.colors.neutral[600],
                 lineHeight: theme.typography.lineHeight.relaxed,
               }}
             >

@@ -26,7 +26,7 @@ import { useReviewState } from './hooks/useReviewState';
 import { useFavorites } from './hooks/useFavorites';
 import { useExportState } from './hooks/useExportState';
 import { theme, animations } from './styles/theme';
-import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safe-storage';
+import { safeLocalStorageSet } from '../utils/safe-storage';
 
 export function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -35,7 +35,7 @@ export function App() {
   const [reminderBanner, setReminderBanner] = useState<string | null>(null);
   const [updateCheckLabel, setUpdateCheckLabel] = useState('檢查更新');
   const [showOnboarding, setShowOnboarding] = useState(() => {
-    return !safeLocalStorageGet('onboardingCompleted');
+    return !localStorage.getItem('onboardingCompleted');
   });
 
   // Favorites
@@ -173,9 +173,9 @@ export function App() {
         display: 'flex',
         height: '100vh',
         overflow: 'hidden',
-        background: 'linear-gradient(135deg, #0c1220 0%, #111827 50%, #0f172a 100%)',
+        background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
         fontFamily: theme.typography.fontFamily.sans.join(', '),
-        color: theme.colors.neutral[200],
+        color: theme.colors.neutral[800],
       }}
     >
       {/* Left Sidebar */}
@@ -185,9 +185,9 @@ export function App() {
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
-          borderRight: '1px solid rgba(255,255,255,0.08)',
+          borderRight: `1px solid rgba(0,0,0,0.06)`,
           background:
-            'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%)',
+            'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.95) 100%)',
           backdropFilter: 'blur(20px)',
         }}
       >
@@ -195,7 +195,7 @@ export function App() {
         <div
           style={{
             padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
             display: 'flex',
             alignItems: 'center',
             gap: theme.spacing[3],
@@ -371,7 +371,7 @@ export function App() {
                 style={{
                   fontSize: theme.typography.fontSize.sm,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: theme.colors.neutral[200],
+                  color: theme.colors.neutral[800],
                 }}
               >
                 參考照片
@@ -399,7 +399,7 @@ export function App() {
                   textAlign: 'center',
                   background: scan.refPaths.trim()
                     ? 'rgba(58,123,170,0.04)'
-                    : 'rgba(255,255,255,0.04)',
+                    : 'rgba(255,255,255,0.5)',
                   cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                 }}
@@ -420,7 +420,7 @@ export function App() {
                     <span
                       style={{
                         fontSize: theme.typography.fontSize.sm,
-                        color: theme.colors.primary[300],
+                        color: theme.colors.primary[600],
                         fontWeight: 600,
                       }}
                     >
@@ -443,7 +443,7 @@ export function App() {
                     <div
                       style={{
                         fontSize: theme.typography.fontSize.sm,
-                        color: theme.colors.primary[300],
+                        color: theme.colors.primary[600],
                         fontWeight: 600,
                       }}
                     >
@@ -523,9 +523,9 @@ export function App() {
                       title={path}
                       style={{
                         borderRadius: theme.borderRadius.sm,
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: `1px solid ${theme.colors.neutral[200]}`,
                         overflow: 'hidden',
-                        background: 'rgba(255,255,255,0.06)',
+                        background: '#fff',
                         aspectRatio: '1 / 1',
                       }}
                     >
@@ -611,7 +611,7 @@ export function App() {
                 style={{
                   fontSize: theme.typography.fontSize.sm,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: theme.colors.neutral[200],
+                  color: theme.colors.neutral[800],
                 }}
               >
                 搜尋資料夾
@@ -642,7 +642,7 @@ export function App() {
                     style={{
                       flex: 1,
                       fontSize: theme.typography.fontSize.xs,
-                      color: theme.colors.neutral[300],
+                      color: theme.colors.neutral[700],
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -662,11 +662,11 @@ export function App() {
               ) : (
                 <div
                   style={{
-                    border: '2px dashed rgba(255,255,255,0.15)',
+                    border: `2px dashed ${theme.colors.neutral[300]}`,
                     borderRadius: theme.borderRadius.md,
                     padding: theme.spacing[3],
                     textAlign: 'center',
-                    background: 'rgba(255,255,255,0.04)',
+                    background: 'rgba(255,255,255,0.5)',
                     cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                   }}
                   onClick={() => !scan.isProcessing && scan.handleBrowseFolder()}
@@ -677,7 +677,7 @@ export function App() {
                   <div
                     style={{
                       fontSize: theme.typography.fontSize.sm,
-                      color: theme.colors.primary[300],
+                      color: theme.colors.secondary[600],
                       fontWeight: 600,
                     }}
                   >
@@ -728,7 +728,7 @@ export function App() {
                 style={{
                   fontSize: theme.typography.fontSize.sm,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: theme.colors.neutral[200],
+                  color: theme.colors.neutral[800],
                 }}
               >
                 搜尋模式
@@ -758,7 +758,7 @@ export function App() {
                     flex: 1,
                     padding: `6px 0`,
                     borderRadius: theme.borderRadius.md,
-                    border: `2px solid ${Math.abs(scan.threshold - preset.value) < 0.08 ? preset.color : 'rgba(255,255,255,0.1)'}`,
+                    border: `2px solid ${Math.abs(scan.threshold - preset.value) < 0.08 ? preset.color : 'rgba(0,0,0,0.08)'}`,
                     background:
                       Math.abs(scan.threshold - preset.value) < 0.08
                         ? `${preset.color}12`
@@ -846,7 +846,7 @@ export function App() {
                         flex: 1,
                         padding: '3px 0',
                         borderRadius: theme.borderRadius.sm,
-                        border: `1px solid ${scan.multiRefStrategy === opt.value ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                        border: `1px solid ${scan.multiRefStrategy === opt.value ? 'rgba(59,130,246,0.5)' : 'rgba(0,0,0,0.08)'}`,
                         background:
                           scan.multiRefStrategy === opt.value
                             ? 'rgba(59,130,246,0.08)'
@@ -891,7 +891,7 @@ export function App() {
                   onClick={() => favorites.setExportOnlyFavorites(false)}
                   style={{
                     borderRadius: theme.borderRadius.sm,
-                    border: `1px solid ${!favorites.exportOnlyFavorites ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    border: `1px solid ${!favorites.exportOnlyFavorites ? 'rgba(59,130,246,0.5)' : 'rgba(0,0,0,0.1)'}`,
                     color: !favorites.exportOnlyFavorites ? '#3b82f6' : theme.colors.neutral[500],
                     background: !favorites.exportOnlyFavorites
                       ? 'rgba(59,130,246,0.1)'
@@ -907,7 +907,7 @@ export function App() {
                   onClick={() => favorites.setExportOnlyFavorites(true)}
                   style={{
                     borderRadius: theme.borderRadius.sm,
-                    border: `1px solid ${favorites.exportOnlyFavorites ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    border: `1px solid ${favorites.exportOnlyFavorites ? 'rgba(251,191,36,0.5)' : 'rgba(0,0,0,0.1)'}`,
                     color: favorites.exportOnlyFavorites ? '#f59e0b' : theme.colors.neutral[500],
                     background: favorites.exportOnlyFavorites
                       ? 'rgba(251,191,36,0.1)'
@@ -941,8 +941,8 @@ export function App() {
                 padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
                 borderRadius: theme.borderRadius.md,
                 border: '1px solid rgba(0,0,0,0.08)',
-                background: 'rgba(255,255,255,0.06)',
-                color: theme.colors.neutral[400],
+                background: 'rgba(255,255,255,0.6)',
+                color: theme.colors.neutral[600],
                 cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                 fontSize: theme.typography.fontSize.xs,
                 textAlign: 'left',
@@ -958,8 +958,8 @@ export function App() {
         <div
           style={{
             padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            background: 'rgba(255,255,255,0.04)',
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+            background: 'rgba(255,255,255,0.95)',
             flexShrink: 0,
           }}
         >
@@ -1303,8 +1303,8 @@ export function App() {
           onDeleteAllData={async () => {
             if (!window.confirm('確定要刪除所有本地資料嗎？此操作無法復原。')) return;
             await window.api?.clearEmbeddingCache?.();
-            try { localStorage.removeItem('app-settings'); } catch { /* ignore */ }
-            try { localStorage.removeItem('privacy-settings'); } catch { /* ignore */ }
+            localStorage.removeItem('app-settings');
+            localStorage.removeItem('privacy-settings');
             scan.setRefPaths('');
             scan.setRefsLoaded(0);
             scan.setResults([]);

@@ -94,7 +94,7 @@ export function ReferencePhotoQualityCard({
                 fontSize: theme.typography.fontSize.sm,
                 fontWeight: theme.typography.fontWeight.medium,
                 margin: 0,
-                color: theme.colors.neutral[100],
+                color: theme.colors.neutral[800],
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap'
@@ -170,7 +170,7 @@ export function ReferencePhotoQualityCard({
                 <p key={idx} style={{
                   fontSize: theme.typography.fontSize.xs,
                   margin: 0,
-                  color: theme.colors.neutral[300],
+                  color: theme.colors.neutral[600],
                   display: 'flex',
                   alignItems: 'center',
                   gap: theme.spacing[1]

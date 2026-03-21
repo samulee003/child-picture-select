@@ -50,7 +50,7 @@ export function ProgressBar({
   const barContainerStyle: React.CSSProperties = {
     width: '100%',
     height: '8px',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#e0e0e0',
     borderRadius: '4px',
     overflow: 'hidden',
     marginBottom: '8px'
@@ -58,7 +58,7 @@ export function ProgressBar({
 
   const fillStyle: React.CSSProperties = {
     height: '100%',
-    background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)',
+    backgroundColor: '#4a90e2',
     transition: 'width 0.3s ease',
     borderRadius: '4px',
     minWidth: '2px'
@@ -69,7 +69,7 @@ export function ProgressBar({
     justifyContent: 'space-between',
     alignItems: 'center',
     fontSize: '14px',
-    color: 'rgba(255,255,255,0.7)'
+    color: '#666'
   };
 
   return (
@@ -78,7 +78,7 @@ export function ProgressBar({
         <div style={labelStyle}>
           <span>{label}</span>
           {showPercentage && (
-            <span style={{ fontWeight: '600', color: '#60a5fa' }}>
+            <span style={{ fontWeight: '600', color: '#4a90e2' }}>
               {Math.round(percentage)}%
             </span>
           )}
@@ -92,7 +92,7 @@ export function ProgressBar({
           {current.toLocaleString()} / {total.toLocaleString()}
         </span>
         {showETA && eta && (
-          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+          <span style={{ fontSize: '12px', color: '#999' }}>
             {eta}
           </span>
         )}

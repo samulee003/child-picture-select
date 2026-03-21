@@ -9,7 +9,7 @@ interface LoadingSpinnerProps {
 
 export function LoadingSpinner({
   size = 'medium',
-  color = '#60a5fa',
+  color = '#4a90e2',
   className = '',
   style = {}
 }: LoadingSpinnerProps) {
