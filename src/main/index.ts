@@ -251,8 +251,33 @@ async function listImagesRecursively(root: string, acc: string[] = []): Promise<
  * The renderer can query this via 'update:get-state' IPC at any time.
  */
 let updateState: import('../types/api').UpdateStatus | null = null;
+/** Once true, never reset — guarantees before-quit can install the update */
+let updateDownloadedFlag = false;
+
+/** Status priority: higher = harder to override (mirrors renderer logic) */
+const UPDATE_PRIORITY: Record<string, number> = {
+  checking: 0,
+  'not-available': 0,
+  available: 1,
+  downloading: 2,
+  downloaded: 3,
+  error: 2,
+};
 
 function sendUpdateStatus(status: import('../types/api').UpdateStatus) {
+  // Priority protection: never let downloaded be overwritten by lower-priority states
+  if (updateState) {
+    const prevP = UPDATE_PRIORITY[updateState.status] ?? 0;
+    const nextP = UPDATE_PRIORITY[status.status] ?? 0;
+    if (updateState.status === 'downloaded' && status.status !== 'error') {
+      logger.info(`[auto-update] blocked state change: ${updateState.status} → ${status.status}`);
+      return;
+    }
+    if (nextP < prevP) {
+      logger.info(`[auto-update] blocked downgrade: ${updateState.status} → ${status.status}`);
+      return;
+    }
+  }
   updateState = status;
   mainWindow?.webContents.send('update:status', status);
 }
@@ -260,8 +285,8 @@ function sendUpdateStatus(status: import('../types/api').UpdateStatus) {
 function setupAutoUpdater() {
   // 家長友善：偵測到更新後自動在背景下載，減少操作步驟
   autoUpdater.autoDownload = true;
-  // 不依賴 autoInstallOnAppQuit — 我們自己在 before-quit 處理安裝
-  autoUpdater.autoInstallOnAppQuit = false;
+  // 啟用內建自動安裝：關閉 app 時自動套用已下載的更新
+  autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
     logger.info('[auto-update] checking-for-update');
@@ -293,6 +318,7 @@ function setupAutoUpdater() {
   autoUpdater.on('update-downloaded', info => {
     const ver = info?.version;
     logger.info(`[auto-update] update-downloaded: v${ver}, file: ${info?.downloadedFile}`);
+    updateDownloadedFlag = true;
     sendUpdateStatus({ status: 'downloaded', version: ver });
   });
 
@@ -1549,9 +1575,9 @@ app.on('before-quit', () => {
     logger.error('[before-quit] closeDb failed:', err);
   }
 
-  // 手動觸發更新安裝（不依賴 autoInstallOnAppQuit，因為 listener 順序不可靠）
-  if (updateState?.status === 'downloaded') {
-    logger.info('[before-quit] update is downloaded, triggering quitAndInstall');
+  // 雙保險：autoInstallOnAppQuit=true 已啟用，這裡用 flag 再確認一次
+  if (updateDownloadedFlag) {
+    logger.info('[before-quit] updateDownloadedFlag=true, triggering quitAndInstall');
     try {
       autoUpdater.quitAndInstall(true, true);
     } catch (err) {
