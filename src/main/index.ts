@@ -283,6 +283,12 @@ function sendUpdateStatus(status: import('../types/api').UpdateStatus) {
 }
 
 function setupAutoUpdater() {
+  // 未簽署的安裝檔：覆寫簽名驗證函式，跳過 publisherName 檢查。
+  // 舊版本的 app-update.yml 含 publisherName: "Local Developer"，
+  // electron-updater 會驗證簽名，對未簽署的 exe 會報
+  // "not signed by the application owner" 錯誤而拒絕更新。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (autoUpdater as any).verifyUpdateCodeSignature = () => Promise.resolve(null);
   // 家長友善：偵測到更新後自動在背景下載，減少操作步驟
   autoUpdater.autoDownload = true;
   // 啟用內建自動安裝：關閉 app 時自動套用已下載的更新
