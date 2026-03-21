@@ -18,6 +18,7 @@ import { ResultsSection } from './components/ResultsSection';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ExportSuccessModal } from './components/ExportSuccessModal';
 import { RefPhotoFeedback } from './components/RefPhotoFeedback';
+import { FaceAnalysisPreview } from './components/FaceAnalysisPreview';
 import { SwipeReview } from './components/SwipeReview';
 import { PrivacySettingsPanel } from './components/PrivacySettingsPanel';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
@@ -1137,8 +1138,23 @@ export function App() {
             </div>
           )}
 
-          {/* Welcome State */}
-          {scan.results.length === 0 &&
+          {/* Face Analysis Preview — shows when refs loaded, before scanning starts */}
+          {scan.refsLoaded > 0 &&
+            scan.results.length === 0 &&
+            !scan.status.includes('scanning') &&
+            !scan.status.includes('matching') &&
+            scan.status !== 'done' && (
+              <FaceAnalysisPreview
+                referencePaths={referencePaths}
+                refsLoaded={scan.refsLoaded}
+                refQualityResults={scan.refQualityResults}
+                isEmbedding={scan.status === 'embedding refs...'}
+              />
+            )}
+
+          {/* Welcome State — only when no refs loaded yet */}
+          {scan.refsLoaded === 0 &&
+            scan.results.length === 0 &&
             !scan.status.includes('ing...') &&
             scan.status !== 'done' && (
               <WelcomeState
