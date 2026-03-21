@@ -261,8 +261,6 @@ export async function alignFace(
   // 計算 forward matrix: src_face → 112×112 canvas
   const M = umeyama2D(workKps, ARCFACE_DST_5PT);
 
-  // Sharp .affine() 需要逆映射（output → input）
-  // M2 = [[m00, m01], [m10, m11]], det(M2) = m00*m11 - m01*m10
   const m00 = M[0][0], m01 = M[0][1], mtx = M[0][2];
   const m10 = M[1][0], m11 = M[1][1], mty = M[1][2];
 
@@ -277,24 +275,19 @@ export async function alignFace(
       .toBuffer();
   }
 
-  // 逆矩陣 M2_inv
-  const invDet = 1 / det;
-  const inv00 = m11 * invDet;
-  const inv01 = -m01 * invDet;
-  const inv10 = -m10 * invDet;
-  const inv11 = m00 * invDet;
-
-  // 逆平移: t_inv = -M2_inv * [tx, ty]
-  const invTx = -(inv00 * mtx + inv01 * mty);
-  const invTy = -(inv10 * mtx + inv11 * mty);
-
-  // 計算 libvips 的自動偏移量：libvips 對輸入圖片四個角落套用正向 Umeyama 矩陣 M，
-  // 取最小 x/y 值（若為負）作為輸出座標的偏移，確保輸出從 (0,0) 開始。
-  // 臉部在 affine 輸出中的實際位置是 (shiftX, shiftY)...(shiftX+112, shiftY+112)，
-  // 而非 (0,0)...(112,112)。必須用 extract() 而非 resize() 取出正確區域。
+  // Sharp 的 affine 函數底層調用 libvips 的 vips_affine。
+  // vips_affine 期望的 matrix 是「正向映射」（Forward Mapping: input → output），
+  // 雖然它的像素插值是使用逆映射來實現，但 bounding box 的計算是基於正向矩陣的！
+  // 所以我們必須傳入正向矩陣 M 的旋轉縮放部分，
+  // 並且平移值要透過 odx, ody (Output Offset) 來傳遞。
   const corners: [number, number][] = [[0, 0], [workW, 0], [0, workH], [workW, workH]];
   const fwdX = corners.map(([x, y]) => m00 * x + m01 * y + mtx);
   const fwdY = corners.map(([x, y]) => m10 * x + m11 * y + mty);
+  
+  // vips_affine 會自動將坐標範圍平移，使得最小的 x, y 變成 (0,0)。
+  // 例如若臉部的 X_out 是從 0 開始，但有其他背景被映射到了 -50，
+  // 則輸出的圖像會被平移 50，使得臉部出現在 X=50 的位置。
+  // 我們必須用 extract() 將臉部區域切出來。
   const shiftX = Math.round(Math.max(0, -Math.min(...fwdX)));
   const shiftY = Math.round(Math.max(0, -Math.min(...fwdY)));
 
@@ -303,14 +296,12 @@ export async function alignFace(
       raw: { width: workW, height: workH, channels: 3 },
     })
       .affine(
-        [[inv00, inv01], [inv10, inv11]],
+        [[m00, m01], [m10, m11]],
         {
           background: { r: 0, g: 0, b: 0 },
-          idx: invTx,
-          idy: invTy,
+          odx: mtx,
+          ody: mty,
           interpolator: 'bicubic',
-          odx: 0,
-          ody: 0,
         }
       )
       .removeAlpha()
@@ -321,7 +312,9 @@ export async function alignFace(
     const extractTop = shiftY;
     const canExtract =
       extractLeft + outputSize <= affineOut.info.width &&
-      extractTop + outputSize <= affineOut.info.height;
+      extractTop + outputSize <= affineOut.info.height &&
+      extractLeft >= 0 &&
+      extractTop >= 0;
 
     let aligned: Buffer;
     if (canExtract) {
@@ -339,7 +332,6 @@ export async function alignFace(
         .toBuffer();
     } else {
       // 邊界情況：affine 輸出比 outputSize 小（超大臉或極小圖片）。
-      // 此時臉部幾乎填滿整個 affineOut，resize 誤差相對可接受。
       logger.debug(
         `alignFace: affineOut (${affineOut.info.width}×${affineOut.info.height}) < extract region ` +
         `(${extractLeft}+${outputSize}, ${extractTop}+${outputSize}), falling back to resize`
@@ -375,3 +367,4 @@ export async function alignFace(
       .toBuffer();
   }
 }
+
