@@ -1,5 +1,12 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.14 – 自動更新安裝機制修復（2026-03-21）
+
+- **根本原因修復**：`autoInstallOnAppQuit` 從 `false` 改為 `true`，啟用 electron-updater 內建的關閉自動安裝機制。
+- **Main process 狀態優先級保護**：`sendUpdateStatus` 新增與 renderer 相同的優先級邏輯，防止 `downloaded` 狀態被 `checking`/`not-available` 覆蓋。
+- **`updateDownloadedFlag` 安全旗標**：新增獨立布林旗標，一旦 `update-downloaded` 觸發就永不重置，確保 `before-quit` 一定能觸發安裝。
+- **消除 `checkForUpdate` 競態**：renderer mount 時若已是 `downloaded` 狀態則跳過 `checkForUpdate`，避免重複呼叫導致狀態重置。
+
 ### v0.2.13 – 暗色主題 UI 修復（2026-03-21）
 
 - **ResultsSection 暗色主題修復**：文字顏色從深色（neutral[700]）改為淺色（neutral[200]/[300]），邊框從黑色半透明改為白色半透明，按鈕顏色改為高亮度變體。

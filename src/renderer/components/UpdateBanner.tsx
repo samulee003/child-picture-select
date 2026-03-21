@@ -40,14 +40,18 @@ export function UpdateBanner() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
-  // 1. mount 時查詢 main process 的持久化狀態
+  // 1. mount 時查詢 main process 的持久化狀態，若已是 downloaded 就不再 checkForUpdate
   useEffect(() => {
     window.api?.getUpdateState?.()
       .then((result: { ok: boolean; data?: UpdateStatus | null }) => {
         if (result?.ok && result.data) {
           console.warn('[UpdateBanner] restored state from main:', result.data.status);
           setUpdateStatus(result.data);
+          // 已下載完成就不再觸發 checkForUpdates，避免重置狀態
+          if (result.data.status === 'downloaded') return;
         }
+        // 只在尚未下載完成時才觸發更新檢查
+        window.api?.checkForUpdate?.().catch(() => {});
       })
       .catch(() => {});
   }, []);
@@ -74,10 +78,7 @@ export function UpdateBanner() {
     return unsubscribe;
   }, []);
 
-  // 3. mount 時觸發一次更新檢查
-  useEffect(() => {
-    window.api?.checkForUpdate?.().catch(() => {});
-  }, []);
+  // checkForUpdate 已整合到 effect 1，不再額外呼叫
 
   if (dismissed || !updateStatus) return null;
   if (updateStatus.status === 'checking' || updateStatus.status === 'not-available') return null;
