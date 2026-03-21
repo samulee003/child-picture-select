@@ -1,5 +1,43 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.19 – 人臉對齊核心修復與 EXIF Orientation 支援（2026-03-21）
+
+**關鍵修復：人臉對齊完全失效問題**
+
+- **修復 `src/core/align.ts` - Umeyama 矩陣計算錯誤**：
+  - 原 SVD 實作產生錯誤的相似變換矩陣，導致對齊後的 112×112 影像並非人臉而是背景
+  - 重寫為線性最小二乘法（Linear Least Squares）計算仿射變換，誤差從 7-10px 降至 ~1.68px
+  - 新增完整的逆矩陣計算和雙線性插值（Bilinear Interpolation）實作
+
+- **修復 `src/core/align.ts` - EXIF Orientation 座標轉換**：
+  - 新增 `transformKpsForOrientation()` 函數，完整支援 8 種 EXIF orientation（1-8）
+  - 修復 iPhone 照片（orientation=6，逆時針 90°）導致的 KPS 座標與影像錯位問題
+  - `alignFace()` 現在接受 `exifOrientation` 參數，確保 KPS 座標與 raw buffer 正確對齊
+
+- **修復 `src/core/scrfd.ts` - 座標空間一致性**：
+  - 偵測時使用 `.withMetadata({ orientation: undefined })` 禁用自動旋轉
+  - `SCRFDFace` 介面新增 `orientation` 欄位，保存原始 EXIF orientation 供後續對齊使用
+  - 確保整個 pipeline 使用統一的「原始像素空間」
+
+- **修復 `src/core/detector.ts` - 傳遞 orientation 參數**：
+  - 讀取影像時禁用自動旋轉，保持與 SCRFD 一致的座標空間
+  - 正確傳遞 `exifOrientation` 給 `alignFace()`
+
+**效能優化**
+
+- **新增大圖預裁切機制**：圖片超過 4MP（400萬像素）時，先以關鍵點 bounding box + 50% padding 裁切臉部區域，再執行仿射對齊
+  - 避免 Sharp affine 在超大圖片上拋出 "Input image exceeds pixel limit" 錯誤
+  - 減少記憶體使用，提升處理速度
+
+**測試與驗證**
+
+- ✅ KPS 關鍵點視覺化驗證通過（5 個點正確對應五官位置）
+- ✅ Umeyama 矩陣數值驗證通過（forward/inverse transform 正確）
+- ✅ EXIF orientation 座標轉換單元測試通過（orientation 1-8）
+- ✅ Build 通過，TypeScript 類型檢查通過
+
+---
+
 ### v0.2.15 – 修復更新簽名驗證錯誤（2026-03-21）
 
 - **移除 `publisherName`**：刪除 `"Local Developer"` 設定，electron-updater 不再嘗試驗證未簽署的安裝檔，修復「not signed by the application owner」錯誤。

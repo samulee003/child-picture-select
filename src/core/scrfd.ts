@@ -25,6 +25,7 @@ export interface SCRFDFace {
   bbox: [number, number, number, number]; // [x1, y1, x2, y2] in original image space
   kps: [number, number][]; // 5 keypoints [x, y] in original image space
   score: number;
+  orientation?: number; // EXIF orientation (1-8), for coordinate transformation
 }
 
 const MODEL_FILENAME = 'det_500m.onnx';
@@ -236,16 +237,28 @@ export async function detectFacesSCRFD(
     logger.debug(`SCRFD processing: ${imagePath}, maxSize=${maxSize}, inputSize=${inputSize}`);
     const startTime = Date.now();
 
-    // 1. 讀取圖片元數據
+    // 1. 讀取圖片元數據（包括 EXIF orientation）
     const meta = await sharp(imagePath).metadata();
     const originalW = meta.width || 1000;
     const originalH = meta.height || 1000;
-    logger.debug(`Original image size: ${originalW}x${originalH}`);
+    const orientation = meta.orientation || 1;
+    logger.debug(`Original image size: ${originalW}x${originalH}, orientation: ${orientation}`);
 
-    // 2. 建立處理鏈
-    let sharpInstance = sharp(imagePath);
+    // 根據 EXIF orientation 計算實際處理時的寬高
+    // 策略：禁用自動旋轉，讓整個 pipeline 使用原始像素空間
+    // 這樣 KPS 座標和 raw buffer 始終在同一座標空間
+    const needsSwap = orientation >= 5 && orientation <= 8; // 5-8 表示 90/270 度旋轉
+    if (needsSwap) {
+      logger.debug(
+        `EXIF orientation=${orientation}: will keep original pixel space, KPS will be adjusted in alignFace if needed`
+      );
+    }
+
+    // 2. 建立處理鏈（禁用自動旋轉，保持原始像素空間）
+    let sharpInstance = sharp(imagePath).withMetadata({ orientation: undefined });
 
     // 3. 如果需要裁切上方區域（全身照）
+    // 使用 originalW/H（原始像素空間）
     let effectiveW = originalW;
     let effectiveH = originalH;
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
@@ -357,6 +370,7 @@ export async function detectFacesSCRFD(
           bbox: [x1, y1, x2, y2],
           kps,
           score,
+          orientation,
         });
       }
     }

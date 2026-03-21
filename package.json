@@ -1,6 +1,6 @@
 {
   "name": "da-hai-lao-b",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "private": true,
   "description": "大海撈Ｂ - AI Photo Sorter",
   "author": "Local Developer",
@@ -76,7 +76,9 @@
       {
         "from": "models",
         "to": "models",
-        "filter": ["**/*.onnx"]
+        "filter": [
+          "**/*.onnx"
+        ]
       }
     ],
     "win": {

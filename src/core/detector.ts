@@ -164,14 +164,20 @@ export async function detectFaces(
     );
 
     // 2. 讀取圖片為 raw RGB buffer（alignment 和 ArcFace 共用）
-    let sharpInstance = sharp(imagePath);
+    // 使用 withMetadata({ orientation: undefined }) 禁用自動旋轉，保持與 SCRFD 一致的原始像素空間
+    let sharpInstance = sharp(imagePath).withMetadata({ orientation: undefined });
+
+    // 讀取 EXIF orientation，後續需要傳遞給 alignFace
+    const meta = await sharp(imagePath).metadata();
+    const exifOrientation = meta.orientation || 1;
 
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
-      const meta = await sharp(imagePath).metadata();
       const imgW = meta.width || 1000;
       const imgH = meta.height || 1000;
       const cropH = Math.round(imgH * options.cropTopFraction);
-      sharpInstance = sharp(imagePath).extract({ left: 0, top: 0, width: imgW, height: cropH });
+      sharpInstance = sharp(imagePath)
+        .withMetadata({ orientation: undefined })
+        .extract({ left: 0, top: 0, width: imgW, height: cropH });
     }
 
     if (options.maxSize) {
@@ -190,6 +196,7 @@ export async function detectFaces(
 
     const imgW = imgRaw.info.width;
     const imgH = imgRaw.info.height;
+    logger.debug(`Image buffer loaded: ${imgW}x${imgH}, EXIF orientation: ${exifOrientation}`);
 
     // Post-filter: 用 minConfidence 過濾（可能和 overrideDetectorMinConfidence 不同）
     const postMinConf = options.minConfidence ?? 0.01;
@@ -213,9 +220,16 @@ export async function detectFaces(
 
     // 3. 對每個臉依序做 alignment + ArcFace（避免並行 ORT session 競爭）
     for (const face of candidateFaces) {
-
       // 5-point alignment → 112×112 aligned face buffer
-      const alignedBuffer = await alignFace(imgRaw.data, imgW, imgH, face.kps);
+      // 傳遞 EXIF orientation，讓 alignFace 可以正確處理座標轉換
+      const alignedBuffer = await alignFace(
+        imgRaw.data,
+        imgW,
+        imgH,
+        face.kps,
+        112,
+        exifOrientation
+      );
 
       // ArcFace embedding extraction
       const embedding = await extractArcFaceEmbeddingFromAligned(alignedBuffer);

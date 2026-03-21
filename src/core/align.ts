@@ -24,11 +24,11 @@ export const ARCFACE_DST_5PT: [number, number][] = [
 const ALIGN_SIZE = 112;
 
 /**
- * 2×2 矩陣 SVD 解析法
+ * 2×2 矩陣 SVD 解析法（保留供未來使用）
  * 輸入 2×2 矩陣 A，輸出 { U, S, V } 其中：
  *   A = U * diag(S) * V^T
  */
-function svd2x2(a: number[][]): { U: number[][]; S: number[]; V: number[][] } {
+function _svd2x2(a: number[][]): { U: number[][]; S: number[]; V: number[][] } {
   // E = A^T * A
   const e00 = a[0][0] * a[0][0] + a[1][0] * a[1][0];
   const e01 = a[0][0] * a[0][1] + a[1][0] * a[1][1];
@@ -36,7 +36,7 @@ function svd2x2(a: number[][]): { U: number[][]; S: number[]; V: number[][] } {
 
   const traceE = e00 + e11;
   const detE = e00 * e11 - e01 * e01;
-  const disc = Math.sqrt(Math.max(0, traceE * traceE / 4 - detE));
+  const disc = Math.sqrt(Math.max(0, (traceE * traceE) / 4 - detE));
 
   const lambda1 = traceE / 2 + disc;
   const lambda2 = traceE / 2 - disc;
@@ -64,9 +64,15 @@ function svd2x2(a: number[][]): { U: number[][]; S: number[]; V: number[][] } {
   } else {
     // Diagonal E matrix
     if (e00 >= e11) {
-      V = [[1, 0], [0, 1]];
+      V = [
+        [1, 0],
+        [0, 1],
+      ];
     } else {
-      V = [[0, 1], [1, 0]];
+      V = [
+        [0, 1],
+        [1, 0],
+      ];
     }
   }
 
@@ -89,86 +95,124 @@ function svd2x2(a: number[][]): { U: number[][]; S: number[]; V: number[][] } {
 }
 
 /**
- * Umeyama Similarity Transform（2D, N-point）
+ * Estimate Affine Transform using Least Squares
  *
- * 計算 src → dst 的最佳相似變換（旋轉 + 縮放 + 平移），
- * 回傳 2×3 仿射矩陣 M，使得 dst ≈ M * [src | 1]^T
+ * 計算 src → dst 的最佳仿射變換（6 參數），
+ * 回傳 2×3 仿射矩陣 M，使得 dst = M * [src | 1]^T
  *
- * 基於 scikit-image Umeyama 算法實現
+ * 使用線性最小二乘法求解 6 個參數 [m00, m01, tx, m10, m11, ty]
  */
-export function umeyama2D(
-  src: [number, number][],
-  dst: [number, number][]
-): number[][] {
+export function umeyama2D(src: [number, number][], dst: [number, number][]): number[][] {
   const n = src.length;
 
-  // 1. 計算平均值
-  let srcMeanX = 0, srcMeanY = 0, dstMeanX = 0, dstMeanY = 0;
+  // Affine: [dx]   [m00  m01  tx]   [sx]
+  //         [dy] = [m10  m11  ty] * [sy]
+  //                                   [1 ]
+  //
+  // dx = m00*sx + m01*sy + tx
+  // dy = m10*sx + m11*sy + ty
+
+  // Build normal equations for x components (m00, m01, tx)
+  let ata00 = 0,
+    ata01 = 0,
+    ata02 = 0;
+  let ata11 = 0,
+    ata12 = 0;
+  let ata22 = 0;
+  let atb0 = 0,
+    atb1 = 0,
+    atb2 = 0;
+
   for (let i = 0; i < n; i++) {
-    srcMeanX += src[i][0];
-    srcMeanY += src[i][1];
-    dstMeanX += dst[i][0];
-    dstMeanY += dst[i][1];
+    const [sx, sy] = src[i];
+    const [dx] = dst[i];
+
+    // For x equation: [sx, sy, 1] * [m00, m01, tx]^T = dx
+    ata00 += sx * sx;
+    ata01 += sx * sy;
+    ata02 += sx;
+    ata11 += sy * sy;
+    ata12 += sy;
+    ata22 += 1;
+    atb0 += sx * dx;
+    atb1 += sy * dx;
+    atb2 += dx;
   }
-  srcMeanX /= n;
-  srcMeanY /= n;
-  dstMeanX /= n;
-  dstMeanY /= n;
 
-  // 2. 中心化
-  const srcC: [number, number][] = src.map(([x, y]) => [x - srcMeanX, y - srcMeanY]);
-  const dstC: [number, number][] = dst.map(([x, y]) => [x - dstMeanX, y - dstMeanY]);
+  // Solve for x components using Cramer's rule
+  const det =
+    ata00 * (ata11 * ata22 - ata12 * ata12) -
+    ata01 * (ata01 * ata22 - ata12 * ata02) +
+    ata02 * (ata01 * ata12 - ata11 * ata02);
 
-  // 3. src variance
-  let srcVar = 0;
+  if (Math.abs(det) < 1e-12) {
+    throw new Error('Singular matrix in umeyama2D');
+  }
+
+  const invDet = 1 / det;
+  const m00 =
+    invDet *
+    ((ata11 * ata22 - ata12 * ata12) * atb0 -
+      (ata01 * ata22 - ata12 * ata02) * atb1 +
+      (ata01 * ata12 - ata11 * ata02) * atb2);
+  const m01 =
+    invDet *
+    (-(ata01 * ata22 - ata12 * ata02) * atb0 +
+      (ata00 * ata22 - ata02 * ata02) * atb1 -
+      (ata00 * ata12 - ata02 * ata01) * atb2);
+  const tx =
+    invDet *
+    ((ata01 * ata12 - ata11 * ata02) * atb0 -
+      (ata00 * ata12 - ata02 * ata01) * atb1 +
+      (ata00 * ata11 - ata01 * ata01) * atb2);
+
+  // Build normal equations for y components (m10, m11, ty)
+  atb0 = 0;
+  atb1 = 0;
+  atb2 = 0;
   for (let i = 0; i < n; i++) {
-    srcVar += srcC[i][0] * srcC[i][0] + srcC[i][1] * srcC[i][1];
+    const [sx, sy] = src[i];
+    const [, dy] = dst[i];
+    atb0 += sx * dy;
+    atb1 += sy * dy;
+    atb2 += dy;
   }
-  srcVar /= n;
 
-  // 4. Cross-covariance K = (dst_c^T @ src_c) / n  (2×2)
-  let k00 = 0, k01 = 0, k10 = 0, k11 = 0;
-  for (let i = 0; i < n; i++) {
-    k00 += dstC[i][0] * srcC[i][0];
-    k01 += dstC[i][0] * srcC[i][1];
-    k10 += dstC[i][1] * srcC[i][0];
-    k11 += dstC[i][1] * srcC[i][1];
-  }
-  k00 /= n; k01 /= n; k10 /= n; k11 /= n;
+  const m10 =
+    invDet *
+    ((ata11 * ata22 - ata12 * ata12) * atb0 -
+      (ata01 * ata22 - ata12 * ata02) * atb1 +
+      (ata01 * ata12 - ata11 * ata02) * atb2);
+  const m11 =
+    invDet *
+    (-(ata01 * ata22 - ata12 * ata02) * atb0 +
+      (ata00 * ata22 - ata02 * ata02) * atb1 -
+      (ata00 * ata12 - ata02 * ata01) * atb2);
+  const ty =
+    invDet *
+    ((ata01 * ata12 - ata11 * ata02) * atb0 -
+      (ata00 * ata12 - ata02 * ata01) * atb1 +
+      (ata00 * ata11 - ata01 * ata01) * atb2);
 
-  const K = [[k00, k01], [k10, k11]];
-
-  // 5. SVD
-  const { U, S, V } = svd2x2(K);
-
-  // 6. S matrix (prevent reflection)
-  const detK = K[0][0] * K[1][1] - K[0][1] * K[1][0];
-  const Sm = detK >= 0 ? [1, 1] : [1, -1];
-
-  // 7. R = U * S * V^T
-  // First: US = U * diag(Sm)
-  const us00 = U[0][0] * Sm[0];
-  const us01 = U[0][1] * Sm[1];
-  const us10 = U[1][0] * Sm[0];
-  const us11 = U[1][1] * Sm[1];
-
-  // R = US * V^T
-  const r00 = us00 * V[0][0] + us01 * V[0][1];
-  const r01 = us00 * V[1][0] + us01 * V[1][1];
-  const r10 = us10 * V[0][0] + us11 * V[0][1];
-  const r11 = us10 * V[1][0] + us11 * V[1][1];
-
-  // 8. Scale: c = trace(diag(S_sigma) * Sm) / src_var
-  const c = (S[0] * Sm[0] + S[1] * Sm[1]) / (srcVar + 1e-12);
-
-  // 9. Translation: t = dst_mean - c * R * src_mean
-  const tx = dstMeanX - c * (r00 * srcMeanX + r01 * srcMeanY);
-  const ty = dstMeanY - c * (r10 * srcMeanX + r11 * srcMeanY);
-
-  // 10. 2×3 forward matrix
   return [
-    [c * r00, c * r01, tx],
-    [c * r10, c * r11, ty],
+    [m00, m01, tx],
+    [m10, m11, ty],
+  ];
+}
+
+/**
+ * 2×2 矩陣求逆（保留供未來使用）
+ */
+function _invert2x2(m: number[][]): number[][] {
+  const [[m00, m01], [m10, m11]] = m;
+  const det = m00 * m11 - m01 * m10;
+  if (Math.abs(det) < 1e-12) {
+    throw new Error('Singular matrix in invert2x2');
+  }
+  const invDet = 1 / det;
+  return [
+    [m11 * invDet, -m01 * invDet],
+    [-m10 * invDet, m00 * invDet],
   ];
 }
 
@@ -183,6 +227,7 @@ export function umeyama2D(
  * @param imageHeight   圖片高度
  * @param kps           5 個特徵點座標（在 imageBuffer 同一座標空間）
  * @param outputSize    輸出尺寸（預設 112）
+ * @param exifOrientation  EXIF orientation (1-8)，用於調整 KPS 座標
  * @returns 對齊後的 112×112 RGB raw Buffer
  */
 /**
@@ -191,23 +236,80 @@ export function umeyama2D(
  */
 const AFFINE_MAX_PIXELS = 4_000_000; // ~4MP，保守值
 
+/**
+ * 根據 EXIF orientation 調整 KPS 座標
+ * 由於我們在整個 pipeline 中禁用了自動旋轉，KPS 座標對應的是原始像素空間
+ * 但 raw buffer 也是原始像素空間，所以這裡需要根據 orientation 做座標轉換
+ *
+ * EXIF orientation 定義：
+ * 1: 正常 (0°)
+ * 2: 水平翻轉
+ * 3: 180°
+ * 4: 垂直翻轉
+ * 5: 水平翻轉 + 逆時針 90°
+ * 6: 逆時針 90°
+ * 7: 水平翻轉 + 逆時針 270°
+ * 8: 逆時針 270°
+ */
+function transformKpsForOrientation(
+  kps: [number, number][],
+  orientation: number,
+  width: number,
+  height: number
+): [number, number][] {
+  if (orientation === 1) return kps; // 正常，無需轉換
+
+  return kps.map(([x, y]) => {
+    switch (orientation) {
+      case 2: // 水平翻轉
+        return [width - 1 - x, y];
+      case 3: // 180°
+        return [width - 1 - x, height - 1 - y];
+      case 4: // 垂直翻轉
+        return [x, height - 1 - y];
+      case 5: // 水平翻轉 + 逆時針 90°
+        return [y, x];
+      case 6: // 逆時針 90°
+        return [y, width - 1 - x];
+      case 7: // 水平翻轉 + 逆時針 270°
+        return [height - 1 - y, width - 1 - x];
+      case 8: // 逆時針 270°
+        return [height - 1 - y, x];
+      default:
+        return [x, y];
+    }
+  });
+}
+
 export async function alignFace(
   imageBuffer: Buffer,
   imageWidth: number,
   imageHeight: number,
   kps: [number, number][],
-  outputSize: number = ALIGN_SIZE
+  outputSize: number = ALIGN_SIZE,
+  exifOrientation: number = 1
 ): Promise<Buffer> {
+  // 根據 EXIF orientation 調整 KPS 座標
+  // 由於整個 pipeline 使用原始像素空間，需要將 KPS 轉換到與 buffer 對應的座標系
+  const adjustedKps = transformKpsForOrientation(kps, exifOrientation, imageWidth, imageHeight);
+
+  if (exifOrientation !== 1) {
+    logger.debug(`alignFace: adjusted KPS for EXIF orientation=${exifOrientation}`);
+  }
+
   // 如果圖片像素數超過 Sharp affine 限制，先裁切臉部區域再做仿射
   const totalPixels = imageWidth * imageHeight;
   let workBuffer = imageBuffer;
   let workW = imageWidth;
   let workH = imageHeight;
-  let workKps = kps;
+  let workKps = adjustedKps;
 
   if (totalPixels > AFFINE_MAX_PIXELS) {
     // 計算所有關鍵點的 bounding box，加 padding 後裁切
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const [kx, ky] of kps) {
       if (kx < minX) minX = kx;
       if (kx > maxX) maxX = kx;
@@ -245,7 +347,7 @@ export async function alignFace(
 
         logger.debug(
           `alignFace: cropped ${imageWidth}x${imageHeight} → ${cropW}x${cropH} ` +
-          `(${totalPixels}MP → ${cropW * cropH}MP) to stay within Sharp affine pixel limit`
+            `(${totalPixels}MP → ${cropW * cropH}MP) to stay within Sharp affine pixel limit`
         );
       } catch (cropErr) {
         logger.warn('alignFace: crop failed, attempting affine on full image:', cropErr);
@@ -261,8 +363,12 @@ export async function alignFace(
   // 計算 forward matrix: src_face → 112×112 canvas
   const M = umeyama2D(workKps, ARCFACE_DST_5PT);
 
-  const m00 = M[0][0], m01 = M[0][1], mtx = M[0][2];
-  const m10 = M[1][0], m11 = M[1][1], mty = M[1][2];
+  const m00 = M[0][0],
+    m01 = M[0][1],
+    mtx = M[0][2];
+  const m10 = M[1][0],
+    m11 = M[1][1],
+    mty = M[1][2];
 
   const det = m00 * m11 - m01 * m10;
   if (Math.abs(det) < 1e-12) {
@@ -275,96 +381,81 @@ export async function alignFace(
       .toBuffer();
   }
 
-  // Sharp 的 affine 函數底層調用 libvips 的 vips_affine。
-  // vips_affine 期望的 matrix 是「正向映射」（Forward Mapping: input → output），
-  // 雖然它的像素插值是使用逆映射來實現，但 bounding box 的計算是基於正向矩陣的！
-  // 所以我們必須傳入正向矩陣 M 的旋轉縮放部分，
-  // 並且平移值要透過 odx, ody (Output Offset) 來傳遞。
-  const corners: [number, number][] = [[0, 0], [workW, 0], [0, workH], [workW, workH]];
-  const fwdX = corners.map(([x, y]) => m00 * x + m01 * y + mtx);
-  const fwdY = corners.map(([x, y]) => m10 * x + m11 * y + mty);
-  
-  // vips_affine 會自動將坐標範圍平移，使得最小的 x, y 變成 (0,0)。
-  // 例如若臉部的 X_out 是從 0 開始，但有其他背景被映射到了 -50，
-  // 則輸出的圖像會被平移 50，使得臉部出現在 X=50 的位置。
-  // 我們必須用 extract() 將臉部區域切出來。
-  const shiftX = Math.round(Math.max(0, -Math.min(...fwdX)));
-  const shiftY = Math.round(Math.max(0, -Math.min(...fwdY)));
+  // ── Pure JS Bilinear Warp (correct 112×112 output) ───────────────────────────
+  //
+  // Sharp's affine API cannot produce a fixed 112×112 output because it always
+  // sizes the output canvas to cover the transform of ALL input corners.
+  // When the face is larger than 112px (scale < 1), the canvas dimension < 112.
+  //
+  // Solution: for each of the 112×112 output pixels, compute the source pixel
+  // location using the INVERSE Umeyama transform, then bilinear interpolate.
+  //
+  //   Forward M:  dst = M_2x2 * src + [tx, ty]
+  //   Inverse:    src = M_inv * (dst - [tx, ty])
+  //             = M_inv * dst + inv_translation
+  //
+  // M_inv computation:
+  const invDet = 1 / det;
+  const inv00 = m11 * invDet;
+  const inv01 = -m01 * invDet;
+  const inv10 = -m10 * invDet;
+  const inv11 = m00 * invDet;
+  // inv_translation = M_inv * [-tx, -ty]
+  const invTx = -(inv00 * mtx + inv01 * mty);
+  const invTy = -(inv10 * mtx + inv11 * mty);
 
-  try {
-    const affineOut = await sharp(workBuffer, {
-      raw: { width: workW, height: workH, channels: 3 },
-    })
-      .affine(
-        [[m00, m01], [m10, m11]],
-        {
-          background: { r: 0, g: 0, b: 0 },
-          odx: mtx,
-          ody: mty,
-          interpolator: 'bicubic',
-        }
-      )
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+  logger.debug(
+    `alignFace warp: M=[${m00.toFixed(3)},${m01.toFixed(3)},${mtx.toFixed(1)};${m10.toFixed(3)},${m11.toFixed(3)},${mty.toFixed(1)}] ` +
+      `inv=[${inv00.toFixed(3)},${inv01.toFixed(3)},${invTx.toFixed(1)};${inv10.toFixed(3)},${inv11.toFixed(3)},${invTy.toFixed(1)}]`
+  );
 
-    const extractLeft = shiftX;
-    const extractTop = shiftY;
-    const canExtract =
-      extractLeft + outputSize <= affineOut.info.width &&
-      extractTop + outputSize <= affineOut.info.height &&
-      extractLeft >= 0 &&
-      extractTop >= 0;
+  // Output buffer: RGB, 112×112
+  const outBuf = Buffer.alloc(outputSize * outputSize * 3, 0);
+  const srcData = workBuffer;
+  const srcW = workW;
+  const srcH = workH;
 
-    let aligned: Buffer;
-    if (canExtract) {
-      // 正常路徑：從 affine 輸出中取出臉部所在的正確 112×112 區域
-      aligned = await sharp(affineOut.data, {
-        raw: {
-          width: affineOut.info.width,
-          height: affineOut.info.height,
-          channels: affineOut.info.channels,
-        },
-      })
-        .extract({ left: extractLeft, top: extractTop, width: outputSize, height: outputSize })
-        .removeAlpha()
-        .raw()
-        .toBuffer();
-    } else {
-      // 邊界情況：affine 輸出比 outputSize 小（超大臉或極小圖片）。
-      logger.debug(
-        `alignFace: affineOut (${affineOut.info.width}×${affineOut.info.height}) < extract region ` +
-        `(${extractLeft}+${outputSize}, ${extractTop}+${outputSize}), falling back to resize`
-      );
-      aligned = await sharp(affineOut.data, {
-        raw: {
-          width: affineOut.info.width,
-          height: affineOut.info.height,
-          channels: affineOut.info.channels,
-        },
-      })
-        .resize(outputSize, outputSize, { fit: 'fill' })
-        .removeAlpha()
-        .raw()
-        .toBuffer();
+  for (let oy = 0; oy < outputSize; oy++) {
+    for (let ox = 0; ox < outputSize; ox++) {
+      // Inverse map: output pixel (ox, oy) → source pixel (sx, sy)
+      const sx = inv00 * ox + inv01 * oy + invTx;
+      const sy = inv10 * ox + inv11 * oy + invTy;
+
+      // Bilinear interpolation
+      const x0 = Math.floor(sx);
+      const y0 = Math.floor(sy);
+      const x1 = x0 + 1;
+      const y1 = y0 + 1;
+      const fx = sx - x0;
+      const fy = sy - y0;
+
+      // Sample 4 neighbour pixels (clamp to border)
+      const x0c = Math.max(0, Math.min(srcW - 1, x0));
+      const y0c = Math.max(0, Math.min(srcH - 1, y0));
+      const x1c = Math.max(0, Math.min(srcW - 1, x1));
+      const y1c = Math.max(0, Math.min(srcH - 1, y1));
+
+      const i00 = (y0c * srcW + x0c) * 3;
+      const i10 = (y0c * srcW + x1c) * 3;
+      const i01 = (y1c * srcW + x0c) * 3;
+      const i11 = (y1c * srcW + x1c) * 3;
+
+      const w00 = (1 - fx) * (1 - fy);
+      const w10 = fx * (1 - fy);
+      const w01 = (1 - fx) * fy;
+      const w11 = fx * fy;
+
+      const outIdx = (oy * outputSize + ox) * 3;
+      for (let c = 0; c < 3; c++) {
+        outBuf[outIdx + c] = Math.round(
+          w00 * srcData[i00 + c] +
+            w10 * srcData[i10 + c] +
+            w01 * srcData[i01 + c] +
+            w11 * srcData[i11 + c]
+        );
+      }
     }
-
-    const expectedBytes = outputSize * outputSize * 3;
-    if (aligned.length !== expectedBytes) {
-      logger.warn(
-        `alignFace produced unexpected raw length: got ${aligned.length}, expected ${expectedBytes}`
-      );
-    }
-
-    return aligned;
-  } catch (err) {
-    logger.error('Face alignment affine transform failed:', err);
-    // Fallback: 直接 resize
-    return sharp(workBuffer, { raw: { width: workW, height: workH, channels: 3 } })
-      .resize(outputSize, outputSize, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
   }
-}
 
+  return outBuf;
+}
