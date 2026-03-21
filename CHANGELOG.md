@@ -1,5 +1,9 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.15 – 修復更新簽名驗證錯誤（2026-03-21）
+
+- **移除 `publisherName`**：刪除 `"Local Developer"` 設定，electron-updater 不再嘗試驗證未簽署的安裝檔，修復「not signed by the application owner」錯誤。
+
 ### v0.2.14 – 自動更新安裝機制修復（2026-03-21）
 
 - **根本原因修復**：`autoInstallOnAppQuit` 從 `false` 改為 `true`，啟用 electron-updater 內建的關閉自動安裝機制。
