@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.11
+- **Version**: 0.2.12
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite

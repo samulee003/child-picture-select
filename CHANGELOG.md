@@ -1,5 +1,12 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.12 – 自動更新流程修復 + 說明頁更新（2026-03-21）
+
+- **自動更新 race condition 修復**：移除重複的 `checkForUpdates` 呼叫，防止下載進度到 100% 後橫幅消失。
+- **更新狀態降級保護**：下載中或已下載狀態不再被 `checking`/`not-available` 事件覆蓋。
+- **下載錯誤顯示**：更新下載失敗時顯示錯誤訊息與重試按鈕，不再靜默隱藏。
+- **說明頁更新紀錄**：「近期更新」從舊版 v0.1.x 更新為最新版本紀錄。
+
 ### v0.2.11 – GPU 加速 + 自動更新修復（2026-03-21）
 
 - **GPU 自動加速**：ONNX 推論自動偵測 GPU（Windows DirectML / Linux CUDA / macOS CoreML），有 GPU 就用 GPU，沒有則自動回退 CPU。AI 狀態標籤會顯示目前使用的加速器。
