@@ -70,6 +70,7 @@ jobs:
         path: |
           dist-electron/*.exe
           dist-electron/*.exe.blockmap
+          dist-electron/latest.yml
         retention-days: 90
 
   release:
