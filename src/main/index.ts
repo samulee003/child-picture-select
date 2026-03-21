@@ -294,7 +294,13 @@ function setupAutoUpdater() {
 function wireIpc() {
   // 模型狀態查詢 — 讓 UI 知道 face detection 是否可用
   ipcMain.handle('model:status', async () => {
-    return getModelStatus();
+    const status = getModelStatus();
+    let onnxProvider = 'cpu';
+    try {
+      const { getActiveProvider } = require('../core/onnx-gpu');
+      onnxProvider = getActiveProvider();
+    } catch { /* not yet loaded */ }
+    return { ...status, onnxProvider };
   });
 
   // 診斷資訊 — 回傳 log 路徑、模型檔案狀態、WASM 狀態，供開發者排查問題
@@ -337,6 +343,13 @@ function wireIpc() {
       resourcesModelsExists = fsExistsSync(pathJoin(resourcesPath, 'models', 'insightface'));
     }
 
+    // GPU / 執行提供者資訊
+    let onnxProvider = 'cpu';
+    try {
+      const { getActiveProvider } = require('../core/onnx-gpu');
+      onnxProvider = getActiveProvider();
+    } catch { /* not yet loaded */ }
+
     return {
       ok: true,
       data: {
@@ -353,6 +366,7 @@ function wireIpc() {
         canvasAvailable: false,
         nodeVersion: process.version,
         platform: process.platform,
+        onnxProvider,
         // 打包後的診斷信息
         appPath: app.getAppPath(),
         resourcesPath,

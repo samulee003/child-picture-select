@@ -17,6 +17,7 @@
 
 import sharp from 'sharp';
 import { logger } from '../utils/logger';
+import { createSessionWithGpu as createOnnxSession } from './onnx-gpu';
 
 /** ArcFace 輸出特徵維度 */
 export const ARCFACE_DIMS = 512;
@@ -123,10 +124,7 @@ export async function loadArcFace(): Promise<boolean> {
     ort = requireOrt();
 
     logger.info(`Initializing ArcFace ONNX session (InsightFace w600k_mbf)...`);
-    session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ['cpu'],
-      logSeverityLevel: 3, // 抑制 ORT 詳細日誌
-    });
+    session = await createOnnxSession(ort, modelPath, 'ArcFace');
 
     logger.info(
       `ArcFace loaded. Input: [${session.inputNames}] → Output: [${session.outputNames}]`

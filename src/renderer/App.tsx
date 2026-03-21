@@ -237,7 +237,11 @@ export function App() {
                 fontWeight: 600,
               }}
             >
-              {scan.modelStatus.loaded ? 'AI' : scan.modelStatus.error ? '!' : 'AI…'}
+              {scan.modelStatus.loaded
+                ? (scan.modelStatus as any).onnxProvider && (scan.modelStatus as any).onnxProvider !== 'cpu'
+                  ? `AI (${(scan.modelStatus as any).onnxProvider.toUpperCase()})`
+                  : 'AI'
+                : scan.modelStatus.error ? '!' : 'AI…'}
             </span>
           )}
         </div>
