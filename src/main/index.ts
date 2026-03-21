@@ -462,9 +462,10 @@ function wireIpc() {
     version: app.getVersion(),
     supportEmail: 'support@findmykid.app',
     changelog: [
-      'v0.1.0：上線版流程與 Windows 打包',
-      'v0.1.1：新增版本資訊與支援頁，補強首次啟用指引',
-      'v0.1.2：穩定匯出流程並加入失敗重試',
+      'v0.2.11：GPU 自動加速（DirectML/CUDA/CoreML）+ 自動更新修復',
+      'v0.2.10：HEIC/HEIF 掃描支援 + 批次掃描效能優化',
+      'v0.2.9：人臉對齊核心修復（SCRFD/ArcFace）+ 快取版本升級',
+      'v0.2.8：InsightFace ONNX 人臉辨識引擎（取代 FaceAPI）',
     ],
   }));
 
