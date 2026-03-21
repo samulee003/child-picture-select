@@ -28,7 +28,7 @@ export function NoMatchesSection({
       <div style={{
         textAlign: 'center',
         padding: theme.spacing[16],
-        color: theme.colors.neutral[600],
+        color: theme.colors.neutral[400],
       }}>
         <div style={{ fontSize: theme.typography.fontSize['5xl'], marginBottom: theme.spacing[4], opacity: 0.5 }}>
           🔍
@@ -37,13 +37,13 @@ export function NoMatchesSection({
           fontSize: theme.typography.fontSize.xl,
           fontWeight: theme.typography.fontWeight.semibold,
           marginBottom: theme.spacing[2],
-          color: theme.colors.neutral[700],
+          color: theme.colors.neutral[200],
         }}>
           未找到匹配的照片
         </div>
         <div style={{
           fontSize: theme.typography.fontSize.base,
-          color: theme.colors.neutral[600],
+          color: theme.colors.neutral[400],
           lineHeight: theme.typography.lineHeight.relaxed,
         }}>
           請嘗試降低門檻值或增加參考照片數量

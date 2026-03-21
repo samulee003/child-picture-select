@@ -54,7 +54,7 @@ export function WelcomeState({
       alignItems: 'center',
       justifyContent: 'center',
     }}>
-      <GlassCard padding="xl" style={{ textAlign: 'center', maxWidth: '520px', background: 'rgba(255, 255, 255, 0.7)' }}>
+      <GlassCard padding="xl" style={{ textAlign: 'center', maxWidth: '520px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
         <img
           src="logo.png"
           alt="Logo"
@@ -69,7 +69,7 @@ export function WelcomeState({
         />
         <h2 style={{
           fontSize: theme.typography.fontSize['2xl'],
-          color: theme.colors.primary[600],
+          color: theme.colors.primary[300],
           marginBottom: theme.spacing[5],
           fontWeight: theme.typography.fontWeight.bold,
         }}>
@@ -82,7 +82,7 @@ export function WelcomeState({
               alignItems: 'center',
               gap: theme.spacing[3],
               padding: `${theme.spacing[3]} 0`,
-              borderBottom: item.step < 3 ? '1px solid rgba(0,0,0,0.06)' : 'none',
+              borderBottom: item.step < 3 ? '1px solid rgba(255,255,255,0.08)' : 'none',
             }}>
               <div style={{
                 width: '28px',
@@ -103,13 +103,13 @@ export function WelcomeState({
                 <div style={{
                   fontSize: theme.typography.fontSize.sm,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: item.done ? '#10b981' : theme.colors.neutral[800],
+                  color: item.done ? '#10b981' : theme.colors.neutral[100],
                 }}>
                   {item.label}
                 </div>
                 <div style={{
                   fontSize: theme.typography.fontSize.xs,
-                  color: theme.colors.neutral[500],
+                  color: theme.colors.neutral[300],
                 }}>
                   {item.desc}
                 </div>

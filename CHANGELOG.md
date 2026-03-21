@@ -1,5 +1,10 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.13 – 暗色主題 UI 修復（2026-03-21）
+
+- **ResultsSection 暗色主題修復**：文字顏色從深色（neutral[700]）改為淺色（neutral[200]/[300]），邊框從黑色半透明改為白色半透明，按鈕顏色改為高亮度變體。
+- **TaskReadinessCard 暗色主題修復**：標題與標籤文字改為淺色，狀態指示色改為亮色調。
+
 ### v0.2.12 – 自動更新流程修復 + 說明頁更新（2026-03-21）
 
 - **自動更新 race condition 修復**：移除重複的 `checkForUpdates` 呼叫，防止下載進度到 100% 後橫幅消失。

@@ -91,11 +91,11 @@ export function ImagePreview({
   const placeholderStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#999',
+    color: 'rgba(255,255,255,0.4)',
     fontSize: '14px',
     flexDirection: 'column',
     gap: '8px',
@@ -104,8 +104,8 @@ export function ImagePreview({
   const loadingStyle: React.CSSProperties = {
     width: '24px',
     height: '24px',
-    border: '2px solid #e0e0e0',
-    borderTop: '2px solid #4a90e2',
+    border: '2px solid rgba(255,255,255,0.1)',
+    borderTop: '2px solid rgba(59,130,246,0.6)',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
   };

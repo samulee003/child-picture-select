@@ -122,8 +122,8 @@ export function DragDropZone({
 
   const dragOverStyle: React.CSSProperties = {
     ...baseStyle,
-    backgroundColor: 'rgba(74, 144, 226, 0.1)',
-    borderColor: '#4a90e2',
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderColor: 'rgba(59,130,246,0.4)',
     borderWidth: '2px',
     borderStyle: 'dashed',
   };
@@ -134,8 +134,8 @@ export function DragDropZone({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(74, 144, 226, 0.1)',
-    border: '2px dashed #4a90e2',
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    border: '2px dashed rgba(59,130,246,0.4)',
     borderRadius: '8px',
     display: 'flex',
     alignItems: 'center',
@@ -145,13 +145,13 @@ export function DragDropZone({
   };
 
   const overlayTextStyle: React.CSSProperties = {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(15,23,42,0.9)',
     padding: '12px 24px',
     borderRadius: '8px',
     fontSize: '16px',
     fontWeight: '500',
-    color: '#4a90e2',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    color: '#60a5fa',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
   };
 
   return (

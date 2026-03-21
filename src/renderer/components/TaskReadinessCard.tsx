@@ -25,7 +25,7 @@ export function TaskReadinessCard({ items }: TaskReadinessCardProps) {
         style={{
           fontSize: theme.typography.fontSize.sm,
           fontWeight: theme.typography.fontWeight.semibold,
-          color: theme.colors.neutral[800],
+          color: theme.colors.neutral[100],
           marginBottom: theme.spacing[2],
         }}
       >
@@ -41,8 +41,8 @@ export function TaskReadinessCard({ items }: TaskReadinessCardProps) {
             marginBottom: theme.spacing[1],
           }}
         >
-          <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[700] }}>{item.label}</span>
-          <span style={{ fontSize: theme.typography.fontSize.xs, color: item.ok ? '#16a34a' : '#b45309' }}>
+          <span style={{ fontSize: theme.typography.fontSize.xs, color: theme.colors.neutral[200] }}>{item.label}</span>
+          <span style={{ fontSize: theme.typography.fontSize.xs, color: item.ok ? '#4ade80' : '#fbbf24' }}>
             {item.ok ? '已就緒' : item.pending}
           </span>
         </div>
