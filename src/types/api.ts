@@ -286,6 +286,7 @@ export interface ElectronAPI extends GrowthApi {
   checkForUpdate: () => Promise<ApiResponse>;
   downloadUpdate: () => Promise<ApiResponse>;
   installUpdate: () => Promise<ApiResponse>;
+  getUpdateState: () => Promise<ApiResponse<UpdateStatus | null>>;
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => (() => void);
   removeUpdateListener: () => void;
   // 診斷工具

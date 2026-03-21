@@ -1,7 +1,12 @@
 /**
  * UpdateBanner - Shows auto-update notifications
+ *
+ * 設計原則：
+ * 1. 狀態存在 main process（持久化），renderer 透過 IPC 查詢
+ * 2. mount 時先查詢一次 main 的狀態，避免錯過事件
+ * 3. 優先級保護：downloaded 狀態不會被低優先級狀態覆蓋
  */
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { UpdateStatus } from '../../types/api';
 
 /** Status priority: higher = harder to override */
@@ -11,39 +16,54 @@ const STATUS_PRIORITY: Record<string, number> = {
   available: 1,
   downloading: 2,
   downloaded: 3,
-  error: 2, // errors can override downloading, but not downloaded
+  error: 2,
 };
+
+function shouldAcceptStatus(
+  prev: UpdateStatus | null,
+  next: UpdateStatus
+): boolean {
+  if (!prev) return true;
+  const prevP = STATUS_PRIORITY[prev.status] ?? 0;
+  const nextP = STATUS_PRIORITY[next.status] ?? 0;
+
+  // downloaded 是最終狀態，只有 error 可以覆蓋（且只有在同優先級時）
+  if (prev.status === 'downloaded' && next.status !== 'error') return false;
+
+  // 不允許降級
+  if (nextP < prevP) return false;
+
+  return true;
+}
 
 export function UpdateBanner() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const statusRef = useRef<UpdateStatus | null>(null);
 
+  // 1. mount 時查詢 main process 的持久化狀態
+  useEffect(() => {
+    window.api?.getUpdateState?.()
+      .then((result: { ok: boolean; data?: UpdateStatus | null }) => {
+        if (result?.ok && result.data) {
+          console.warn('[UpdateBanner] restored state from main:', result.data.status);
+          setUpdateStatus(result.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 2. 監聽即時狀態更新
   useEffect(() => {
     if (!window.api?.onUpdateStatus) return;
     const unsubscribe = window.api.onUpdateStatus((status: UpdateStatus) => {
-      console.log('[UpdateBanner] received status:', status.status, status);
+      console.warn('[UpdateBanner] event:', status.status, status);
       setUpdateStatus(prev => {
-        const prevPriority = prev ? (STATUS_PRIORITY[prev.status] ?? 0) : -1;
-        const newPriority = STATUS_PRIORITY[status.status] ?? 0;
-
-        // Never downgrade from a higher-priority state
-        // Exception: 'error' can override 'downloading' (same priority)
-        if (newPriority < prevPriority) {
-          console.log(
-            `[UpdateBanner] blocked downgrade: ${prev?.status}(${prevPriority}) → ${status.status}(${newPriority})`
+        if (!shouldAcceptStatus(prev, status)) {
+          console.warn(
+            `[UpdateBanner] blocked: ${prev?.status} → ${status.status}`
           );
           return prev;
         }
-
-        // 'downloaded' is final — only 'error' could be relevant, but we keep downloaded
-        if (prev?.status === 'downloaded' && status.status !== 'error') {
-          console.log(`[UpdateBanner] keeping 'downloaded', ignoring '${status.status}'`);
-          return prev;
-        }
-
-        console.log(`[UpdateBanner] state transition: ${prev?.status ?? 'null'} → ${status.status}`);
-        statusRef.current = status;
         return status;
       });
       // Reset dismissed when meaningful status arrives
@@ -54,24 +74,21 @@ export function UpdateBanner() {
     return unsubscribe;
   }, []);
 
+  // 3. mount 時觸發一次更新檢查
   useEffect(() => {
-    // 啟動後主動檢查一次更新（背景進行，不阻擋操作）
-    console.log('[UpdateBanner] mount → checkForUpdate');
     window.api?.checkForUpdate?.().catch(() => {});
   }, []);
 
   if (dismissed || !updateStatus) return null;
-  // 不干擾家長流程：檢查中 / 無更新都不顯示
   if (updateStatus.status === 'checking' || updateStatus.status === 'not-available') return null;
 
   const handleInstall = () => {
-    console.log('[UpdateBanner] user clicked install');
+    console.warn('[UpdateBanner] user clicked install');
     window.api?.installUpdate?.();
   };
 
   const handleRetry = () => {
     setUpdateStatus(null);
-    statusRef.current = null;
     window.api?.checkForUpdate?.().catch(() => {});
   };
 
@@ -81,9 +98,7 @@ export function UpdateBanner() {
 
   if (updateStatus.status === 'available') {
     content = (
-      <>
-        <span>🎉 發現新版本 v{updateStatus.version}，正在背景下載更新檔…</span>
-      </>
+      <span>🎉 發現新版本 v{updateStatus.version}，正在背景下載更新檔…</span>
     );
   } else if (updateStatus.status === 'downloading') {
     content =
@@ -147,7 +162,6 @@ export function UpdateBanner() {
       }}
     >
       {content}
-      {/* Only allow dismissing downloaded/error — keep showing during download */}
       {(updateStatus.status === 'downloaded' || updateStatus.status === 'error') && (
         <button
           onClick={() => setDismissed(true)}
