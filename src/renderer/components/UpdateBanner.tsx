@@ -11,7 +11,14 @@ export function UpdateBanner() {
   useEffect(() => {
     if (!window.api?.onUpdateStatus) return;
     const unsubscribe = window.api.onUpdateStatus((status: UpdateStatus) => {
-      setUpdateStatus(status);
+      setUpdateStatus(prev => {
+        // 防止狀態降級：下載中或已下載後，不接受 checking / not-available
+        const dominated = prev?.status === 'downloading' || prev?.status === 'downloaded';
+        if (dominated && (status.status === 'checking' || status.status === 'not-available')) {
+          return prev;
+        }
+        return status;
+      });
       setDismissed(false);
     });
     return unsubscribe;
@@ -23,16 +30,20 @@ export function UpdateBanner() {
   }, []);
 
   if (dismissed || !updateStatus) return null;
-  // 不干擾家長流程：檢查中 / 無更新 / 檢查失敗都不顯示
+  // 不干擾家長流程：檢查中 / 無更新都不顯示
   if (
     updateStatus.status === 'checking' ||
-    updateStatus.status === 'not-available' ||
-    updateStatus.status === 'error'
+    updateStatus.status === 'not-available'
   )
     return null;
 
   const handleInstall = () => {
     window.api?.installUpdate?.();
+  };
+
+  const handleRetry = () => {
+    setUpdateStatus(null);
+    window.api?.checkForUpdate?.().catch(() => {});
   };
 
   let content: React.ReactNode = null;
@@ -46,7 +57,12 @@ export function UpdateBanner() {
       </>
     );
   } else if (updateStatus.status === 'downloading') {
-    content = <span>⬇️ 背景下載更新中：{updateStatus.percent}%</span>;
+    content =
+      updateStatus.percent >= 100 ? (
+        <span>⬇️ 下載完成，正在驗證更新檔…</span>
+      ) : (
+        <span>⬇️ 背景下載更新中：{updateStatus.percent}%</span>
+      );
   } else if (updateStatus.status === 'downloaded') {
     bgColor = 'rgba(34, 197, 94, 0.12)';
     borderColor = 'rgba(34, 197, 94, 0.3)';
@@ -55,6 +71,17 @@ export function UpdateBanner() {
         <span>✅ 更新已下載完成，關閉後重新開啟就會自動套用。</span>
         <button onClick={handleInstall} style={{ ...btnStyle, background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}>
           立即重啟更新
+        </button>
+      </>
+    );
+  } else if (updateStatus.status === 'error') {
+    bgColor = 'rgba(239, 68, 68, 0.12)';
+    borderColor = 'rgba(239, 68, 68, 0.3)';
+    content = (
+      <>
+        <span>⚠️ 更新下載失敗：{updateStatus.error || '未知錯誤'}</span>
+        <button onClick={handleRetry} style={{ ...btnStyle, background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+          重試
         </button>
       </>
     );
