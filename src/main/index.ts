@@ -1534,11 +1534,6 @@ app.whenReady().then(async () => {
   });
 
   // Check for updates after window is ready (non-blocking)
-  if (!isDev) {
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(err => {
-        logger.warn('Auto-update check failed:', err?.message);
-      });
-    }, 5000);
-  }
+  // Note: UpdateBanner also triggers checkForUpdate on mount via IPC,
+  // so we skip the duplicate check here to avoid race conditions.
 });

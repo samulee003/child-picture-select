@@ -11,7 +11,14 @@ export function UpdateBanner() {
   useEffect(() => {
     if (!window.api?.onUpdateStatus) return;
     const unsubscribe = window.api.onUpdateStatus((status: UpdateStatus) => {
-      setUpdateStatus(status);
+      setUpdateStatus(prev => {
+        // 防止狀態降級：下載中或已下載後，不接受 checking / not-available
+        const dominated = prev?.status === 'downloading' || prev?.status === 'downloaded';
+        if (dominated && (status.status === 'checking' || status.status === 'not-available')) {
+          return prev;
+        }
+        return status;
+      });
       setDismissed(false);
     });
     return unsubscribe;
@@ -50,7 +57,12 @@ export function UpdateBanner() {
       </>
     );
   } else if (updateStatus.status === 'downloading') {
-    content = <span>⬇️ 背景下載更新中：{updateStatus.percent}%</span>;
+    content =
+      updateStatus.percent >= 100 ? (
+        <span>⬇️ 下載完成，正在驗證更新檔…</span>
+      ) : (
+        <span>⬇️ 背景下載更新中：{updateStatus.percent}%</span>
+      );
   } else if (updateStatus.status === 'downloaded') {
     bgColor = 'rgba(34, 197, 94, 0.12)';
     borderColor = 'rgba(34, 197, 94, 0.3)';
