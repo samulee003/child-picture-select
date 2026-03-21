@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.10
+- **Version**: 0.2.11
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
@@ -631,13 +631,17 @@ npm test
 
 ## Release Process
 
-1. Update version in `package.json`
-2. Update `CHANGELOG.md`
-3. Run `npm run release:check` (pre-release validation)
-4. Run `npm run release:win` (unsigned) or `npm run release:win:with-sign` (code-signed)
-5. Installer output: `dist-electron/da-hai-lao-b-{version}-Setup.exe`
-6. GitHub Releases are handled via `electron-builder` with the GitHub provider (`samulee003/child-picture-select`)
-7. Automated releases trigger via `ci.yml` on push to `main`; manual releases via `release-win.yml` workflow dispatch.
+**每次推送都必須更新版本號**：因為 `electron-updater` 靠版本號偵測更新，不 bump 版本就無法觸發自動更新。每次 push 前務必：
+1. Bump `package.json` 的 `version`（patch +1）
+2. 更新 `CHANGELOG.md` 加入新版本條目
+3. 更新 `CLAUDE.md` 的 `Version` 欄位
+
+### 手動發布流程
+1. Run `npm run release:check` (pre-release validation)
+2. Run `npm run release:win` (unsigned) or `npm run release:win:with-sign` (code-signed)
+3. Installer output: `dist-electron/da-hai-lao-b-{version}-Setup.exe`
+4. GitHub Releases are handled via `electron-builder` with the GitHub provider (`samulee003/child-picture-select`)
+5. Automated releases trigger via `ci.yml` on push to `main`; manual releases via `release-win.yml` workflow dispatch.
 
 **Code signing** requires env vars: `CSC_LINK` and `CSC_KEY_PASSWORD`
 

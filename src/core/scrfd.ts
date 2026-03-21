@@ -19,6 +19,7 @@
 
 import sharp from 'sharp';
 import { logger } from '../utils/logger';
+import { createSessionWithGpu as createOnnxSession } from './onnx-gpu';
 
 export interface SCRFDFace {
   bbox: [number, number, number, number]; // [x1, y1, x2, y2] in original image space
@@ -120,10 +121,7 @@ export async function loadSCRFD(): Promise<boolean> {
     ort = requireOrt();
 
     logger.info('Initializing SCRFD ONNX session (InsightFace det_500m)...');
-    session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ['cpu'],
-      logSeverityLevel: 3,
-    });
+    session = await createOnnxSession(ort, modelPath, 'SCRFD');
 
     logger.info(
       `✅ SCRFD loaded. Input: [${session.inputNames}] → Output: [${session.outputNames}] (${session.outputNames.length} tensors)`

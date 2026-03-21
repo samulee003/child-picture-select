@@ -294,7 +294,13 @@ function setupAutoUpdater() {
 function wireIpc() {
   // 模型狀態查詢 — 讓 UI 知道 face detection 是否可用
   ipcMain.handle('model:status', async () => {
-    return getModelStatus();
+    const status = getModelStatus();
+    let onnxProvider = 'cpu';
+    try {
+      const { getActiveProvider } = require('../core/onnx-gpu');
+      onnxProvider = getActiveProvider();
+    } catch { /* not yet loaded */ }
+    return { ...status, onnxProvider };
   });
 
   // 診斷資訊 — 回傳 log 路徑、模型檔案狀態、WASM 狀態，供開發者排查問題
@@ -337,6 +343,13 @@ function wireIpc() {
       resourcesModelsExists = fsExistsSync(pathJoin(resourcesPath, 'models', 'insightface'));
     }
 
+    // GPU / 執行提供者資訊
+    let onnxProvider = 'cpu';
+    try {
+      const { getActiveProvider } = require('../core/onnx-gpu');
+      onnxProvider = getActiveProvider();
+    } catch { /* not yet loaded */ }
+
     return {
       ok: true,
       data: {
@@ -353,6 +366,7 @@ function wireIpc() {
         canvasAvailable: false,
         nodeVersion: process.version,
         platform: process.platform,
+        onnxProvider,
         // 打包後的診斷信息
         appPath: app.getAppPath(),
         resourcesPath,
@@ -448,9 +462,10 @@ function wireIpc() {
     version: app.getVersion(),
     supportEmail: 'support@findmykid.app',
     changelog: [
-      'v0.1.0：上線版流程與 Windows 打包',
-      'v0.1.1：新增版本資訊與支援頁，補強首次啟用指引',
-      'v0.1.2：穩定匯出流程並加入失敗重試',
+      'v0.2.11：GPU 自動加速（DirectML/CUDA/CoreML）+ 自動更新修復',
+      'v0.2.10：HEIC/HEIF 掃描支援 + 批次掃描效能優化',
+      'v0.2.9：人臉對齊核心修復（SCRFD/ArcFace）+ 快取版本升級',
+      'v0.2.8：InsightFace ONNX 人臉辨識引擎（取代 FaceAPI）',
     ],
   }));
 
