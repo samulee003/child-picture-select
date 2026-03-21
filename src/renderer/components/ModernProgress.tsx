@@ -53,13 +53,13 @@ export function ModernProgress({
           marginBottom: theme.spacing[2],
           fontSize: currentSize.fontSize,
           fontWeight: theme.typography.fontWeight.medium,
-          color: theme.colors.neutral[600],
+          color: theme.colors.neutral[400],
         }}>
           <span>{label}</span>
           {showPercentage && (
             <span style={{
               fontWeight: theme.typography.fontWeight.semibold,
-              color: theme.colors.neutral[800],
+              color: theme.colors.neutral[100],
             }}>
               {percentage.toFixed(1)}%
             </span>

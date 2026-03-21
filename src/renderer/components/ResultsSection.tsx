@@ -82,8 +82,8 @@ export function ResultsSection(props: ResultsSectionProps) {
 
   const filterBtnStyle = (active: boolean) => ({
     borderRadius: theme.borderRadius.md,
-    border: `1px solid ${active ? theme.colors.primary[500] : 'rgba(0, 0, 0, 0.12)'}`,
-    color: active ? theme.colors.primary[700] : theme.colors.neutral[600],
+    border: `1px solid ${active ? theme.colors.primary[500] : 'rgba(255, 255, 255, 0.12)'}`,
+    color: active ? theme.colors.primary[300] : theme.colors.neutral[300],
     background: active ? 'rgba(0, 151, 245, 0.08)' : 'transparent',
     padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
     cursor: 'pointer' as const,
@@ -150,12 +150,12 @@ export function ResultsSection(props: ResultsSectionProps) {
           }}>
             <label style={{
               display: 'inline-flex', alignItems: 'center', gap: theme.spacing[2],
-              color: theme.colors.neutral[700], fontSize: theme.typography.fontSize.sm,
+              color: theme.colors.neutral[200], fontSize: theme.typography.fontSize.sm,
             }}>
               <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} style={{ width: '16px', height: '16px' }} />
               啟用逐一複核
             </label>
-            <span style={{ color: theme.colors.neutral[600], fontSize: theme.typography.fontSize.sm }}>
+            <span style={{ color: theme.colors.neutral[300], fontSize: theme.typography.fontSize.sm }}>
               保留 {acceptedCount} / 排除 {rejectedCount} / 待審核 {pendingCount}
             </span>
             <div style={{ flex: 1 }} />
@@ -163,8 +163,8 @@ export function ResultsSection(props: ResultsSectionProps) {
               onClick={() => setCompactView(v => !v)}
               style={{
                 borderRadius: theme.borderRadius.md,
-                border: '1px solid rgba(0, 0, 0, 0.12)',
-                color: theme.colors.neutral[600],
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: theme.colors.neutral[300],
                 background: 'transparent',
                 padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
                 cursor: 'pointer',
@@ -180,11 +180,11 @@ export function ResultsSection(props: ResultsSectionProps) {
             display: 'flex', alignItems: 'center', gap: theme.spacing[4],
             marginBottom: theme.spacing[3], flexWrap: 'wrap',
           }}>
-            <div style={{ color: theme.colors.neutral[700], fontSize: theme.typography.fontSize.sm }}>
+            <div style={{ color: theme.colors.neutral[200], fontSize: theme.typography.fontSize.sm }}>
               已收藏：{props.favoritePaths.length} 張
             </div>
             <div style={{
-              color: theme.colors.neutral[600], fontSize: theme.typography.fontSize.xs, lineHeight: 1.5,
+              color: theme.colors.neutral[300], fontSize: theme.typography.fontSize.xs, lineHeight: 1.5,
             }}>
               親切提醒：分數越高越像你的小孩；60% 以下先標記「待檢查」，再決定要不要放入收藏
             </div>
@@ -206,7 +206,7 @@ export function ResultsSection(props: ResultsSectionProps) {
           </div>
 
           {lowConfidenceCount > 0 && (
-            <div style={{ marginBottom: theme.spacing[4], color: theme.colors.neutral[700], fontSize: theme.typography.fontSize.sm }}>
+            <div style={{ marginBottom: theme.spacing[4], color: theme.colors.neutral[200], fontSize: theme.typography.fontSize.sm }}>
               低信心待複核：{lowConfidenceCount} 張（建議手動打分或排除）
             </div>
           )}
@@ -217,7 +217,7 @@ export function ResultsSection(props: ResultsSectionProps) {
               display: 'flex', alignItems: 'center', gap: theme.spacing[2],
               flexWrap: 'wrap', marginBottom: theme.spacing[4],
             }}>
-              <span style={{ color: theme.colors.neutral[700], fontSize: theme.typography.fontSize.sm }}>查看：</span>
+              <span style={{ color: theme.colors.neutral[200], fontSize: theme.typography.fontSize.sm }}>查看：</span>
               <button onClick={() => setReviewFilter('all')} style={filterBtnStyle(reviewFilter === 'all')}>全部</button>
               <button onClick={() => setReviewFilter('pending')} style={filterBtnStyle(reviewFilter === 'pending')}>待審核</button>
               <button onClick={() => setReviewFilter('low')} style={filterBtnStyle(reviewFilter === 'low')}>低信心</button>
@@ -225,8 +225,8 @@ export function ResultsSection(props: ResultsSectionProps) {
                 onClick={() => setIsTopTwentyView(prev => !prev)}
                 style={{
                   borderRadius: theme.borderRadius.md,
-                  border: `1px solid ${isTopTwentyView ? '#60a5fa' : 'rgba(0, 0, 0, 0.12)'}`,
-                  color: isTopTwentyView ? '#2563eb' : theme.colors.neutral[600],
+                  border: `1px solid ${isTopTwentyView ? '#60a5fa' : 'rgba(255, 255, 255, 0.12)'}`,
+                  color: isTopTwentyView ? '#60a5fa' : theme.colors.neutral[300],
                   background: isTopTwentyView ? 'rgba(96, 165, 250, 0.12)' : 'transparent',
                   padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
                   cursor: 'pointer',
@@ -240,7 +240,7 @@ export function ResultsSection(props: ResultsSectionProps) {
                 style={{
                   borderRadius: theme.borderRadius.md,
                   border: '1px solid rgba(16, 185, 129, 0.4)',
-                  color: '#15803d',
+                  color: '#34d399',
                   background: 'rgba(16, 185, 129, 0.1)',
                   padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
                   cursor: 'pointer',
@@ -251,7 +251,7 @@ export function ResultsSection(props: ResultsSectionProps) {
                 style={{
                   borderRadius: theme.borderRadius.md,
                   border: '1px solid rgba(239, 68, 68, 0.4)',
-                  color: '#b91c1c',
+                  color: '#f87171',
                   background: 'rgba(239, 68, 68, 0.1)',
                   padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
                   cursor: 'pointer',
@@ -261,8 +261,8 @@ export function ResultsSection(props: ResultsSectionProps) {
                 onClick={() => onBatchDecision(null)}
                 style={{
                   borderRadius: theme.borderRadius.md,
-                  border: '1px solid rgba(0, 0, 0, 0.15)',
-                  color: theme.colors.neutral[600],
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  color: theme.colors.neutral[300],
                   background: 'transparent',
                   padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
                   cursor: 'pointer',
@@ -324,7 +324,7 @@ export function ResultsSection(props: ResultsSectionProps) {
           {displayedResults.length === 0 && (
             <div style={{
               textAlign: 'center', padding: theme.spacing[8],
-              color: theme.colors.neutral[600], fontSize: theme.typography.fontSize.sm,
+              color: theme.colors.neutral[300], fontSize: theme.typography.fontSize.sm,
             }}>
               {isTopTwentyView ? '目前無法組出前20張結果，先取消「先看前20」後再試' : '目前沒有符合篩選條件的結果'}
             </div>
@@ -353,7 +353,7 @@ export function ResultsSection(props: ResultsSectionProps) {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginBottom: theme.spacing[3], flexWrap: 'wrap', gap: theme.spacing[2],
           }}>
-            <span style={{ color: theme.colors.neutral[600], fontSize: theme.typography.fontSize.sm }}>
+            <span style={{ color: theme.colors.neutral[300], fontSize: theme.typography.fontSize.sm }}>
               這個清單可直接用來回看，點對應結果也可以取消收藏
             </span>
             <button
@@ -377,13 +377,13 @@ export function ResultsSection(props: ResultsSectionProps) {
                 gap: theme.spacing[2],
                 padding: theme.spacing[2],
                 borderRadius: theme.borderRadius.md,
-                border: '1px solid rgba(0, 0, 0, 0.08)',
-                background: 'rgba(255, 255, 255, 0.5)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                background: 'rgba(255, 255, 255, 0.05)',
               }}>
-                <span style={{ color: theme.colors.neutral[700], fontSize: theme.typography.fontSize.sm }}>
+                <span style={{ color: theme.colors.neutral[200], fontSize: theme.typography.fontSize.sm }}>
                   {idx + 1}. {item.path.split(/[/\\]/).pop()}
                 </span>
-                <span style={{ color: theme.colors.neutral[500], fontSize: theme.typography.fontSize.xs }}>
+                <span style={{ color: theme.colors.neutral[300], fontSize: theme.typography.fontSize.xs }}>
                   {(item.score * 100).toFixed(1)}%
                 </span>
                 <button
@@ -428,7 +428,7 @@ export function ResultsSection(props: ResultsSectionProps) {
       {/* Scan summary */}
       {lastRunSummary && (
         <ModernSection title="本次掃描摘要" description="此次任務的快速結果">
-          <div style={{ color: theme.colors.neutral[700], lineHeight: 1.8, fontSize: theme.typography.fontSize.sm }}>
+          <div style={{ color: theme.colors.neutral[200], lineHeight: 1.8, fontSize: theme.typography.fontSize.sm }}>
             掃描照片：{lastRunSummary.scanned} 張<br />
             命中結果：{lastRunSummary.matched} 張<br />
             用時：{formatElapsed(lastRunSummary.elapsedMs)}<br />

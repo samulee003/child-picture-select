@@ -12,10 +12,10 @@ export function ScanWarningsPanel({ warnings }: ScanWarningsPanelProps) {
       style={{
         marginTop: theme.spacing[3],
         borderRadius: theme.borderRadius.md,
-        border: '1px solid rgba(245, 158, 11, 0.35)',
-        background: 'rgba(245, 158, 11, 0.08)',
+        border: '1px solid rgba(245, 158, 11, 0.3)',
+        background: 'rgba(245, 158, 11, 0.15)',
         padding: theme.spacing[3],
-        color: '#92400e',
+        color: '#fbbf24',
         fontSize: theme.typography.fontSize.sm,
       }}
     >

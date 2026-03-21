@@ -96,8 +96,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
 
   return (
     <div style={{
-      background: 'rgba(255, 255, 255, 0.6)',
-      border: `1px solid ${explanation.confidenceLevel === 'high' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(0, 0, 0, 0.08)'}`,
+      background: 'rgba(255, 255, 255, 0.05)',
+      border: `1px solid ${explanation.confidenceLevel === 'high' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.08)'}`,
       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
       borderRadius: theme.borderRadius.lg,
       padding: theme.spacing[4],
@@ -174,7 +174,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             <span style={{
               fontSize: theme.typography.fontSize.sm,
               fontWeight: theme.typography.fontWeight.medium,
-              color: theme.colors.neutral[700],
+              color: theme.colors.neutral[200],
             }}>
               相似度
             </span>
@@ -190,7 +190,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
         </div>
         <div style={{
           height: compact ? '4px' : '8px',
-          background: 'rgba(0, 0, 0, 0.1)',
+          background: 'rgba(255, 255, 255, 0.1)',
           borderRadius: theme.borderRadius.full,
           overflow: 'hidden',
         }}>
@@ -210,7 +210,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
           <div style={{
             marginTop: theme.spacing[1],
             fontSize: theme.typography.fontSize.xs,
-            color: theme.colors.neutral[600],
+            color: theme.colors.neutral[300],
             lineHeight: 1.5,
           }}>
             {confidenceHint}
@@ -224,7 +224,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
           <label style={{
             display: 'block',
             fontSize: theme.typography.fontSize.sm,
-            color: theme.colors.neutral[700],
+            color: theme.colors.neutral[200],
             marginBottom: theme.spacing[2],
           }}>
             人工打分（0~100）：{humanScore}
@@ -262,8 +262,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             style={{
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               borderRadius: theme.borderRadius.md,
-              border: `1px solid ${reviewDecision === 'accepted' ? '#10b981' : 'rgba(0,0,0,0.12)'}`,
-              color: reviewDecision === 'accepted' ? '#15803d' : theme.colors.neutral[600],
+              border: `1px solid ${reviewDecision === 'accepted' ? '#10b981' : 'rgba(255,255,255,0.12)'}`,
+              color: reviewDecision === 'accepted' ? '#34d399' : theme.colors.neutral[300],
               background: reviewDecision === 'accepted' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
               cursor: 'pointer',
               fontSize: theme.typography.fontSize.sm,
@@ -281,8 +281,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             style={{
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               borderRadius: theme.borderRadius.md,
-              border: `1px solid ${reviewDecision === 'rejected' ? '#ef4444' : 'rgba(0,0,0,0.12)'}`,
-              color: reviewDecision === 'rejected' ? '#b91c1c' : theme.colors.neutral[600],
+              border: `1px solid ${reviewDecision === 'rejected' ? '#ef4444' : 'rgba(255,255,255,0.12)'}`,
+              color: reviewDecision === 'rejected' ? '#f87171' : theme.colors.neutral[300],
               background: reviewDecision === 'rejected' ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
               cursor: 'pointer',
               fontSize: theme.typography.fontSize.sm,
@@ -298,7 +298,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
       {/* File Name */}
       <div style={{
         fontSize: theme.typography.fontSize.sm,
-        color: theme.colors.neutral[600],
+        color: theme.colors.neutral[300],
         marginBottom: theme.spacing[3],
         overflow: 'hidden',
         textOverflow: 'ellipsis',
@@ -318,9 +318,9 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             marginBottom: theme.spacing[3],
             padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
             borderRadius: theme.borderRadius.md,
-            border: `1px solid ${isFavorite ? 'rgba(245, 158, 11, 0.45)' : 'rgba(0,0,0,0.12)'}`,
+            border: `1px solid ${isFavorite ? 'rgba(245, 158, 11, 0.45)' : 'rgba(255,255,255,0.12)'}`,
             background: isFavorite ? 'rgba(251, 191, 36, 0.12)' : 'transparent',
-            color: isFavorite ? '#f59e0b' : theme.colors.neutral[600],
+            color: isFavorite ? '#f59e0b' : theme.colors.neutral[300],
             fontSize: theme.typography.fontSize.sm,
             fontWeight: theme.typography.fontWeight.medium,
             cursor: 'pointer',
@@ -339,10 +339,10 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
         style={{
           width: '100%',
           padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
-          background: 'rgba(0, 0, 0, 0.03)',
-          border: '1px solid rgba(0, 0, 0, 0.08)',
+          background: 'rgba(255, 255, 255, 0.05)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: theme.borderRadius.md,
-          color: theme.colors.neutral[700],
+          color: theme.colors.neutral[200],
           fontSize: theme.typography.fontSize.xs,
           cursor: 'pointer',
           display: 'flex',
@@ -352,10 +352,10 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
           transition: 'all 0.2s',
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.06)';
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.03)';
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
         }}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -369,8 +369,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
         <div style={{
           marginTop: theme.spacing[3],
           padding: theme.spacing[3],
-          background: 'rgba(0, 0, 0, 0.02)',
-          border: '1px solid rgba(0, 0, 0, 0.05)',
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
           borderRadius: theme.borderRadius.md,
           animation: 'slideIn 0.2s ease-out',
         }}>
@@ -396,7 +396,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
               background: 'rgba(59,130,246,0.06)',
               borderRadius: theme.borderRadius.sm,
               fontSize: theme.typography.fontSize.xs,
-              color: theme.colors.neutral[600],
+              color: theme.colors.neutral[300],
             }}>
               <span style={{ color: '#3b82f6', fontWeight: 600 }}>📸</span>
               <span>最匹配：參考照 #{result.bestRefIndex + 1}
@@ -417,7 +417,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             {explanation.reasons.map((reason, idx) => (
               <li key={idx} style={{
                 fontSize: theme.typography.fontSize.xs,
-                color: theme.colors.neutral[700],
+                color: theme.colors.neutral[200],
                 marginBottom: theme.spacing[1],
                 lineHeight: 1.4,
                 position: 'relative',

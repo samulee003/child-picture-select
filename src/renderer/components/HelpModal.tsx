@@ -33,21 +33,22 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
   };
 
   const modalStyle: React.CSSProperties = {
-    backgroundColor: 'white',
+    backgroundColor: 'rgba(15,23,42,0.98)',
+    border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: '12px',
     padding: '32px',
     maxWidth: '500px',
     width: '90%',
     maxHeight: '80vh',
     overflow: 'auto',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
   };
 
   const titleStyle: React.CSSProperties = {
     fontSize: '24px',
     fontWeight: '600',
     marginBottom: '24px',
-    color: '#1a1a1a'
+    color: 'rgba(255,255,255,0.95)'
   };
 
   const sectionStyle: React.CSSProperties = {
@@ -58,7 +59,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
     fontSize: '18px',
     fontWeight: '600',
     marginBottom: '12px',
-    color: '#333'
+    color: 'rgba(255,255,255,0.9)'
   };
 
   const shortcutListStyle: React.CSSProperties = {
@@ -72,22 +73,23 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '8px 0',
-    borderBottom: '1px solid #eee'
+    borderBottom: '1px solid rgba(255,255,255,0.08)'
   };
 
   const keyStyle: React.CSSProperties = {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     padding: '4px 8px',
     borderRadius: '4px',
     fontFamily: 'monospace',
     fontSize: '14px',
-    fontWeight: '600'
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)'
   };
 
   const buttonStyle: React.CSSProperties = {
-    backgroundColor: '#4a90e2',
-    color: 'white',
-    border: 'none',
+    backgroundColor: 'rgba(59,130,246,0.2)',
+    color: 'rgba(255,255,255,0.9)',
+    border: '1px solid rgba(59,130,246,0.4)',
     padding: '12px 24px',
     borderRadius: '8px',
     fontSize: '16px',
@@ -104,15 +106,15 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
         {appInfo && (
           <div style={sectionStyle}>
             <h3 style={sectionTitleStyle}>版本與更新</h3>
-            <div style={{ color: '#444', lineHeight: '1.6', marginBottom: '12px' }}>
+            <div style={{ color: 'rgba(255,255,255,0.8)', lineHeight: '1.6', marginBottom: '12px' }}>
               <div>應用名稱：{appInfo.appName}</div>
               <div>版本：v{appInfo.version}</div>
             </div>
             <div>
               <h4 style={{ ...sectionTitleStyle, fontSize: '16px' }}>近期更新</h4>
-              <ul style={{ ...shortcutListStyle, color: '#666' }}>
+              <ul style={{ ...shortcutListStyle, color: 'rgba(255,255,255,0.7)' }}>
                 {(appInfo.changelog || []).map((item, index) => (
-                  <li key={item + index} style={{ ...shortcutItemStyle, borderBottom: index === (appInfo.changelog || []).length - 1 ? 'none' : '1px solid #eee' }}>
+                  <li key={item + index} style={{ ...shortcutItemStyle, borderBottom: index === (appInfo.changelog || []).length - 1 ? 'none' : '1px solid rgba(255,255,255,0.08)' }}>
                     {item}
                   </li>
                 ))}
@@ -135,7 +137,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
 
         <div style={sectionStyle}>
           <h3 style={sectionTitleStyle}>使用提示</h3>
-          <ul style={{ ...shortcutListStyle, color: '#666' }}>
+          <ul style={{ ...shortcutListStyle, color: 'rgba(255,255,255,0.7)' }}>
             <li style={{ ...shortcutItemStyle, borderBottom: 'none' }}>
               <span>拖放圖片檔案到參考照片區域</span>
             </li>
@@ -155,7 +157,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
           關閉
         </button>
         {appInfo?.supportEmail && (
-          <div style={{ marginTop: '16px', color: '#666', fontSize: '14px' }}>
+          <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.5)', fontSize: '14px' }}>
             支援聯絡：{appInfo.supportEmail}
           </div>
         )}

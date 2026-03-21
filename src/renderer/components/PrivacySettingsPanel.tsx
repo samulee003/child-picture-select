@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { safeLocalStorageSet } from '../../utils/safe-storage';
+import { safeLocalStorageSet, safeLocalStorageGet } from '../../utils/safe-storage';
 import { theme } from '../styles/theme';
 import { GlassCard } from './GlassCard';
 
@@ -29,8 +29,12 @@ interface PrivacySettingsPanelProps {
 
 export function PrivacySettingsPanel({ onClose, onDeleteAllData, onExportAllData }: PrivacySettingsPanelProps) {
   const [settings, setSettings] = useState<PrivacySettings>(() => {
-    const saved = localStorage.getItem('privacy-settings');
-    return saved ? JSON.parse(saved) : defaultSettings;
+    try {
+      const saved = safeLocalStorageGet('privacy-settings');
+      return saved ? JSON.parse(saved) : defaultSettings;
+    } catch {
+      return defaultSettings;
+    }
   });
 
   useEffect(() => {
