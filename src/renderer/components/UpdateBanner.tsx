@@ -23,16 +23,20 @@ export function UpdateBanner() {
   }, []);
 
   if (dismissed || !updateStatus) return null;
-  // 不干擾家長流程：檢查中 / 無更新 / 檢查失敗都不顯示
+  // 不干擾家長流程：檢查中 / 無更新都不顯示
   if (
     updateStatus.status === 'checking' ||
-    updateStatus.status === 'not-available' ||
-    updateStatus.status === 'error'
+    updateStatus.status === 'not-available'
   )
     return null;
 
   const handleInstall = () => {
     window.api?.installUpdate?.();
+  };
+
+  const handleRetry = () => {
+    setUpdateStatus(null);
+    window.api?.checkForUpdate?.().catch(() => {});
   };
 
   let content: React.ReactNode = null;
@@ -55,6 +59,17 @@ export function UpdateBanner() {
         <span>✅ 更新已下載完成，關閉後重新開啟就會自動套用。</span>
         <button onClick={handleInstall} style={{ ...btnStyle, background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}>
           立即重啟更新
+        </button>
+      </>
+    );
+  } else if (updateStatus.status === 'error') {
+    bgColor = 'rgba(239, 68, 68, 0.12)';
+    borderColor = 'rgba(239, 68, 68, 0.3)';
+    content = (
+      <>
+        <span>⚠️ 更新下載失敗：{updateStatus.error || '未知錯誤'}</span>
+        <button onClick={handleRetry} style={{ ...btnStyle, background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+          重試
         </button>
       </>
     );

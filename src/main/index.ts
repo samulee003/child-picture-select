@@ -283,7 +283,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', err => {
-    logger.warn('Auto-updater error:', err?.message);
+    logger.warn(`Auto-updater error: ${err?.message}\n${err?.stack}`);
     mainWindow?.webContents.send('update:status', {
       status: 'error',
       error: err?.message || 'Unknown error',
