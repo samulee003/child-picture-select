@@ -165,7 +165,12 @@ export class ChildQualityAssessor {
    */
   private async estimateExposure(stats: SharpStats): Promise<number> {
     // 基於亮度分佈的曝光評估
-    const mean = stats.mean;
+    // stats.channels 提供每通道統計；取各通道 mean 的平均值作為整體亮度
+    const channels = stats.channels;
+    const mean =
+      channels && channels.length > 0
+        ? channels.reduce((sum: number, ch: { mean: number }) => sum + ch.mean, 0) / channels.length
+        : 128; // 無資料時回退到中值
 
     // 理想亮度範圍 (對於兒童照片）
     const idealMean = 128;
@@ -277,9 +282,15 @@ export class ChildQualityAssessor {
    * 估計平滑度
    */
   private estimateSmoothness(stats: SharpStats): number {
-    // 基於標準差的簡單平滑度估計
-    // 平滑的圖片標準差較小
-    return Math.max(0, 100 - (stats.stdev || 50) * 2);
+    // 基於標準差的簡單平滑度估計，回傳 0–1（1 = 最平滑，0 = 最嘈雜）
+    // 平滑的圖片標準差較小；使用各通道 stdev 平均值
+    const channels = stats.channels;
+    const avgStdev =
+      channels && channels.length > 0
+        ? channels.reduce((sum: number, ch: { stdev: number }) => sum + ch.stdev, 0) / channels.length
+        : 50;
+    // avgStdev 約 0–80；映射到 0–1（stdev=0 → 1，stdev≥50 → 0）
+    return Math.max(0, Math.min(1, 1 - avgStdev / 50));
   }
 
   /**

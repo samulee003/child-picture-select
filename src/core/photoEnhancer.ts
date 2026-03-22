@@ -70,7 +70,17 @@ export class PhotoEnhancer {
       enhancedImage = enhancedImage.rotate();
 
       // 2. 增强亮度和对比度（如果需要）
-      const { mean, stdev } = await sharp(photoPath).stats();
+      // stats.channels 提供每通道統計；sharp v0.33+ 不再有頂層 mean/stdev
+      const photoStats = await sharp(photoPath).stats();
+      const channels = photoStats.channels;
+      const mean =
+        channels && channels.length > 0
+          ? channels.reduce((s: number, ch: { mean: number }) => s + ch.mean, 0) / channels.length
+          : 128;
+      const stdev =
+        channels && channels.length > 0
+          ? channels.reduce((s: number, ch: { stdev: number }) => s + ch.stdev, 0) / channels.length
+          : 50;
 
       // 理想亮度范围 (对于儿童照片)
       const idealMean = 180; // 稍微偏亮
@@ -85,7 +95,7 @@ export class PhotoEnhancer {
       }
 
       // 3. 自動對比度增強
-      const contrastAdjustment = Math.min(1.2, Math.max(0.9, 1 + (stdev || 50) / 256));
+      const contrastAdjustment = Math.min(1.2, Math.max(0.9, 1 + stdev / 256));
       if (contrastAdjustment !== 1) {
         enhancedImage = enhancedImage.linear(contrastAdjustment, 0);
         enhancements.push(`對比度調整: ${contrastAdjustment.toFixed(2)}x`);
