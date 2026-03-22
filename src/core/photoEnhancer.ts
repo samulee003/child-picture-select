@@ -75,11 +75,11 @@ export class PhotoEnhancer {
       const channels = photoStats.channels;
       const mean =
         channels && channels.length > 0
-          ? channels.reduce((s, ch) => s + ch.mean, 0) / channels.length
+          ? channels.reduce((s: number, ch: { mean: number }) => s + ch.mean, 0) / channels.length
           : 128;
       const stdev =
         channels && channels.length > 0
-          ? channels.reduce((s, ch) => s + ch.stdev, 0) / channels.length
+          ? channels.reduce((s: number, ch: { stdev: number }) => s + ch.stdev, 0) / channels.length
           : 50;
 
       // 理想亮度范围 (对于儿童照片)

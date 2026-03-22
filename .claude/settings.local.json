@@ -15,7 +15,8 @@
       "Bash(echo \"Not in Programs\" find \"$LOCALAPPDATA\" -name \"大海撈Ｂ.exe\")",
       "Read(//d/AI-child-picture/$APPDATA/find-my-kid-offline/**)",
       "Read(//c/Users/emily/AppData/Roaming/find-my-kid-offline/**)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(npx tsup:*)"
     ]
   }
 }

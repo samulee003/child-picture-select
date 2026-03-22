@@ -1,5 +1,21 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.22 – 掃描歷史紀錄功能（2026-03-22）
+
+**新功能：掃描歷史**
+
+- **新增 `ScanHistoryModal` 元件**：點擊底部「📋 歷史」按鈕即可查看過去所有掃描記錄
+  - 顯示掃描日期、資料夾路徑、門檻值、參考照數量、命中張數、花費時間
+  - 每筆記錄最多顯示 5 張命中縮圖預覽
+  - 新舊排序，最近的掃描顯示在最上方
+- **自動儲存掃描 Session**：每次掃描完成後自動呼叫 `growth:save-session` IPC，將本次掃描摘要（含 top-5 縮圖）儲存至本機成長紀錄，不影響掃描效能（fire-and-forget）
+
+**修復**
+
+- **修正 `AIAnalysisPanel` 維度顯示錯誤**：「正在提取 1024 維臉部特徵向量」改為正確的「512 維」（ArcFace w600k_mbf 輸出 512-dim）
+
+---
+
 ### v0.2.21 – PhotoEnhancer Bug 修復 + 43 個新測試（2026-03-22）
 
 **修復 `src/core/photoEnhancer.ts` 的 NaN Bug**
