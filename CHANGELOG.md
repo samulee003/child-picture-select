@@ -1,5 +1,20 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.24 – 全面審計修復：align.ts 座標邏輯 + 文件正確性（2026-03-23）
+
+**程式碼正確性修復**
+
+- **`src/core/align.ts`（KPS 裁切路徑 bug）**：超大圖（>4MP）裁切路徑中，bounding box 計算和 KPS 偏移原本使用未經 orientation 轉換的原始 `kps`，改為正確使用 `adjustedKps`（已套用 `transformKpsForOrientation`）。現有測試不受影響（`exifOrientation` 恆為 1，`adjustedKps === kps`），但修正了若將來啟用非 1 orientation 時的潛在錯誤對齊問題。
+- **`src/core/align.ts`（誤導性注釋）**：移除「禁用了自動旋轉」的錯誤注釋（pipeline 實際上啟用了 `.rotate()`），改為正確說明：SCRFD 和 detector 均使用 Sharp `.rotate()` 自動旋轉，KPS 已在視覺空間，因此 `exifOrientation=1` 是設計上的明確選擇，而非偶然。
+
+**文件更新（CLAUDE.md）**
+
+- 更新 `align.ts` 模組描述：說明實作為純 JS 逆向雙線性插值（非 Sharp `.affine()`），以及 `exifOrientation=1` 的設計意圖
+- 新增 Common Pitfall #21：群組照片只儲存一個臉部 embedding 的架構限制（最高信心度臉，非目標小孩時會漏掉）
+- 新增 Common Pitfall #22：`transformKpsForOrientation()` 為防禦性代碼，當前 pipeline 恆傳入 `exifOrientation=1`
+
+---
+
 ### v0.2.23 – 修復人臉辨識三個致命 bug（2026-03-22）
 
 **核心修復（006.jpg 排名從 #38 → #1）**

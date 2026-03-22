@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.23
+- **Version**: 0.2.24
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
@@ -427,11 +427,12 @@ logger.error('Face detection failed', error);
 - Default `maxSize=2048` — pre-shrinks image before 640×640 SCRFD input; returned coordinates are in `effectiveW×effectiveH` space (post-rotation, post-maxSize)
 
 ### `src/core/align.ts`
-- `alignFace(imageBuffer, imageWidth, imageHeight, kps, outputSize?)` — Umeyama → 112×112 aligned raw RGB buffer
-- `umeyama2D(src, dst)` — Analytic 2×2 SVD similarity transform
+- `alignFace(imageBuffer, imageWidth, imageHeight, kps, outputSize?, exifOrientation?)` — Umeyama → 112×112 aligned raw RGB buffer
+- `umeyama2D(src, dst)` — Least-squares 2×3 affine similarity transform (6-parameter)
 - `ARCFACE_DST_5PT` — Standard ArcFace 112×112 template coordinates
-- Uses Sharp `.affine()` with inverse mapping for efficient bicubic warp; computes libvips auto-shift by forward-transforming input corners, then uses `.extract(shiftX, shiftY, 112, 112)` to retrieve correct face region (NOT `.resize()` which squishes the auto-sized canvas)
-- Auto-crops face region when input exceeds 4MP to avoid Sharp pixel limit
+- Uses **pure-JS inverse bilinear warp** (NOT Sharp `.affine()`): for each 112×112 output pixel, compute source position via inverse Umeyama matrix, then bilinear interpolate. This guarantees exactly 112×112 output regardless of face scale.
+- Auto-crops face region (KPS bbox + 50% padding) when input exceeds 4MP to avoid Sharp affine pixel limit
+- `exifOrientation` is always passed as `1` by `detector.ts` (EXIF rotation already applied via Sharp `.rotate()`); `transformKpsForOrientation()` is defensive code for future use
 
 ### `src/core/arcface.ts`
 - `loadArcFace()` — Load `w600k_mbf.onnx` via onnxruntime-node
@@ -591,6 +592,10 @@ npm test
 19. **EXIF rotation must be applied before SCRFD** — SCRFD was trained on upright faces. Phone portrait photos (EXIF orientation 6/8) have sideways pixels in the raw file. Always use Sharp `.rotate()` (no arguments = auto-rotate by EXIF) before feeding to SCRFD. Do NOT use `.withMetadata({ orientation: undefined })` for the SCRFD input — that disables auto-rotation and SCRFD will fail to detect faces in rotated photos.
 
 20. **Multi-ref matching: use `centroid` not `best`** — With N reference photos, the `best` (max) strategy gives every scan face N chances to match, inflating scores for all faces uniformly (~60–80%). Use `computeCentroid(refEmbeddings)` to average all refs into one prototype vector first, then do a single cosine similarity. This produces a ~19% score gap between the matching child and others.
+
+21. **Group photos: only one face embedding stored per photo** — `fileToEmbeddingWithSource` stores only the highest-confidence face detected by SCRFD (`faces.reduce(best confidence)`). For group photos in the scan folder, if the target child is not the most prominent face (e.g. they're smaller or partly occluded), their face embedding is never stored and the photo will never match. The SQLite schema enforces `UNIQUE(photoPath)`, so only one face per path can be cached. Future fix: store embeddings for all detected faces and match against any of them.
+
+22. **`align.ts` orientation transform is defensive code, always receives `exifOrientation=1`** — `detector.ts` applies Sharp `.rotate()` before reading the raw buffer, so KPS from SCRFD are already in visual (post-rotation) coordinate space and `exifOrientation=1` is hardcoded before calling `alignFace()`. The `transformKpsForOrientation()` function supports orientations 2–8 for future use but is never triggered by current code. Do NOT remove it or change the hardcoded `exifOrientation=1` without updating the full pipeline EXIF handling.
 
 ---
 

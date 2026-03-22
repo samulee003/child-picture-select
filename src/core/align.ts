@@ -238,8 +238,14 @@ const AFFINE_MAX_PIXELS = 4_000_000; // ~4MP，保守值
 
 /**
  * 根據 EXIF orientation 調整 KPS 座標
- * 由於我們在整個 pipeline 中禁用了自動旋轉，KPS 座標對應的是原始像素空間
- * 但 raw buffer 也是原始像素空間，所以這裡需要根據 orientation 做座標轉換
+ *
+ * 注意：整個 pipeline（scrfd.ts + detector.ts）均啟用了 Sharp `.rotate()`
+ * 自動旋轉，所以 SCRFD 輸出的 KPS 座標已在視覺空間（post-rotation），
+ * detector.ts 也以相同 `.rotate()` 讀取 raw buffer。
+ * 因此 detector.ts 傳入此函數的 exifOrientation 恆為 1（無需轉換）。
+ *
+ * 此函數保留完整 orientation 2–8 的轉換邏輯，以備將來 pipeline 需要
+ * 在原始像素空間（未旋轉）處理時使用。若 exifOrientation=1，直接回傳原始 KPS。
  *
  * EXIF orientation 定義：
  * 1: 正常 (0°)
@@ -306,11 +312,12 @@ export async function alignFace(
 
   if (totalPixels > AFFINE_MAX_PIXELS) {
     // 計算所有關鍵點的 bounding box，加 padding 後裁切
+    // 使用 adjustedKps（已根據 exifOrientation 轉換），確保裁切區域和座標空間一致
     let minX = Infinity,
       minY = Infinity,
       maxX = -Infinity,
       maxY = -Infinity;
-    for (const [kx, ky] of kps) {
+    for (const [kx, ky] of adjustedKps) {
       if (kx < minX) minX = kx;
       if (kx > maxX) maxX = kx;
       if (ky < minY) minY = ky;
@@ -342,8 +349,8 @@ export async function alignFace(
 
         workW = cropW;
         workH = cropH;
-        // 調整關鍵點座標到裁切後的空間
-        workKps = kps.map(([kx, ky]) => [kx - cropLeft, ky - cropTop] as [number, number]);
+        // 調整關鍵點座標到裁切後的空間（基於 adjustedKps，已包含 orientation 轉換）
+        workKps = adjustedKps.map(([kx, ky]) => [kx - cropLeft, ky - cropTop] as [number, number]);
 
         logger.debug(
           `alignFace: cropped ${imageWidth}x${imageHeight} → ${cropW}x${cropH} ` +
