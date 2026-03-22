@@ -12,17 +12,28 @@ class PerformanceManager {
     batchSize: 50,
     maxConcurrency: 4,
     memoryThreshold: 1024 * 1024 * 1024, // 1GB
-    gcInterval: 30000 // 30 seconds
+    gcInterval: 30000, // 30 seconds
   };
 
   private activeTasks = 0;
   private lastGC = Date.now();
+  private gcTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     // Set up periodic garbage collection
-    setInterval(() => {
+    this.gcTimer = setInterval(() => {
       this.checkAndCleanup();
     }, this.config.gcInterval);
+  }
+
+  /**
+   * Shutdown and cleanup resources
+   */
+  shutdown(): void {
+    if (this.gcTimer) {
+      clearInterval(this.gcTimer);
+      this.gcTimer = null;
+    }
   }
 
   /**
@@ -35,31 +46,29 @@ class PerformanceManager {
   ): Promise<R[]> {
     const batchSize = options.batchSize || this.config.batchSize;
     const results: R[] = [];
-    
+
     logger.debug(`Processing ${items.length} items in batches of ${batchSize}`);
 
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
-      
+
       // Wait for available concurrency slot
       await this.waitForSlot();
-      
+
       // Process batch
-      const batchPromises = batch.map(item => 
-        this.withConcurrency(() => processor(item))
-      );
-      
+      const batchPromises = batch.map(item => this.withConcurrency(() => processor(item)));
+
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
-      
+
       // Report progress
       if (options.onProgress) {
         options.onProgress(Math.min(i + batchSize, items.length), items.length);
       }
-      
+
       // Allow event loop to process other tasks
       await this.yield();
-      
+
       // Check memory usage and cleanup if needed
       this.checkMemoryUsage();
     }
@@ -73,7 +82,7 @@ class PerformanceManager {
    */
   private async withConcurrency<T>(fn: () => Promise<T>): Promise<T> {
     this.activeTasks++;
-    
+
     try {
       return await fn();
     } finally {
@@ -113,9 +122,11 @@ class PerformanceManager {
     if (typeof process !== 'undefined' && process.memoryUsage) {
       const usage = process.memoryUsage();
       const heapUsed = usage.heapUsed;
-      
+
       if (heapUsed > this.config.memoryThreshold) {
-        logger.warn(`Memory usage high: ${Math.round(heapUsed / 1024 / 1024)}MB, triggering cleanup`);
+        logger.warn(
+          `Memory usage high: ${Math.round(heapUsed / 1024 / 1024)}MB, triggering cleanup`
+        );
         this.forceCleanup();
       }
     }
@@ -141,7 +152,7 @@ class PerformanceManager {
         global.gc();
         logger.debug('Manual garbage collection triggered');
       }
-      
+
       // Clear any caches if needed
       if (typeof process !== 'undefined') {
         // Force Node.js to clean up if possible
@@ -160,8 +171,8 @@ class PerformanceManager {
     return {
       activeTasks: this.activeTasks,
       maxConcurrency: this.config.maxConcurrency,
-      memoryUsage: typeof process !== 'undefined' && process.memoryUsage ? 
-        process.memoryUsage() : null
+      memoryUsage:
+        typeof process !== 'undefined' && process.memoryUsage ? process.memoryUsage() : null,
     };
   }
 

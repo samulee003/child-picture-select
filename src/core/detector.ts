@@ -18,7 +18,12 @@ import { AppError } from '../utils/error-handler';
 import sharp from 'sharp';
 import { detectFacesSCRFD, loadSCRFD, getSCRFDStatus, resetSCRFD } from './scrfd';
 import { alignFace } from './align';
-import { extractArcFaceEmbeddingFromAligned, loadArcFace, getArcFaceStatus } from './arcface';
+import {
+  extractArcFaceEmbeddingFromAligned,
+  loadArcFace,
+  getArcFaceStatus,
+  resetArcFace,
+} from './arcface';
 
 export interface FaceDetection {
   bbox: [number, number, number, number]; // x, y, width, height
@@ -76,6 +81,7 @@ export async function preloadModel(): Promise<void> {
       modelLoadAttempted = false;
       modelLoadError = null;
       resetSCRFD();
+      resetArcFace();
     }
     modelLoadAttempted = true;
 
@@ -142,12 +148,16 @@ export async function detectFaces(
 
     const confThreshold = options.overrideDetectorMinConfidence ?? options.minConfidence ?? 0.3;
 
+    // SCRFD 預設 maxSize=2048；detector 的 raw buffer 必須使用相同的值
+    // 否則 SCRFD 的 keypoints 座標空間和 raw buffer 尺寸不匹配，alignment 完全錯誤
+    const effectiveMaxSize = options.maxSize ?? 2048;
+
     // 1. SCRFD 偵測 → SCRFDFace[]（含 bbox [x1,y1,x2,y2] 和 5 kps）
     const scrfdFaces = await withTimeout(
       detectFacesSCRFD(imagePath, {
         minConfidence: confThreshold,
         cropTopFraction: options.cropTopFraction,
-        maxSize: options.maxSize,
+        maxSize: effectiveMaxSize,
       }),
       FACE_DETECTION_TIMEOUT_MS,
       'FACE_DETECTION_TIMEOUT',
@@ -164,28 +174,30 @@ export async function detectFaces(
     );
 
     // 2. 讀取圖片為 raw RGB buffer（alignment 和 ArcFace 共用）
-    // 使用 withMetadata({ orientation: undefined }) 禁用自動旋轉，保持與 SCRFD 一致的原始像素空間
-    let sharpInstance = sharp(imagePath).withMetadata({ orientation: undefined });
+    // 使用 .rotate() 自動根據 EXIF 旋轉，與 SCRFD 保持一致（都在視覺空間）
+    let sharpInstance = sharp(imagePath).rotate();
 
-    // 讀取 EXIF orientation，後續需要傳遞給 alignFace
+    // 讀取 EXIF orientation，計算旋轉後的有效尺寸
     const meta = await sharp(imagePath).metadata();
-    const exifOrientation = meta.orientation || 1;
+    const rawOrientation = meta.orientation || 1;
+    const needsSwap = rawOrientation >= 5 && rawOrientation <= 8;
+    // 旋轉後 orientation 已變為 1，座標空間已統一
+    const exifOrientation = 1;
 
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
-      const imgW = meta.width || 1000;
-      const imgH = meta.height || 1000;
+      const imgW = needsSwap ? (meta.height || 1000) : (meta.width || 1000);
+      const imgH = needsSwap ? (meta.width || 1000) : (meta.height || 1000);
       const cropH = Math.round(imgH * options.cropTopFraction);
       sharpInstance = sharp(imagePath)
-        .withMetadata({ orientation: undefined })
+        .rotate()
         .extract({ left: 0, top: 0, width: imgW, height: cropH });
     }
 
-    if (options.maxSize) {
-      sharpInstance = sharpInstance.resize(options.maxSize, options.maxSize, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      });
-    }
+    // 使用與 SCRFD 相同的 maxSize，確保座標空間一致
+    sharpInstance = sharpInstance.resize(effectiveMaxSize, effectiveMaxSize, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
 
     const imgRaw = await withTimeout<{ data: Buffer; info: { width: number; height: number } }>(
       sharpInstance.removeAlpha().raw().toBuffer({ resolveWithObject: true }),
@@ -207,14 +219,36 @@ export async function detectFaces(
     // detections (e.g. on screenshots, solid-color images, or low-quality scans)
     // it is a sign of false positives — capping prevents runaway ArcFace iterations.
     const MAX_FACES_PER_IMAGE = 20;
-    const candidateFaces = scrfdFaces
+    let filtered = scrfdFaces
       .filter(f => f.score >= postMinConf)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, MAX_FACES_PER_IMAGE);
+      .sort((a, b) => b.score - a.score);
+
+    // ── Adaptive confidence filtering ────────────────────────────────────
+    // Problem: SCRFD with low minConfidence produces hundreds of false-positive
+    // "faces" with scores clustered at ~0.50-0.52 (barely above sigmoid(0)=0.5).
+    // Real faces typically score ≥0.6. When we naively take top-20 from 100+
+    // candidates, the false positives enter ArcFace and produce random embeddings
+    // that can match reference photos at 60-80% by chance — destroying accuracy.
+    //
+    // Solution: Apply a minimum effective threshold of 0.55. For photos where all
+    // detections cluster near 0.50 (no real faces above 0.55), allow the original
+    // low threshold so retry logic (crop/zoom attempts) can still find weak faces.
+    const ADAPTIVE_MIN_CONF = 0.55;
+    if (filtered.length > 0 && filtered[0].score >= ADAPTIVE_MIN_CONF) {
+      const beforeCount = filtered.length;
+      filtered = filtered.filter(f => f.score >= ADAPTIVE_MIN_CONF);
+      if (filtered.length < beforeCount) {
+        logger.debug(
+          `detectFaces: adaptive filter removed ${beforeCount - filtered.length} low-confidence candidates (kept ${filtered.length} with score≥${ADAPTIVE_MIN_CONF})`
+        );
+      }
+    }
+
+    const candidateFaces = filtered.slice(0, MAX_FACES_PER_IMAGE);
 
     if (scrfdFaces.length > MAX_FACES_PER_IMAGE) {
       logger.debug(
-        `detectFaces: capped ${scrfdFaces.filter(f => f.score >= postMinConf).length} SCRFD candidates → top ${MAX_FACES_PER_IMAGE} by confidence for ArcFace`
+        `detectFaces: capped ${filtered.length} SCRFD candidates → top ${MAX_FACES_PER_IMAGE} by confidence for ArcFace`
       );
     }
 

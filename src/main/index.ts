@@ -60,6 +60,15 @@ function installBrokenPipeGuards() {
   if (process.stderr) guardStream(process.stderr);
 }
 
+// Global exception handlers to prevent crashes
+process.on('uncaughtException', err => {
+  logger.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', reason => {
+  logger.error('Unhandled rejection:', reason);
+});
+
 let mainWindow: BrowserWindow | null = null;
 const referenceEmbeddings: Embedding[] = [];
 // Tracks whether each reference embedding came from face detection or deterministic fallback
@@ -345,7 +354,9 @@ function wireIpc() {
     try {
       const { getActiveProvider } = require('../core/onnx-gpu');
       onnxProvider = getActiveProvider();
-    } catch { /* not yet loaded */ }
+    } catch {
+      /* not yet loaded */
+    }
     return { ...status, onnxProvider };
   });
 
@@ -363,7 +374,9 @@ function wireIpc() {
     const logFilePath = pathJoin(logsDir, `app-${today}.log`);
 
     // InsightFace 模型檔案檢查（SCRFD + ArcFace ONNX）
-    const modelsDir = pathJoin(process.cwd(), 'models', 'insightface');
+    const modelsDir = isDev
+      ? pathJoin(process.cwd(), 'models', 'insightface')
+      : pathJoin((process as any).resourcesPath || app.getAppPath(), 'models', 'insightface');
     let modelFiles: string[] = [];
     try {
       modelFiles = readdirSync(modelsDir);
@@ -374,12 +387,15 @@ function wireIpc() {
     const recognitionModelExists = modelFiles.includes('w600k_mbf.onnx');
     const facedetectExists = modelFiles.includes('det_500m.onnx');
 
-    // onnxruntime-node 檢查
-    const ortDir = pathJoin(process.cwd(), 'node_modules', 'onnxruntime-node');
-    const wasmExists = fsExistsSync(ortDir);
-
     // 檢查打包後的資源路徑
     const resourcesPath = (process as any).resourcesPath;
+
+    // onnxruntime-node 檢查
+    const ortDir = isDev
+      ? pathJoin(process.cwd(), 'node_modules', 'onnxruntime-node')
+      : pathJoin(resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'onnxruntime-node');
+    const wasmExists = fsExistsSync(ortDir);
+
     let unpackedOrtExists = false;
     let resourcesModelsExists = false;
     if (resourcesPath) {
@@ -394,7 +410,9 @@ function wireIpc() {
     try {
       const { getActiveProvider } = require('../core/onnx-gpu');
       onnxProvider = getActiveProvider();
-    } catch { /* not yet loaded */ }
+    } catch {
+      /* not yet loaded */
+    }
 
     return {
       ok: true,
@@ -525,14 +543,19 @@ function wireIpc() {
 
   ipcMain.handle('ping', async () => 'pong');
 
-  ipcMain.handle('scan:folder', async (_e, dir: string) => ({ ok: true, dir }));
+  ipcMain.handle('scan:folder', async (_e, dir: string) => ({ ok: true, data: { dir } }));
 
   ipcMain.handle('dialog:open-files', async () => {
     if (!mainWindow) return null;
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: '選擇參考照片',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'] }],
+      filters: [
+        {
+          name: 'Images',
+          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'],
+        },
+      ],
     });
     if (canceled) return null;
     return filePaths;
@@ -635,7 +658,11 @@ function wireIpc() {
 
         referenceEmbeddings.length = 0;
 
-        if (!modelStatus.loaded || modelStatus.error || detectionErrorFallbackCount === files.length) {
+        if (
+          !modelStatus.loaded ||
+          modelStatus.error ||
+          detectionErrorFallbackCount === files.length
+        ) {
           // 模型本身有問題
           logger.error(`❌ Blocking scan because model engine is not healthy.`);
           let errorMsg = 'AI 模型目前不可用，無法正確辨識人臉。';
@@ -651,7 +678,9 @@ function wireIpc() {
         } else {
           // 模型正常但所有照片均無法偵測到人臉
           // SHA256 deterministic embedding 無法代表臉部特徵，繼續掃描只會得到垃圾結果
-          logger.error(`❌ Blocking scan: model is healthy but no faces detected in any reference photo.`);
+          logger.error(
+            `❌ Blocking scan: model is healthy but no faces detected in any reference photo.`
+          );
           return {
             ok: false,
             error:
@@ -1570,6 +1599,11 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   // 必須用 try-catch：如果這裡丟出異常，後續的 event listener（包括
   // electron-updater 的 autoInstallOnAppQuit）都不會執行，導致更新永遠不會安裝。
+  try {
+    performanceManager.shutdown();
+  } catch (err) {
+    logger.error('[before-quit] performanceManager.shutdown failed:', err);
+  }
   try {
     wakePausedScan(currentScanSessionId);
   } catch (err) {

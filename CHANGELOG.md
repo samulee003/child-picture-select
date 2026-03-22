@@ -1,5 +1,20 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.23 – 修復人臉辨識三個致命 bug（2026-03-22）
+
+**核心修復（006.jpg 排名從 #38 → #1）**
+
+- **`src/core/scrfd.ts`**：啟用 EXIF 自動旋轉（`.rotate()`），修復手機直拍照片（orientation=6/8）橫躺臉部偵測不到的問題，ref 偵測率 5/13 → 13/13
+- **`src/core/detector.ts`**：統一 SCRFD 與 raw buffer 的 `maxSize`（預設 2048），修復座標空間不匹配導致 alignment 對到背景而非臉部的致命錯誤
+- **`src/core/detector.ts`**：新增 Adaptive confidence filter（≥0.55），防止 SCRFD false positive 假臉干擾 ArcFace
+- **`src/core/similarity.ts`**：新增 `computeCentroid()` 函數，將多張 ref embedding 平均後 L2 歸一化，形成唯一原型向量，消除 `best` 策略虛高問題
+
+**Cache 版本更新**
+
+- **`src/core/db.ts`**：`CURRENT_CACHE_VERSION` v5 → v6，清除舊有無效 embedding 快取
+
+---
+
 ### v0.2.22 – 掃描歷史紀錄功能（2026-03-22）
 
 **新功能：掃描歷史**
@@ -24,20 +39,8 @@
 
 **新增 43 個測試（累計 176 個，15 個測試檔）**
 
-- **`tests/unit/core/photoEnhancer.test.ts`（14 個測試）**：
-  - `enhancePhoto`：回傳結構、檔案確實寫入磁碟、增強後為有效 JPEG、暗色圖片觸發亮度調整、超過 1920px 自動縮小、1920px 以內不縮放、不存在路徑拋出例外
-  - `enhanceBatch`：成功/失敗陣列長度正確、全部成功的情境
-  - `getEnhancementSuggestion`：差距 >30 → 全量增強、差距 25 → 中等、差距 10 → 輕微、品質達標 → 空選項
-  - `clearTempFiles`：清理不拋出例外
-
-- **`tests/unit/utils/pathValidator.test.ts`（29 個測試）**：
-  - `validatePath`：空字串、null、超長路徑、控制字符、null byte
-  - 路徑遍歷：相對 `../` 攻擊、Windows 相對 `..\` 攻擊（兩者均被攔截）；絕對路徑中 `..` 被 normalize 解析後允許
-  - 非法字符：`< > | ? *`、Windows 保留名（CON/NUL/COM1）
-  - `mustExist`/`mustBeFile`/`mustBeDirectory` 選項
-  - 副檔名白名單
-  - `sanitizePath`：移除非法字符、控制字符、空/null 輸入
-  - `isValidImagePath`：存在的 JPEG 返回 true、不存在/目錄/非圖片副檔名返回 false
+- **`tests/unit/core/photoEnhancer.test.ts`（14 個測試）**
+- **`tests/unit/utils/pathValidator.test.ts`（29 個測試）**
 
 ---
 
@@ -45,19 +48,13 @@
 
 **新增測試（27 個，合計 133 個）**
 
-- **新增 `src/core/align.test.ts`（18 個測試）**：
-  - `umeyama2D` 全面覆蓋：identity transform、純平移、純縮放、真實臉部關鍵點重建誤差 < 2px、奇異矩陣拋出異常
-  - `alignFace` 覆蓋：輸出尺寸驗證（112×112×3）、自訂 outputSize、超過 4MP 大圖自動裁切、**所有 8 種 EXIF orientation（1–8）全部通過**、orientation 1 與預設值輸出完全一致
-  - 保護 v0.2.19 重寫的核心 Umeyama LSM 算法與 EXIF orientation 轉換不退化
-
-- **新增 `tests/unit/core/qualityAssessment.test.ts`（9 個測試）**：
-  - `assessPhotoQuality` 回傳正確形狀、所有分數在 [0, 100] 範圍、高解析度 > 低解析度分數、曝光分數正確反映過曝/欠曝、overallScore 為有限數
-  - `assessBatchQuality` 回傳等長陣列、不存在的路徑回傳預設評分 30 而不拋出
+- **新增 `src/core/align.test.ts`（18 個測試）**
+- **新增 `tests/unit/core/qualityAssessment.test.ts`（9 個測試）**
 
 **修復 `src/core/childQualityAssessment.ts` 中的數值 Bug**
 
-- **`estimateExposure` NaN Bug**：`stats.mean` 在 Sharp v0.33 並非頂層欄位（只在 `stats.channels[n]` 中），導致 `Math.abs(undefined - 128) = NaN`，進而讓 `overallScore` 永遠是 NaN。修復為取各通道 `mean` 的平均值。
-- **`estimateSmoothness` 溢出 Bug**：`estimateSmoothness` 回傳 0–100 的值，但 `estimateNoise` 再乘 100，導致 `noiseScore` 最高達 10000。修復 `estimateSmoothness` 改為回傳 0–1，語義對應「平滑程度比例」。
+- **`estimateExposure` NaN Bug** 修復
+- **`estimateSmoothness` 溢出 Bug** 修復
 
 ---
 

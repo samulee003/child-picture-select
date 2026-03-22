@@ -66,7 +66,26 @@ export function euclideanDistance(a: number[], b: number[]): number {
  * - average: 取所有參考照的平均分
  * - weighted: 人臉偵測到的參考照給予 2 倍權重，未偵測到的給 1 倍
  */
-export type MultiRefStrategy = 'best' | 'average' | 'weighted';
+export type MultiRefStrategy = 'best' | 'average' | 'weighted' | 'centroid';
+
+/**
+ * 從多張參考照的 embedding 計算原型向量（centroid）
+ * 將所有 embedding 逐元素平均後 L2 歸一化，產生更穩定的特徵表示
+ */
+export function computeCentroid(embeddings: number[][]): number[] {
+  if (embeddings.length === 0) return [];
+  if (embeddings.length === 1) return embeddings[0];
+
+  const dim = embeddings[0].length;
+  const sum = new Array(dim).fill(0);
+  for (const emb of embeddings) {
+    for (let i = 0; i < dim; i++) {
+      sum[i] += emb[i];
+    }
+  }
+  // 平均後 L2 歸一化
+  return normalizeVector(sum.map(v => v / embeddings.length));
+}
 
 /**
  * 計算目標向量對一組參考向量的融合相似度
@@ -104,6 +123,14 @@ export function multiReferenceSimilarity(
         totalWeight += w;
       }
       return totalWeight > 0 ? weightedSum / totalWeight : 0;
+    }
+    case 'centroid': {
+      // 先算 centroid，再比對 — 比逐個比較更穩定
+      const faceEmbs = references.filter(r => r.isFace).map(r => r.embedding);
+      const centroid = faceEmbs.length > 0
+        ? computeCentroid(faceEmbs)
+        : computeCentroid(references.map(r => r.embedding));
+      return cosineSimilarity(target, centroid);
     }
     default:
       return Math.max(...scores);

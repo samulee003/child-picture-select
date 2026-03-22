@@ -146,6 +146,15 @@ export function getArcFaceStatus(): { loaded: boolean; error: string | null } {
 }
 
 /**
+ * 允許重新載入（用於 preloadModel retry）
+ */
+export function resetArcFace(): void {
+  session = null;
+  sessionLoadAttempted = false;
+  sessionLoadError = null;
+}
+
+/**
  * 從已縮放圖片 Buffer 的臉部 bbox 區域提取 ArcFace 512 維特徵向量
  *
  * @param imageBuffer  - Sharp 已縮放的 PNG buffer（偵測時的圖片）
