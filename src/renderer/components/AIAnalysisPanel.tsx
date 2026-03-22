@@ -244,7 +244,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
               marginTop: '1px',
             }}
           >
-            正在提取 1024 維臉部特徵向量
+            正在提取 512 維臉部特徵向量
           </div>
         </div>
         <div

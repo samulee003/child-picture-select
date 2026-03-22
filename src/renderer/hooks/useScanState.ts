@@ -460,6 +460,22 @@ export function useScanState(): ScanState {
       setLastRunSummary({ scanned: scannedCount, matched: matched.length, elapsedMs });
       setResults(matched);
 
+      // Fire-and-forget: persist scan session for history view
+      const refFileList = refPaths
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      window.api?.saveScanSession?.({
+        id: crypto.randomUUID(),
+        folderPath: folder,
+        referencePaths: refFileList,
+        threshold,
+        topN,
+        results: matched.slice(0, 5), // keep top-5 thumbnails for history preview
+        createdAt: new Date().toISOString(),
+        duration: elapsedMs,
+      }).catch(() => {}); // non-critical
+
       setStatus('done');
       if (matched.length === 0) {
         const faceDetected = scanData?.faceDetected ?? 0;

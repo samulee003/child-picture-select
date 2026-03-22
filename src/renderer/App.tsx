@@ -21,6 +21,7 @@ import { RefPhotoFeedback } from './components/RefPhotoFeedback';
 import { FaceAnalysisPreview } from './components/FaceAnalysisPreview';
 import { SwipeReview } from './components/SwipeReview';
 import { PrivacySettingsPanel } from './components/PrivacySettingsPanel';
+import { ScanHistoryModal } from './components/ScanHistoryModal';
 import { useKeyboardShortcuts, commonShortcuts } from './hooks/useKeyboardShortcuts';
 import { useScanState } from './hooks/useScanState';
 import { useReviewState } from './hooks/useReviewState';
@@ -33,6 +34,7 @@ export function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isSwipeReview, setIsSwipeReview] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [reminderBanner, setReminderBanner] = useState<string | null>(null);
   const [updateCheckLabel, setUpdateCheckLabel] = useState('檢查更新');
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -1049,6 +1051,20 @@ export function App() {
               {updateCheckLabel}
             </button>
             <button
+              onClick={() => setIsHistoryOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#6366f1',
+                cursor: 'pointer',
+                fontSize: theme.typography.fontSize.xs,
+                fontWeight: 600,
+              }}
+              title="查看掃描歷史紀錄"
+            >
+              📋 歷史
+            </button>
+            <button
               onClick={() => setIsPrivacyOpen(true)}
               style={{
                 background: 'none',
@@ -1304,6 +1320,8 @@ export function App() {
       )}
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} appInfo={scan.appInfo} />
+
+      {isHistoryOpen && <ScanHistoryModal onClose={() => setIsHistoryOpen(false)} />}
 
       {isPrivacyOpen && (
         <PrivacySettingsPanel
