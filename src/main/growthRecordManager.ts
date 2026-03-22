@@ -244,8 +244,8 @@ export class GrowthRecordManager {
         const newReminder: Reminder = {
           id: randomUUID(),
           type: 'coverage_gap',
-          title: '间隔提醒',
-          message: `距离上次记录已 ${daysSinceLastScan} 天，孩子又长大了！`,
+          title: '間隔提醒',
+          message: `距離上次記錄已 ${daysSinceLastScan} 天，孩子又長大了！`,
           recommendedAction: '建議多拍幾張日常照片來記錄成長',
           priority: daysSinceLastScan > 60 ? 'high' : 'medium',
           isRead: false,

@@ -5,15 +5,12 @@ import type {
   ScanSession,
   FamilyMember,
   SharedAlbum,
+  ScanProgress,
+  UpdateStatus,
 } from '../types/api';
 
-type ScanProgressCallback = (progress: { current: number; total: number; path: string }) => void;
-type UpdateStatusCallback = (status: {
-  status: string;
-  version?: string;
-  percent?: number;
-  error?: string;
-}) => void;
+type ScanProgressCallback = (progress: ScanProgress) => void;
+type UpdateStatusCallback = (status: UpdateStatus) => void;
 
 const scanProgressCallbacks = new Set<ScanProgressCallback>();
 const updateStatusCallbacks = new Set<UpdateStatusCallback>();
@@ -49,8 +46,11 @@ contextBridge.exposeInMainWorld('api', {
   scanFolder: (dir: string) => ipcRenderer.invoke('scan:folder', dir),
   embedReferences: (files: string[]) => ipcRenderer.invoke('embed:references', files),
   runScan: (dir: string) => ipcRenderer.invoke('embed:batch', dir),
-  runMatch: (opts: { topN: number; threshold: number; strategy?: 'best' | 'average' | 'weighted' }) =>
-    ipcRenderer.invoke('match:run', opts),
+  runMatch: (opts: {
+    topN: number;
+    threshold: number;
+    strategy?: 'best' | 'average' | 'weighted';
+  }) => ipcRenderer.invoke('match:run', opts),
   exportCopy: (files: string[], outDir: string) =>
     ipcRenderer.invoke('export:copy', { files, outDir }),
   openFolder: (folderPath: string) => ipcRenderer.invoke('folder:open', folderPath),

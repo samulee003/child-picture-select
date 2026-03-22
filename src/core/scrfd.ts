@@ -183,6 +183,78 @@ function computeIoU(
 }
 
 /**
+ * Validate that SCRFD keypoints form a plausible face geometry.
+ * Filters fabric/stripe false positives where "eyes/nose/mouth" are random
+ * texture blobs that don't satisfy the vertical eye→nose→mouth hierarchy.
+ *
+ * All geometry rules are applied in VISUAL space (after EXIF rotation).
+ *
+ * @param face       SCRFD detection (kps and bbox in raw pixel space)
+ * @param effectiveW Raw image width (after maxSize resize, before EXIF rotation)
+ * @param effectiveH Raw image height
+ */
+function isValidFaceGeometry(face: SCRFDFace, effectiveW: number, effectiveH: number): boolean {
+  const { bbox, kps, orientation = 1 } = face;
+  if (kps.length < 5) return false;
+
+  // ── 1. Bbox aspect ratio in VISUAL space ───────────────────────────────────
+  // For orientations 5-8 (90°/270° rotations), W and H are swapped.
+  const needsSwap = orientation >= 5 && orientation <= 8;
+  const visualBboxW = needsSwap ? bbox[3] - bbox[1] : bbox[2] - bbox[0];
+  const visualBboxH = needsSwap ? bbox[2] - bbox[0] : bbox[3] - bbox[1];
+  if (visualBboxW <= 0 || visualBboxH <= 0) return false;
+  const ar = visualBboxW / visualBboxH;
+  if (ar < 0.3 || ar > 3.0) return false;
+
+  // ── 2. Transform KPS to visual space ──────────────────────────────────────
+  const visualKps: [number, number][] = kps.map(([x, y]): [number, number] => {
+    switch (orientation) {
+      case 2:
+        return [effectiveW - 1 - x, y];
+      case 3:
+        return [effectiveW - 1 - x, effectiveH - 1 - y];
+      case 4:
+        return [x, effectiveH - 1 - y];
+      case 5:
+        return [y, x];
+      case 6:
+        return [y, effectiveW - 1 - x];
+      case 7:
+        return [effectiveH - 1 - y, effectiveW - 1 - x];
+      case 8:
+        return [effectiveH - 1 - y, x];
+      default:
+        return [x, y];
+    }
+  });
+
+  // KPS order: [leftEye, rightEye, nose, leftMouth, rightMouth]
+  const [lEye, rEye, nose, lMouth, rMouth] = visualKps;
+
+  // ── 3. Eyes should be at similar height (Y diff < 80% of eye separation) ──
+  const eyeDx = rEye[0] - lEye[0];
+  const eyeDy = rEye[1] - lEye[1];
+  const eyeDist = Math.sqrt(eyeDx * eyeDx + eyeDy * eyeDy) + 1e-6;
+  const eyeHeightDiff = Math.abs(lEye[1] - rEye[1]);
+  if (eyeHeightDiff > eyeDist * 0.8) return false;
+
+  // ── 4. Nose should be at or below eye level (generous ±30% eyeDist) ────────
+  const avgEyeY = (lEye[1] + rEye[1]) / 2;
+  if (nose[1] < avgEyeY - eyeDist * 0.3) return false;
+
+  // ── 5. Mouth should be at or below nose (generous ±30% eyeDist) ──────────
+  const avgMouthY = (lMouth[1] + rMouth[1]) / 2;
+  if (avgMouthY < nose[1] - eyeDist * 0.3) return false;
+
+  // ── 6. Vertical structure: eye→mouth span ≥ 20% of eye distance ──────────
+  // Catches cases where all points are on the same horizontal stripe
+  const faceHeight = avgMouthY - avgEyeY;
+  if (faceHeight < eyeDist * 0.2) return false;
+
+  return true;
+}
+
+/**
  * NMS（Non-Maximum Suppression）
  */
 function nms(faces: SCRFDFace[], iouThreshold: number): SCRFDFace[] {
@@ -244,26 +316,24 @@ export async function detectFacesSCRFD(
     const orientation = meta.orientation || 1;
     logger.debug(`Original image size: ${originalW}x${originalH}, orientation: ${orientation}`);
 
-    // 根據 EXIF orientation 計算實際處理時的寬高
-    // 策略：禁用自動旋轉，讓整個 pipeline 使用原始像素空間
-    // 這樣 KPS 座標和 raw buffer 始終在同一座標空間
+    // 策略變更：啟用 EXIF 自動旋轉，讓 SCRFD 始終看到直立的人臉
+    // 之前禁用旋轉導致手機直拍照片（orientation=6/8）的臉部橫躺，SCRFD 偵測不到
     const needsSwap = orientation >= 5 && orientation <= 8; // 5-8 表示 90/270 度旋轉
+
+    // 2. 建立處理鏈（啟用 EXIF 自動旋轉）
+    let sharpInstance = sharp(imagePath).rotate(); // .rotate() 無參數 = 自動根據 EXIF 旋轉
+
+    // 旋轉後的有效尺寸：orientation 5-8 需要交換寬高
+    let effectiveW = needsSwap ? originalH : originalW;
+    let effectiveH = needsSwap ? originalW : originalH;
     if (needsSwap) {
       logger.debug(
-        `EXIF orientation=${orientation}: will keep original pixel space, KPS will be adjusted in alignFace if needed`
+        `EXIF orientation=${orientation}: auto-rotated, effective size ${effectiveW}x${effectiveH}`
       );
     }
-
-    // 2. 建立處理鏈（禁用自動旋轉，保持原始像素空間）
-    let sharpInstance = sharp(imagePath).withMetadata({ orientation: undefined });
-
-    // 3. 如果需要裁切上方區域（全身照）
-    // 使用 originalW/H（原始像素空間）
-    let effectiveW = originalW;
-    let effectiveH = originalH;
     if (options.cropTopFraction && options.cropTopFraction > 0 && options.cropTopFraction < 1) {
-      const cropH = Math.round(originalH * options.cropTopFraction);
-      sharpInstance = sharpInstance.extract({ left: 0, top: 0, width: originalW, height: cropH });
+      const cropH = Math.round(effectiveH * options.cropTopFraction);
+      sharpInstance = sharpInstance.extract({ left: 0, top: 0, width: effectiveW, height: cropH });
       effectiveH = cropH;
       logger.debug(
         `Cropped top ${options.cropTopFraction * 100}% (cropH=${cropH}, originalH=${originalH})`
@@ -283,8 +353,7 @@ export async function detectFacesSCRFD(
       logger.debug(`Resized to max ${maxSize}px (effective: ${effectiveW}x${effectiveH})`);
     }
 
-    // 5. 一次性處理：removeAlpha -> resize to inputSize -> raw buffer
-    // 避免中間 buffer 減少記憶體使用
+    // 5. Resize to inputSize
     const processedBuf = await sharpInstance
       .removeAlpha()
       .resize(inputSize, inputSize, { fit: 'fill' })
@@ -292,7 +361,6 @@ export async function detectFacesSCRFD(
       .toBuffer({ resolveWithObject: true });
 
     // 計算縮放比例（用於座標映射）
-    // 使用 effectiveW/effectiveH（裁切+maxSize 後的實際尺寸）而非原始尺寸
     const scaleX = effectiveW / processedBuf.info.width;
     const scaleY = effectiveH / processedBuf.info.height;
 
@@ -370,18 +438,35 @@ export async function detectFacesSCRFD(
           bbox: [x1, y1, x2, y2],
           kps,
           score,
-          orientation,
+          orientation: 1, // 已經 auto-rotated，座標在視覺空間
         });
       }
     }
 
-    // 6. NMS
-    const kept = nms(allFaces, 0.4);
+    // 6. NMS — pre-sort and cap at top-500 to avoid O(N²) on low-confidence anchors.
+    //    With minConfidence=0.01, thousands of near-zero anchors can pass the threshold,
+    //    making NMS O(N²) ≈ 64M comparisons. Keeping only the top-500 by score
+    //    reduces NMS to O(500²) = 250K without losing real detections.
+    const nmsInput =
+      allFaces.length > 500
+        ? allFaces.sort((a, b) => b.score - a.score).slice(0, 500)
+        : allFaces;
+    const kept = nms(nmsInput, 0.4);
+
+    // 7. Geometry filter — reject detections whose 5 keypoints don't form a
+    //    plausible eye→nose→mouth hierarchy.  This eliminates fabric/stripe
+    //    false positives that can outscore real child faces.
+    const geometryValid = kept.filter(f => isValidFaceGeometry(f, effectiveW, effectiveH));
+    if (geometryValid.length < kept.length) {
+      logger.debug(
+        `SCRFD geometry filter: ${kept.length} → ${geometryValid.length} faces (removed ${kept.length - geometryValid.length} false positives)`
+      );
+    }
 
     logger.debug(
-      `SCRFD: ${allFaces.length} candidates → ${kept.length} faces after NMS (conf≥${confThreshold}) for ${imagePath}`
+      `SCRFD: ${allFaces.length} candidates → ${kept.length} post-NMS → ${geometryValid.length} geometry-valid (conf≥${confThreshold}) for ${imagePath}`
     );
-    return kept;
+    return geometryValid;
   } catch (err) {
     const msg =
       err instanceof Error
