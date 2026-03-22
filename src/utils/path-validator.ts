@@ -13,9 +13,13 @@ export interface PathValidationResult {
  * 驗證路徑是否包含目錄遍歷攻擊嘗試
  */
 function containsPathTraversal(inputPath: string): boolean {
-  const normalized = normalize(inputPath);
-  // 檢查是否包含 .. 目錄遍歷
-  const parts = normalized.split(sep);
+  // Unify backslashes to forward slashes first so Windows-style "..\..\"
+  // is handled correctly on both Windows and Linux CI.
+  const unified = inputPath.replace(/\\/g, '/');
+  const normalized = normalize(unified);
+  // Split by both separator styles: normalize() uses the platform sep,
+  // which may convert '/' back to '\' on Windows.
+  const parts = normalized.split(/[/\\]/);
   return parts.some(part => part === '..');
 }
 
