@@ -21,7 +21,7 @@ vi.mock('./detector', () => ({
 // Helper: build a unit-normalized embedding biased toward a target direction
 function makeEmbedding(seed: number, dims = 512): number[] {
   const arr = new Array(dims).fill(0).map((_, i) => Math.sin(seed + i * 0.1));
-  let norm = Math.sqrt(arr.reduce((s, v) => s + v * v, 0));
+  const norm = Math.sqrt(arr.reduce((s, v) => s + v * v, 0));
   return arr.map(v => v / (norm + 1e-12));
 }
 
