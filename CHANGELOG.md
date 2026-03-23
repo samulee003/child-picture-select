@@ -1,6 +1,6 @@
 ## Changelog - Find My Kid (Offline)
 
-### v0.2.25 – Bootstrapped Centroid + 準確率測試框架（2026-03-23）
+### v0.2.26 – Hi-res SCRFD 重偵測 + Bootstrapped Centroid，F1: 40% → 85.7%（2026-03-23）
 
 **核心演算法改進**
 
@@ -29,11 +29,29 @@
   - 全部單臉、混合單臉+多臉（bootstrapped 選臉驗證）、全部多臉 fallback
   - 偵測失敗 deterministic fallback、L2 正規化驗證
 
-**目前準確率（72 張已標記照片）**
+**高解析度 SCRFD 重偵測（小臉品質大幅提升）**
 
-- F1=40% @ 門檻 0.60，Precision=100%，Recall=25%（4 positive 中找到 1 個）
-- 瓶頸：群組照（4-7 人）中目標小孩的臉太小，ArcFace embedding 品質不足（26-50%）
-- 個人照 006.jpg 正確排名 #1（76.5%）
+- **小臉 hi-res 重偵測**：群組照中的小臉（<112px）在低解析度下 SCRFD keypoints 不準，alignment 品質差
+  - 解法：從原圖全解析度裁切臉部區域 → 重新跑 SCRFD 獲得全新精確 keypoints → 高解析度 alignment + ArcFace
+  - 使用 ADAPTIVE_MIN_CONF (0.55) 過濾 hi-res 裁切上的 false-positive
+  - 自動選擇最接近原始偵測位置的臉（避免選到鄰居）
+  - Fallback：若 hi-res SCRFD 偵測失敗，退回 scaled keypoints 方案
+- `src/core/scrfd.ts`：`detectFacesSCRFD` 參數型別擴展為 `string | Buffer`，支援直接傳入 PNG buffer
+
+**UI 修正**
+
+- 多照融合方式新增「重心」選項（centroid），標示為預設且準確率最高
+- 修正 UI 顯示 '最高分' 為預設但後端實際使用 centroid 的不一致問題
+
+**準確率（72 張已標記照片）**
+
+- **F1=85.7%** @ 門檻 0.60，Precision=100%，Recall=75%（4 positive 中找到 3 個）
+- @ 門檻 0.55：F1=66.7%，Precision=50%，Recall=100%（全部 4 個 positive 找到，僅 4 個 FP）
+- 群組照分數大幅提升：
+  - `3,6,7,10,14.jpg`: 36.3% → **67.8%** (+31.5%)
+  - `6,15,18,33.jpg`: 49.9% → **66.8%** (+16.9%)
+  - `1,2,3,4,5,6,7.jpg`: 26.4% → **55.2%** (+28.8%)
+- 個人照 006.jpg 維持排名 #1（76.6%）
 
 ---
 

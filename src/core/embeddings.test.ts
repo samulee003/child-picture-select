@@ -9,11 +9,14 @@ import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 
 // Mock detector to avoid loading real models
-const mockDetectFaces = vi.fn(() => Promise.resolve([]));
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const mockDetectFaces: any = vi.fn(() => Promise.resolve([]));
 vi.mock('./detector', () => ({
-  detectFaces: (...args: unknown[]) => mockDetectFaces(...args),
+  detectFaces: (...args: any[]) => (mockDetectFaces as any)(...args),
   extractFaceEmbedding: vi.fn(() => Promise.resolve(null)),
+  preloadModel: vi.fn(() => Promise.resolve()),
 }));
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // Helper: build a unit-normalized embedding biased toward a target direction
 function makeEmbedding(seed: number, dims = 512): number[] {

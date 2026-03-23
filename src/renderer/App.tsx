@@ -828,9 +828,14 @@ export function App() {
                   {(
                     [
                       {
+                        value: 'centroid' as const,
+                        label: '重心',
+                        title: '多張參考照取平均重心再比對（預設，準確率最高）',
+                      },
+                      {
                         value: 'best' as const,
                         label: '最高分',
-                        title: '取多張中最相似的分數（預設）',
+                        title: '取多張中最相似的分數',
                       },
                       { value: 'average' as const, label: '平均分', title: '取多張的平均相似分' },
                       {
