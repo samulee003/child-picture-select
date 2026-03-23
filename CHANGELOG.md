@@ -1,5 +1,15 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.27 – 接入 ReferencePhotoQualityCard / TaskReadinessCard / ScanWarningsPanel + ModernProgress（2026-03-23）
+
+**UI 主流程改善**
+
+- **`ReferencePhotoQualityCard`**：載入參考照後自動呼叫 `assess:photo-quality`，以富卡片（縮圖 + 評分徽章 + 銳度/亮度/解析度指標 + 智能增強/移除按鈕）取代原本的小縮圖格子；質量資料尚未取回前仍顯示原有格子作為 fallback
+- **`TaskReadinessCard`**：在掃描按鈕上方加入前置檢查清單（參考照片 / 掃描資料夾 / AI 模型），協助使用者快速確認是否就緒
+- **`ScanWarningsPanel`**：掃描完成後若有警告訊息，在結果列表上方以黃色警示框顯示
+- **`ModernProgress`**：載入參考照 / 計算相似度等過渡期間（無進度資料時）顯示動態進度條，避免空白等待感
+- 清除按鈕同步清空 `refPhotoQualities`，避免舊數據殘留
+
 ### v0.2.26 – Hi-res SCRFD 重偵測 + Bootstrapped Centroid，F1: 40% → 85.7%（2026-03-23）
 
 **核心演算法改進**

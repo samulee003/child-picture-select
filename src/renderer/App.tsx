@@ -18,7 +18,12 @@ import { ResultsSection } from './components/ResultsSection';
 import { ExportPreviewModal } from './components/ExportPreviewModal';
 import { ExportSuccessModal } from './components/ExportSuccessModal';
 import { RefPhotoFeedback } from './components/RefPhotoFeedback';
+import { ReferencePhotoQualityCard } from './components/ReferencePhotoQualityCard';
+import { TaskReadinessCard } from './components/TaskReadinessCard';
+import { ScanWarningsPanel } from './components/ScanWarningsPanel';
+import { ModernProgress } from './components/ModernProgress';
 import { FaceAnalysisPreview } from './components/FaceAnalysisPreview';
+import type { QualityMetrics } from '../core/childQualityAssessment';
 import { SwipeReview } from './components/SwipeReview';
 import { PrivacySettingsPanel } from './components/PrivacySettingsPanel';
 import { ScanHistoryModal } from './components/ScanHistoryModal';
@@ -43,6 +48,9 @@ export function App() {
 
   // Favorites
   const favorites = useFavorites();
+
+  // Reference photo quality metrics (loaded after embed:references)
+  const [refPhotoQualities, setRefPhotoQualities] = useState<Record<string, QualityMetrics>>({});
 
   // Scan state
   const scan = useScanState();
@@ -101,6 +109,23 @@ export function App() {
     prevStatusRef.current = scan.status;
   }, [scan.status]);
 
+  // Load quality metrics when reference photos change
+  useEffect(() => {
+    if (!window.api?.assessPhotoQuality || scan.refQualityResults.length === 0) return;
+    const newPaths = scan.refQualityResults
+      .map(r => r.path)
+      .filter(p => !refPhotoQualities[p]);
+    if (newPaths.length === 0) return;
+    for (const p of newPaths) {
+      window.api.assessPhotoQuality(p).then(res => {
+        if (res?.ok && res.data) {
+          setRefPhotoQualities(prev => ({ ...prev, [p]: res.data as QualityMetrics }));
+        }
+      }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scan.refQualityResults]);
+
   // Export state
   const exportState = useExportState({
     results: scan.results,
@@ -145,6 +170,7 @@ export function App() {
     exportState.setIsExportPreviewOpen(false);
     exportState.setIsExportSuccessOpen(false);
     exportState.setExportSummary(null);
+    setRefPhotoQualities({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scan.handleClear]);
 
@@ -483,6 +509,7 @@ export function App() {
                     scan.setRefsLoaded(0);
                     scan.setStatus('idle');
                     scan.setError(null);
+                    setRefPhotoQualities({});
                   }}
                   disabled={scan.isProcessing}
                 >
@@ -513,42 +540,63 @@ export function App() {
                 >
                   參考照預覽（已選 {selectedRefCount} 張）
                 </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))',
-                    gap: theme.spacing[1],
-                  }}
-                >
-                  {referencePaths.map(path => (
-                    <div
-                      key={path}
-                      title={path}
-                      style={{
-                        borderRadius: theme.borderRadius.sm,
-                        border: `1px solid ${theme.colors.neutral[200]}`,
-                        overflow: 'hidden',
-                        background: '#fff',
-                        aspectRatio: '1 / 1',
-                      }}
-                    >
-                      <img
-                        src={toFileSrc(path)}
-                        alt="參考照縮圖"
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          display: 'block',
-                        }}
-                        loading="lazy"
-                        onError={e => {
-                          (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
+                {/* Rich quality cards when quality data available; compact grid as fallback */}
+                {Object.keys(refPhotoQualities).length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing[2] }}>
+                    {referencePaths.map(path => (
+                      <ReferencePhotoQualityCard
+                        key={path}
+                        photoPath={path}
+                        quality={refPhotoQualities[path]}
+                        isProcessing={scan.isProcessing}
+                        onEnhance={scan.handleEnhanceRefPhoto}
+                        onRemove={p => {
+                          const lines = scan.refPaths.split('\n').filter(l => l.trim() !== p);
+                          scan.setRefPaths(lines.join('\n'));
+                          scan.setRefsLoaded(0);
+                          scan.setStatus('idle');
                         }}
                       />
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))',
+                      gap: theme.spacing[1],
+                    }}
+                  >
+                    {referencePaths.map(path => (
+                      <div
+                        key={path}
+                        title={path}
+                        style={{
+                          borderRadius: theme.borderRadius.sm,
+                          border: `1px solid ${theme.colors.neutral[200]}`,
+                          overflow: 'hidden',
+                          background: '#fff',
+                          aspectRatio: '1 / 1',
+                        }}
+                      >
+                        <img
+                          src={toFileSrc(path)}
+                          alt="參考照縮圖"
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            display: 'block',
+                          }}
+                          loading="lazy"
+                          onError={e => {
+                            (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <textarea
@@ -962,6 +1010,31 @@ export function App() {
           )}
         </div>
 
+        {/* Task Readiness Card */}
+        {!scan.isProcessing && scan.status !== 'done' && (
+          <div style={{ padding: `0 ${theme.spacing[4]} ${theme.spacing[2]}` }}>
+            <TaskReadinessCard
+              items={[
+                {
+                  label: '參考照片',
+                  ok: scan.refsLoaded > 0 || scan.refPaths.trim() !== '',
+                  pending: '請先新增參考照片',
+                },
+                {
+                  label: '掃描資料夾',
+                  ok: scan.folder.trim() !== '',
+                  pending: '請選擇要搜尋的資料夾',
+                },
+                {
+                  label: 'AI 模型',
+                  ok: scan.modelStatus?.loaded !== false,
+                  pending: scan.modelStatus === null ? '載入中…' : '模型載入失敗',
+                },
+              ]}
+            />
+          </div>
+        )}
+
         {/* Sticky CTA */}
         <div
           style={{
@@ -1188,6 +1261,26 @@ export function App() {
               />
             )}
 
+          {/* Embedding progress bar (refs loading / matching phase) */}
+          {scan.isProcessing && !scan.progress && (
+            <div style={{ padding: `${theme.spacing[2]} 0` }}>
+              <ModernProgress
+                value={0}
+                max={1}
+                label={
+                  scan.status === 'embedding refs...'
+                    ? '載入參考照片中…'
+                    : scan.status === 'matching...'
+                      ? '計算相似度…'
+                      : '處理中…'
+                }
+                showPercentage={false}
+                animated
+                color="primary"
+              />
+            </div>
+          )}
+
           {/* AI Analysis Panel during scanning */}
           {scan.progress && (
             <div style={{ animation: 'slideIn 0.3s ease-out' }}>
@@ -1227,6 +1320,11 @@ export function App() {
                 👆 滑動快速審核
               </button>
             </div>
+          )}
+
+          {/* Scan warnings after scan completes */}
+          {scan.status === 'done' && scan.scanWarnings.length > 0 && (
+            <ScanWarningsPanel warnings={scan.scanWarnings} />
           )}
 
           {/* Results, Favorites, Scan Summary */}
