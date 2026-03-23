@@ -190,9 +190,45 @@ function isTargetIndividual(filename) {
   return num === TARGET_CHILD;
 }
 
+/**
+ * 解析「當天照片」資料夾中的檔名
+ * 格式：
+ *   N.jpg / N_2.jpg / N_3.jpg   → 小孩 #N 的個人照（第 1/2/3 張）
+ *   N，M.jpg / N, M.jpg          → 含小孩 #N 和 #M
+ *   N(1).jpg                     → 小孩 #N 的變體
+ *   大合照.JPG                    → 全班合照（無法判斷，null）
+ */
+function parseDayPhotoChildIds(filename) {
+  let base = filename.replace(/\.(jpg|jpeg|png|webp|heic|heif|bmp|gif)$/i, '').trim();
+
+  // 如果包含中文字（如「大合照」），無法自動判斷
+  if (/[\u4e00-\u9fff]/.test(base)) return null;
+
+  // 處理逗號分隔（中文逗號或英文逗號+空格）
+  if (/[，,]/.test(base)) {
+    const parts = base.split(/[，,]\s*/);
+    const ids = [];
+    for (const p of parts) {
+      const num = parseInt(p.trim(), 10);
+      if (!isNaN(num) && num > 0) ids.push(num);
+    }
+    return ids.length > 0 ? ids : null;
+  }
+
+  // 處理 N_2 / N_3 / N(1) 格式 → 取第一個數字作為小孩 ID
+  const match = base.match(/^(\d+)(?:[_(]\d+\)?)?$/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    return num > 0 ? [num] : null;
+  }
+
+  return null;
+}
+
 function generateGroundTruth(scanDir) {
   const individualDir = findSubdir(scanDir, '揮春_個人照');
   const groupDir = findSubdir(scanDir, '新年服裝_小組');
+  const dayDir = findSubdir(scanDir, '當天照片');
 
   const labels = {};
   let autoTrue = 0;
@@ -222,8 +258,20 @@ function generateGroundTruth(scanDir) {
         labels[relPath] = null;
         autoNull++;
       }
+    } else if (dayDir && imgPath.startsWith(dayDir)) {
+      // 當天照片：解析檔名中的小孩編號
+      const childIds = parseDayPhotoChildIds(path.basename(imgPath));
+      if (childIds !== null) {
+        const isTarget = childIds.includes(TARGET_CHILD);
+        labels[relPath] = isTarget;
+        if (isTarget) autoTrue++;
+        else autoFalse++;
+      } else {
+        labels[relPath] = null;
+        autoNull++;
+      }
     } else {
-      // 活動照或其他：需手動標記
+      // 其他：需手動標記
       labels[relPath] = null;
       autoNull++;
     }
