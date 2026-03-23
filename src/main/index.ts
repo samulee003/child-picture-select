@@ -766,6 +766,22 @@ function wireIpc() {
       photoEmbeddings.clear();
       photoEmbeddingSources.clear();
 
+      // ── 參考引導選臉：只取 face-source 的 reference embeddings ──
+      // 團體照中 SCRFD 可能偵測到多張臉，預設只存最高信心度的那張。
+      // 但目標小孩可能不是最大的臉。傳入 reference embeddings 後，
+      // fileToEmbeddingWithSource 會計算 centroid 並選最相似的臉。
+      const faceRefEmbeddings: number[][] = [];
+      for (let ri = 0; ri < referenceEmbeddings.length; ri++) {
+        if (referenceEmbeddingSources[ri] === 'face') {
+          faceRefEmbeddings.push(referenceEmbeddings[ri]);
+        }
+      }
+      if (faceRefEmbeddings.length > 0) {
+        logger.info(
+          `📎 Reference-guided face selection enabled: ${faceRefEmbeddings.length} face ref(s) will guide group photo face selection`
+        );
+      }
+
       logger.info(`Found ${total} images to process`);
 
       // Handle empty folder — send completion event immediately
@@ -907,6 +923,7 @@ function wireIpc() {
                   maxSize: 1280,
                   minConfidence: 0.01,
                   retryOnNoFace: false,
+                  referenceEmbeddings: faceRefEmbeddings.length > 0 ? faceRefEmbeddings : undefined,
                 }).finally(() => {
                   if (batchFileTimeoutId !== undefined) clearTimeout(batchFileTimeoutId);
                 }),
@@ -956,6 +973,7 @@ function wireIpc() {
                     maxSize: 1280,
                     minConfidence: 0.01,
                     retryOnNoFace: false,
+                    referenceEmbeddings: faceRefEmbeddings.length > 0 ? faceRefEmbeddings : undefined,
                   }).finally(() => {
                     if (cacheFileTimeoutId !== undefined) clearTimeout(cacheFileTimeoutId);
                   }),
@@ -1101,7 +1119,7 @@ function wireIpc() {
       // 參數驗證
       const threshold = Math.max(0, Math.min(1, opts?.threshold ?? 0.6));
       const topN = Math.max(1, Math.min(1000, opts?.topN ?? 100));
-      const strategy: MultiRefStrategy = opts?.strategy ?? 'best';
+      const strategy: MultiRefStrategy = opts?.strategy ?? 'centroid';
 
       const results: Array<{
         path: string;

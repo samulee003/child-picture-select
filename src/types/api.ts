@@ -283,7 +283,7 @@ export interface ElectronAPI extends GrowthApi {
   runMatch: (opts: {
     topN: number;
     threshold: number;
-    strategy?: 'best' | 'average' | 'weighted';
+    strategy?: 'best' | 'average' | 'weighted' | 'centroid';
   }) => Promise<MatchRunResponse>;
   exportCopy: (files: string[], outDir: string) => Promise<ExportCopyResponse>;
   openFolder: (folderPath: string) => Promise<{ ok: boolean; error?: string }>;

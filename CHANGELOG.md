@@ -1,17 +1,36 @@
 ## Changelog - Find My Kid (Offline)
 
-### v0.2.24 – 全面審計修復：align.ts 座標邏輯 + 文件正確性（2026-03-23）
+### v0.2.24 – Centroid 策略接通 UI + 參考引導選臉 + 審計修復（2026-03-23）
+
+**核心功能修復**
+
+- **`match:run` 預設策略改為 `'centroid'`**：v0.2.23 新增的 `computeCentroid()` 和 `'centroid'` 策略從未被 UI 使用過——preload、types、renderer 的型別定義只有 `'best' | 'average' | 'weighted'`，且預設值為 `'best'`。本次修正：
+  - `src/preload/index.ts`：strategy 型別新增 `'centroid'`
+  - `src/types/api.ts`：`ElectronAPI.runMatch` 新增 `'centroid'`
+  - `src/renderer/hooks/useScanState.ts`：預設值改為 `'centroid'`
+  - `src/main/index.ts`：`match:run` handler 預設值改為 `'centroid'`
+
+- **參考引導選臉（Reference-Guided Face Selection）**：解決群組照片中目標小孩不是最大臉的問題。
+  - `src/core/embeddings.ts`：`EmbeddingOptions` 新增 `referenceEmbeddings?: number[][]`
+  - 當偵測到多張臉時，計算參考照 centroid，選擇與 centroid 最相似的臉（而非最高信心度的臉）
+  - `src/main/index.ts`：`embed:batch` 在掃描前提取 face-source 參考 embeddings，傳給 `fileToEmbeddingWithSource`
 
 **程式碼正確性修復**
 
-- **`src/core/align.ts`（KPS 裁切路徑 bug）**：超大圖（>4MP）裁切路徑中，bounding box 計算和 KPS 偏移原本使用未經 orientation 轉換的原始 `kps`，改為正確使用 `adjustedKps`（已套用 `transformKpsForOrientation`）。現有測試不受影響（`exifOrientation` 恆為 1，`adjustedKps === kps`），但修正了若將來啟用非 1 orientation 時的潛在錯誤對齊問題。
-- **`src/core/align.ts`（誤導性注釋）**：移除「禁用了自動旋轉」的錯誤注釋（pipeline 實際上啟用了 `.rotate()`），改為正確說明：SCRFD 和 detector 均使用 Sharp `.rotate()` 自動旋轉，KPS 已在視覺空間，因此 `exifOrientation=1` 是設計上的明確選擇，而非偶然。
+- **`src/core/align.ts`（KPS 裁切路徑 bug）**：超大圖（>4MP）裁切路徑改用 `adjustedKps`
+- **`src/core/align.ts`（誤導性注釋）**：修正為正確說明 pipeline 啟用了 `.rotate()` 自動旋轉
 
 **文件更新（CLAUDE.md）**
 
-- 更新 `align.ts` 模組描述：說明實作為純 JS 逆向雙線性插值（非 Sharp `.affine()`），以及 `exifOrientation=1` 的設計意圖
-- 新增 Common Pitfall #21：群組照片只儲存一個臉部 embedding 的架構限制（最高信心度臉，非目標小孩時會漏掉）
-- 新增 Common Pitfall #22：`transformKpsForOrientation()` 為防禦性代碼，當前 pipeline 恆傳入 `exifOrientation=1`
+- 更新 `align.ts` 模組描述：純 JS 逆向雙線性插值，`exifOrientation=1` 設計意圖
+- 新增 Common Pitfall #21：群組照片單 embedding 限制（已透過參考引導選臉緩解）
+- 新增 Common Pitfall #22：`transformKpsForOrientation()` 防禦性代碼說明
+
+**整合測試結果（149 張真實照片）**
+
+- 12/12 測試全部通過
+- Top-1 相似度: 90.4%, Top-10 均值: 89.3%
+- 個人照配對 ≥0.4: 39/42, 團體照找人 ≥0.3: 30/30
 
 ---
 

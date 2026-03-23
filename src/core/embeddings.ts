@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { detectFaces } from './detector';
+import { cosineSimilarity, computeCentroid } from './similarity';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 
@@ -81,6 +82,12 @@ export interface EmbeddingOptions {
   minConfidence?: number;
   /** 抓不到臉時是否自動以更寬鬆條件重試一次 */
   retryOnNoFace?: boolean;
+  /**
+   * 參考引導選臉：提供參考照的 embedding（僅限 face-source）。
+   * 當照片偵測到多張臉時，選擇與參考 centroid 最相似的臉，
+   * 而非預設的最高信心度臉。解決團體照中目標小孩不是最大臉的問題。
+   */
+  referenceEmbeddings?: number[][];
 }
 
 export async function fileToEmbeddingWithSource(
@@ -231,15 +238,46 @@ export async function fileToEmbeddingWithSource(
       }
     }
     if (faces.length > 0) {
-      // 使用信心度最高的臉部
-      const bestFace = faces.reduce((best, current) =>
+      // ── 選臉策略 ─────────────────────────────────────────────────────
+      // 1. 參考引導選臉：當有 referenceEmbeddings 且偵測到 ≥2 張臉時，
+      //    計算參考照的 centroid，選擇與 centroid 最相似的臉。
+      //    解決團體照中目標小孩不是最大/最清晰臉的問題。
+      // 2. 預設：取信心度最高的臉（適用於個人照或無參考照場景）。
+      let selectedFace = faces.reduce((best, current) =>
         current.confidence > best.confidence ? current : best
       );
+      let selectionMethod = 'highest-confidence';
 
-      if (!bestFace.embedding || bestFace.embedding.length === 0) {
+      if (
+        options.referenceEmbeddings &&
+        options.referenceEmbeddings.length > 0 &&
+        faces.length > 1
+      ) {
+        // 計算參考照 centroid，與每張偵測到的臉比較
+        const refCentroid = computeCentroid(options.referenceEmbeddings);
+        if (refCentroid.length > 0) {
+          let bestRefSim = -1;
+          for (const face of faces) {
+            if (!face.embedding || face.embedding.length === 0) continue;
+            const sim = cosineSimilarity(face.embedding, refCentroid);
+            if (sim > bestRefSim) {
+              bestRefSim = sim;
+              selectedFace = face;
+            }
+          }
+          selectionMethod = `ref-guided(sim=${bestRefSim.toFixed(3)})`;
+          logger.info(
+            `🎯 Reference-guided face selection: ${faces.length} faces detected, ` +
+              `selected face with ref-similarity=${bestRefSim.toFixed(3)} ` +
+              `(conf=${selectedFace.confidence.toFixed(3)}) for: ${filePath}`
+          );
+        }
+      }
+
+      if (!selectedFace.embedding || selectedFace.embedding.length === 0) {
         // 偵測到臉但沒有 embedding — 通常代表 face recognition model 未載入
         logger.error(
-          `❌ Face detected (confidence=${bestFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
+          `❌ Face detected (confidence=${selectedFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
             ' — the face recognition model may have failed to load.' +
             ' Check that face_recognition_model weights exist in the models directory.'
         );
@@ -247,25 +285,27 @@ export async function fileToEmbeddingWithSource(
         detectionErrorCode = 'RECOGNITION_MODEL_MISSING';
       }
 
-      if (bestFace.embedding && bestFace.embedding.length > 0) {
+      if (selectedFace.embedding && selectedFace.embedding.length > 0) {
         // 確保向量已正規化
         let norm = 0;
-        for (let i = 0; i < bestFace.embedding.length; i++)
-          norm += bestFace.embedding[i] * bestFace.embedding[i];
+        for (let i = 0; i < selectedFace.embedding.length; i++)
+          norm += selectedFace.embedding[i] * selectedFace.embedding[i];
         norm = Math.sqrt(norm) + 1e-12;
-        const normalized = bestFace.embedding.map(v => v / norm);
+        const normalized = selectedFace.embedding.map(v => v / norm);
 
         logger.info(
-          `✅ Face detection successful for: ${filePath} (${normalized.length} dims, confidence=${bestFace.confidence.toFixed(3)}, ms=${Date.now() - startedAt})`
+          `✅ Face detection successful for: ${filePath} (${normalized.length} dims, ` +
+            `confidence=${selectedFace.confidence.toFixed(3)}, selection=${selectionMethod}, ` +
+            `faces=${faces.length}, ms=${Date.now() - startedAt})`
         );
         return {
           embedding: normalized,
           source: 'face' as const,
           dimensions: normalized.length,
           faceAnalysis: {
-            confidence: bestFace.confidence,
-            age: bestFace.age,
-            gender: bestFace.gender,
+            confidence: selectedFace.confidence,
+            age: selectedFace.age,
+            gender: selectedFace.gender,
             faceCount: faces.length,
           },
         };

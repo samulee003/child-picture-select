@@ -451,6 +451,7 @@ logger.error('Face detection failed', error);
 
 ### `src/core/embeddings.ts`
 - `fileToEmbeddingWithSource(filePath, options)` — Returns `{ embedding, source }`
+  - `options.referenceEmbeddings?: number[][]` — When provided and multiple faces detected, selects the face most similar to the reference centroid instead of the highest-confidence face. Used by `embed:batch` for group photo face selection.
 - `fileToEmbedding(filePath)` — Legacy backward-compatible wrapper
 - `fileToDeterministicEmbedding(filePath, dims)` — SHA-256 hash fallback
 - Constants: `EMBEDDING_DIMS = 512`, `DETERMINISTIC_SCORE_PENALTY = 0.12`
@@ -593,7 +594,7 @@ npm test
 
 20. **Multi-ref matching: use `centroid` not `best`** — With N reference photos, the `best` (max) strategy gives every scan face N chances to match, inflating scores for all faces uniformly (~60–80%). Use `computeCentroid(refEmbeddings)` to average all refs into one prototype vector first, then do a single cosine similarity. This produces a ~19% score gap between the matching child and others.
 
-21. **Group photos: only one face embedding stored per photo** — `fileToEmbeddingWithSource` stores only the highest-confidence face detected by SCRFD (`faces.reduce(best confidence)`). For group photos in the scan folder, if the target child is not the most prominent face (e.g. they're smaller or partly occluded), their face embedding is never stored and the photo will never match. The SQLite schema enforces `UNIQUE(photoPath)`, so only one face per path can be cached. Future fix: store embeddings for all detected faces and match against any of them.
+21. **Group photos: reference-guided face selection** — `fileToEmbeddingWithSource` stores only one face embedding per photo. By default it picks the highest-confidence face, but when `referenceEmbeddings` is provided (during batch scan), it computes the reference centroid and picks the face most similar to the target child instead. This is configured automatically in `embed:batch` — the handler extracts face-source reference embeddings and passes them as `referenceEmbeddings`. The SQLite schema still enforces `UNIQUE(photoPath)` (one face per path), but it's now the RIGHT face for the search target.
 
 22. **`align.ts` orientation transform is defensive code, always receives `exifOrientation=1`** — `detector.ts` applies Sharp `.rotate()` before reading the raw buffer, so KPS from SCRFD are already in visual (post-rotation) coordinate space and `exifOrientation=1` is hardcoded before calling `alignFace()`. The `transformKpsForOrientation()` function supports orientations 2–8 for future use but is never triggered by current code. Do NOT remove it or change the hardcoded `exifOrientation=1` without updating the full pipeline EXIF handling.
 
