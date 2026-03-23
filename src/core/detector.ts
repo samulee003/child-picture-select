@@ -253,24 +253,181 @@ export async function detectFaces(
     }
 
     // 3. 對每個臉依序做 alignment + ArcFace（避免並行 ORT session 競爭）
-    for (const face of candidateFaces) {
-      // 5-point alignment → 112×112 aligned face buffer
-      // 傳遞 EXIF orientation，讓 alignFace 可以正確處理座標轉換
-      const alignedBuffer = await alignFace(
-        imgRaw.data,
-        imgW,
-        imgH,
-        face.kps,
-        112,
-        exifOrientation
-      );
+    //
+    // ── High-res re-alignment for small faces ───────────────────────
+    // 問題：群組照（4-7 人）中每個小孩的臉在 maxSize=1280 的圖中只有 30-80px，
+    //       alignment 到 112×112 時 3-4 倍放大 → 模糊 → ArcFace embedding 品質差。
+    // 解法：偵測到小臉後，回到原圖全解析度裁切臉部區域，在高解析度下重做
+    //       alignment + ArcFace，大幅提升小臉的 embedding 品質。
+    // 注意：SCRFD 偵測仍使用 maxSize（偵測精度足夠），只有 alignment 階段使用高解析度。
+    const SMALL_FACE_PX = 112; // 臉部 bbox 短邊 < 此值時啟用高解析度重提取
 
-      // ArcFace embedding extraction
-      const embedding = await extractArcFaceEmbeddingFromAligned(alignedBuffer);
+    // 計算原圖旋轉後的實際尺寸（用於高解析度裁切）
+    const origW = needsSwap ? (meta.height || imgW) : (meta.width || imgW);
+    const origH = needsSwap ? (meta.width || imgH) : (meta.height || imgH);
+    const canDoHiRes = origW > imgW * 1.3 || origH > imgH * 1.3; // 原圖明顯大於 maxSize 版本
+
+    for (let fi = 0; fi < candidateFaces.length; fi++) {
+      const face = candidateFaces[fi];
 
       // 將 bbox 從 [x1, y1, x2, y2] 轉換為 [x, y, width, height]（公開介面格式）
       const [x1, y1, x2, y2] = face.bbox;
-      const bbox: [number, number, number, number] = [x1, y1, x2 - x1, y2 - y1];
+      const bboxW = x2 - x1;
+      const bboxH = y2 - y1;
+      const bbox: [number, number, number, number] = [x1, y1, bboxW, bboxH];
+      const faceSize = Math.min(bboxW, bboxH);
+
+      // ── 判斷是否需要高解析度重提取 ──
+      const needsHiRes = canDoHiRes && faceSize < SMALL_FACE_PX && faceSize > 5;
+
+      let embedding: number[] | null = null;
+
+      if (needsHiRes) {
+        // ── 高解析度路徑：從原圖裁切臉部區域 + 重新偵測 ──
+        // 關鍵改進：不只是縮放 keypoints，而是在高解析度裁切上重新跑 SCRFD
+        // 以獲得全新的、更精確的 keypoints。低解析度 SCRFD keypoints 有 4-16px 誤差，
+        // 即使放大到高解析度，alignment 仍然不準。重新偵測才能根本解決。
+        try {
+          const scaleX = origW / imgW;
+          const scaleY = origH / imgH;
+
+          // 將 SCRFD bbox 從 maxSize 座標空間映射回原圖座標
+          const origX1 = x1 * scaleX;
+          const origY1 = y1 * scaleY;
+          const origX2 = x2 * scaleX;
+          const origY2 = y2 * scaleY;
+          const origBboxW = origX2 - origX1;
+          const origBboxH = origY2 - origY1;
+          const origFaceSpan = Math.max(origBboxW, origBboxH);
+
+          // 慷慨的 padding（臉部尺寸的 2 倍，確保完整臉部 + 額頭/下巴/耳朵）
+          const pad = Math.max(origFaceSpan * 2, 100);
+          const cropLeft = Math.max(0, Math.floor(origX1 - pad));
+          const cropTop = Math.max(0, Math.floor(origY1 - pad));
+          const cropRight = Math.min(origW, Math.ceil(origX2 + pad));
+          const cropBottom = Math.min(origH, Math.ceil(origY2 + pad));
+          const cropW = cropRight - cropLeft;
+          const cropH = cropBottom - cropTop;
+
+          if (cropW >= 50 && cropH >= 50) {
+            // 將高解析度裁切存為臨時 buffer，用 SCRFD 重新偵測
+            const cropSharp = sharp(imagePath)
+              .rotate()
+              .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH });
+
+            // 將裁切寫入臨時 PNG buffer 供 SCRFD 偵測
+            const cropPngBuffer = await cropSharp.png().toBuffer();
+
+            // 在高解析度裁切上重新跑 SCRFD
+            // 使用較高的信心門檻（0.55）避免大量 false-positive 浪費時間
+            const hiResFaces = await detectFacesSCRFD(cropPngBuffer, {
+              minConfidence: ADAPTIVE_MIN_CONF,
+              maxSize: Math.max(cropW, cropH), // 不縮小
+            });
+
+            if (hiResFaces.length > 0) {
+              // 從重新偵測的臉中選最接近原始位置的（避免選到鄰居的臉）
+              // 原始臉中心在裁切座標系中的位置
+              const origCenterX = (origX1 + origX2) / 2 - cropLeft;
+              const origCenterY = (origY1 + origY2) / 2 - cropTop;
+
+              let bestHiResFace = hiResFaces[0];
+              let bestDist = Infinity;
+              for (const hf of hiResFaces) {
+                const hfCenterX = (hf.bbox[0] + hf.bbox[2]) / 2;
+                const hfCenterY = (hf.bbox[1] + hf.bbox[3]) / 2;
+                const dist = Math.sqrt(
+                  (hfCenterX - origCenterX) ** 2 + (hfCenterY - origCenterY) ** 2
+                );
+                if (dist < bestDist) {
+                  bestDist = dist;
+                  bestHiResFace = hf;
+                }
+              }
+
+              // 用重新偵測的高精度 keypoints 做 alignment
+              const cropRaw = await sharp(imagePath)
+                .rotate()
+                .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
+                .removeAlpha()
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+
+              const hiResAligned = await alignFace(
+                cropRaw.data,
+                cropRaw.info.width,
+                cropRaw.info.height,
+                bestHiResFace.kps,
+                112,
+                1
+              );
+
+              embedding = await extractArcFaceEmbeddingFromAligned(hiResAligned);
+
+              if (embedding && embedding.length > 0) {
+                const hiResFaceSize = Math.min(
+                  bestHiResFace.bbox[2] - bestHiResFace.bbox[0],
+                  bestHiResFace.bbox[3] - bestHiResFace.bbox[1]
+                );
+                logger.info(
+                  `🔍 Hi-res SCRFD re-detect: face ${faceSize.toFixed(0)}px → ${cropW}×${cropH}px crop, re-detected ${hiResFaces.length} face(s), best=${hiResFaceSize.toFixed(0)}px (${(hiResFaceSize / faceSize).toFixed(1)}× larger): ${imagePath}`
+                );
+              }
+            } else {
+              // SCRFD 在高解析度裁切上沒偵測到臉 → 退回 scaled keypoints
+              logger.debug(
+                `Hi-res SCRFD re-detect found 0 faces in crop, falling back to scaled keypoints`
+              );
+              const origKps: [number, number][] = face.kps.map(
+                ([kx, ky]: [number, number]) => [kx * scaleX, ky * scaleY] as [number, number]
+              );
+              const cropKps: [number, number][] = origKps.map(
+                ([kx, ky]) => [kx - cropLeft, ky - cropTop] as [number, number]
+              );
+              const cropRaw = await sharp(imagePath)
+                .rotate()
+                .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
+                .removeAlpha()
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+
+              const hiResAligned = await alignFace(
+                cropRaw.data,
+                cropRaw.info.width,
+                cropRaw.info.height,
+                cropKps,
+                112,
+                1
+              );
+              embedding = await extractArcFaceEmbeddingFromAligned(hiResAligned);
+              if (embedding && embedding.length > 0) {
+                logger.info(
+                  `🔍 Hi-res scaled-kps fallback: face ${faceSize.toFixed(0)}px → ${cropW}×${cropH}px crop: ${imagePath}`
+                );
+              }
+            }
+          }
+        } catch (err) {
+          // 高解析度失敗不影響流程，退回標準路徑
+          logger.debug(
+            `Hi-res re-detect failed for face #${fi} in ${imagePath}, falling back to standard: ${err}`
+          );
+          embedding = null;
+        }
+      }
+
+      // ── 標準路徑（或高解析度失敗的 fallback）──
+      if (!embedding || embedding.length === 0) {
+        const alignedBuffer = await alignFace(
+          imgRaw.data,
+          imgW,
+          imgH,
+          face.kps,
+          112,
+          exifOrientation
+        );
+        embedding = await extractArcFaceEmbeddingFromAligned(alignedBuffer);
+      }
 
       results.push({
         bbox,

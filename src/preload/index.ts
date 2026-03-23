@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('api', {
   runMatch: (opts: {
     topN: number;
     threshold: number;
-    strategy?: 'best' | 'average' | 'weighted';
+    strategy?: 'best' | 'average' | 'weighted' | 'centroid';
   }) => ipcRenderer.invoke('match:run', opts),
   exportCopy: (files: string[], outDir: string) =>
     ipcRenderer.invoke('export:copy', { files, outDir }),

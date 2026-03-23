@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
 import {
   fileToEmbeddingWithSource,
+  selectReferenceEmbeddings,
   Embedding,
   DETERMINISTIC_SCORE_PENALTY,
   type FaceAnalysis,
@@ -599,43 +600,35 @@ function wireIpc() {
         };
       }> = [];
 
-      for (const f of files) {
-        const startedAt = Date.now();
-        logger.info(`🧩 Reference embedding start: ${f}`);
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const result = await Promise.race([
-          fileToEmbeddingWithSource(f, {
-            maxSize: 1280,
-            minConfidence: 0.01,
-            retryOnNoFace: true,
-          }).finally(() => {
-            if (timeoutId !== undefined) clearTimeout(timeoutId);
-          }),
-          new Promise<never>((_resolve, reject) => {
-            timeoutId = setTimeout(
-              () =>
-                reject(
-                  new AppError(`Reference embedding timed out for: ${f}`, 'REFERENCE_EMBED_TIMEOUT')
-                ),
-              300_000
-            );
-          }),
-        ]);
-        logger.info(
-          `🧩 Reference embedding done: ${f} (source=${result.source}, dims=${result.dimensions}, ms=${Date.now() - startedAt})`
-        );
+      // ── Bootstrapped Centroid：正確選出目標小孩的臉 ──────────
+      // 使用 selectReferenceEmbeddings 取代逐檔 fileToEmbeddingWithSource。
+      // 演算法：先從單臉參考照建 initial centroid，再從多臉參考照中
+      // 選出最像 centroid 的臉（而非最高信心度的臉，那通常是大人）。
+      const selectionResults = await selectReferenceEmbeddings(files, {
+        maxSize: 1280,
+        minConfidence: 0.01,
+        retryOnNoFace: true,
+      });
+
+      for (const result of selectionResults) {
         referenceEmbeddings.push(result.embedding);
         referenceEmbeddingSources.push(result.source === 'face' ? 'face' : 'deterministic');
         perFileResults.push({
-          path: f,
+          path: result.filePath,
           source: result.source,
-          faceAnalysis: result.faceAnalysis,
-        });
+          faceAnalysis: result.faceAnalysis
+            ? {
+                confidence: result.faceAnalysis.confidence,
+                faceCount: result.faceAnalysis.faceCount,
+              }
+            : undefined,
+        } as any);
         if (result.source === 'face') {
           faceCount++;
         } else {
           deterministicCount++;
-          if (result.fallbackReason === 'detection_error') detectionErrorFallbackCount++;
+          // selectReferenceEmbeddings 內部已處理重試，若仍為 deterministic 視為偵測失敗
+          detectionErrorFallbackCount++;
         }
       }
 
@@ -765,6 +758,22 @@ function wireIpc() {
       // 每次新掃描都重建本次 in-memory 索引，避免混入前一次資料夾結果
       photoEmbeddings.clear();
       photoEmbeddingSources.clear();
+
+      // ── 參考引導選臉：只取 face-source 的 reference embeddings ──
+      // 團體照中 SCRFD 可能偵測到多張臉，預設只存最高信心度的那張。
+      // 但目標小孩可能不是最大的臉。傳入 reference embeddings 後，
+      // fileToEmbeddingWithSource 會計算 centroid 並選最相似的臉。
+      const faceRefEmbeddings: number[][] = [];
+      for (let ri = 0; ri < referenceEmbeddings.length; ri++) {
+        if (referenceEmbeddingSources[ri] === 'face') {
+          faceRefEmbeddings.push(referenceEmbeddings[ri]);
+        }
+      }
+      if (faceRefEmbeddings.length > 0) {
+        logger.info(
+          `📎 Reference-guided face selection enabled: ${faceRefEmbeddings.length} face ref(s) will guide group photo face selection`
+        );
+      }
 
       logger.info(`Found ${total} images to process`);
 
@@ -907,6 +916,7 @@ function wireIpc() {
                   maxSize: 1280,
                   minConfidence: 0.01,
                   retryOnNoFace: false,
+                  referenceEmbeddings: faceRefEmbeddings.length > 0 ? faceRefEmbeddings : undefined,
                 }).finally(() => {
                   if (batchFileTimeoutId !== undefined) clearTimeout(batchFileTimeoutId);
                 }),
@@ -956,6 +966,7 @@ function wireIpc() {
                     maxSize: 1280,
                     minConfidence: 0.01,
                     retryOnNoFace: false,
+                    referenceEmbeddings: faceRefEmbeddings.length > 0 ? faceRefEmbeddings : undefined,
                   }).finally(() => {
                     if (cacheFileTimeoutId !== undefined) clearTimeout(cacheFileTimeoutId);
                   }),
@@ -1101,7 +1112,7 @@ function wireIpc() {
       // 參數驗證
       const threshold = Math.max(0, Math.min(1, opts?.threshold ?? 0.6));
       const topN = Math.max(1, Math.min(1000, opts?.topN ?? 100));
-      const strategy: MultiRefStrategy = opts?.strategy ?? 'best';
+      const strategy: MultiRefStrategy = opts?.strategy ?? 'centroid';
 
       const results: Array<{
         path: string;

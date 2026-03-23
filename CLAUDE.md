@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.22
+- **Version**: 0.2.27
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
@@ -423,13 +423,16 @@ logger.error('Face detection failed', error);
 - Input: BGR, `(px-127.5)/128.0`, 640×640; outputs: 9 tensors (score/bbox/kps × stride 8/16/32)
 - Applies sigmoid to raw scores + IoU NMS (threshold 0.4)
 - Anchor centers use cell center `(col+0.5)*stride` per InsightFace convention — do NOT use `col*stride` (top-left), which causes 4–16px keypoint offsets
+- **EXIF rotation**: uses `.rotate()` (auto-rotate by EXIF) before inference — images are always processed upright. `effectiveW/H` accounts for dimension swap on orientation 5–8.
+- Default `maxSize=2048` — pre-shrinks image before 640×640 SCRFD input; returned coordinates are in `effectiveW×effectiveH` space (post-rotation, post-maxSize)
 
 ### `src/core/align.ts`
-- `alignFace(imageBuffer, imageWidth, imageHeight, kps, outputSize?)` — Umeyama → 112×112 aligned raw RGB buffer
-- `umeyama2D(src, dst)` — Analytic 2×2 SVD similarity transform
+- `alignFace(imageBuffer, imageWidth, imageHeight, kps, outputSize?, exifOrientation?)` — Umeyama → 112×112 aligned raw RGB buffer
+- `umeyama2D(src, dst)` — Least-squares 2×3 affine similarity transform (6-parameter)
 - `ARCFACE_DST_5PT` — Standard ArcFace 112×112 template coordinates
-- Uses Sharp `.affine()` with inverse mapping for efficient bicubic warp; computes libvips auto-shift by forward-transforming input corners, then uses `.extract(shiftX, shiftY, 112, 112)` to retrieve correct face region (NOT `.resize()` which squishes the auto-sized canvas)
-- Auto-crops face region when input exceeds 4MP to avoid Sharp pixel limit
+- Uses **pure-JS inverse bilinear warp** (NOT Sharp `.affine()`): for each 112×112 output pixel, compute source position via inverse Umeyama matrix, then bilinear interpolate. This guarantees exactly 112×112 output regardless of face scale.
+- Auto-crops face region (KPS bbox + 50% padding) when input exceeds 4MP to avoid Sharp affine pixel limit
+- `exifOrientation` is always passed as `1` by `detector.ts` (EXIF rotation already applied via Sharp `.rotate()`); `transformKpsForOrientation()` is defensive code for future use
 
 ### `src/core/arcface.ts`
 - `loadArcFace()` — Load `w600k_mbf.onnx` via onnxruntime-node
@@ -443,21 +446,31 @@ logger.error('Face detection failed', error);
 - `detectFaces(filePath, options)` — Full pipeline: SCRFD → Umeyama → ArcFace → `FaceDetection[]`
 - `getModelStatus()` — Returns combined SCRFD + ArcFace load state
 - 30-second timeout per detection; pure ONNX, no TF.js or Canvas required
+- **`effectiveMaxSize`** — defaults to `options.maxSize ?? 2048`, applied to **both** SCRFD detection and the raw buffer read. Must be identical or SCRFD keypoints will point to wrong pixels in the buffer.
+- **Adaptive confidence filter** — after SCRFD detection, if the top face scores ≥ 0.55, all candidates below 0.55 are discarded. Eliminates false-positive face clusters (score ~0.50–0.52) that produce random ArcFace embeddings.
 
 ### `src/core/embeddings.ts`
 - `fileToEmbeddingWithSource(filePath, options)` — Returns `{ embedding, source }`
+  - `options.referenceEmbeddings?: number[][]` — When provided and multiple faces detected, selects the face most similar to the reference centroid instead of the highest-confidence face. Used by `embed:batch` for group photo face selection.
+- `selectReferenceEmbeddings(files, options)` — **Bootstrapped Centroid** reference photo face selection
+  - Phase 1: extract all faces from all reference photos
+  - Phase 2: single-face refs (guaranteed to be target child) → compute `initialCentroid`
+  - Phase 3: multi-face refs → pick face most similar to `initialCentroid` (not highest-confidence, which is often a parent)
+  - Fallback: if no single-face refs exist, falls back to highest-confidence selection
+  - Used by `embed:references` IPC handler; fixes centroid contamination from parent/sibling faces
 - `fileToEmbedding(filePath)` — Legacy backward-compatible wrapper
 - `fileToDeterministicEmbedding(filePath, dims)` — SHA-256 hash fallback
 - Constants: `EMBEDDING_DIMS = 512`, `DETERMINISTIC_SCORE_PENALTY = 0.12`
 
 ### `src/core/similarity.ts`
 - `cosineSimilarity(a, b)` — Standard cosine similarity with dimension tolerance
-- `multiReferenceSimilarity(target, refs, strategy)` — Multi-reference fusion
+- `multiReferenceSimilarity(target, refs, strategy)` — Multi-reference fusion (`best` | `average` | `weighted` | `centroid`)
+- `computeCentroid(embeddings)` — Average N embeddings element-wise then L2-normalize → single prototype vector. Use this instead of `best` when you have multiple ref photos of the same child; eliminates the statistical inflation from N independent max comparisons.
 - `euclideanDistance(a, b)` — L2 distance
 - `normalizeVector(vec)` — L2 normalization
 
 ### `src/core/db.ts`
-- SQLite singleton with WAL mode; schema migrates from v1→v3 automatically
+- SQLite singleton with WAL mode; schema migrates automatically
 - `upsertFace(path, embedding, source)` — Store embedding with source tracking
 - `getFacesByPath(path)` — Retrieve cached embeddings
 - `withTransaction(fn)` — Wrap operations in a DB transaction
@@ -579,7 +592,19 @@ npm test
 
 16. **localStorage writes can throw** — Renderer-side `localStorage.setItem()` throws `QuotaExceededError` on storage-full or private-browsing contexts. Always use `src/utils/safe-storage.ts` (`safeSetItem` / `safeGetItem`) instead of `localStorage` directly to silently degrade rather than crash.
 
-17. **DB cache version** — `CURRENT_CACHE_VERSION` in `src/core/db.ts` is currently **4**. Bump this when introducing embedding-format changes that make cached values invalid, so existing users' caches are automatically cleared on upgrade.
+17. **DB cache version** — `CURRENT_CACHE_VERSION` in `src/core/db.ts` is currently **6**. Bump this when introducing pipeline changes that make cached embeddings invalid (e.g. EXIF rotation fix, coordinate space changes), so existing users' caches are automatically cleared on upgrade.
+
+18. **SCRFD and detector must use the same `maxSize`** — SCRFD returns keypoints in `effectiveW×effectiveH` coordinate space (after rotation + maxSize resize). The `detector.ts` raw buffer read **must** use the exact same `maxSize` (default: 2048). If they differ, the keypoints point to the wrong pixels, alignment produces a background crop instead of a face, and ArcFace embeddings are garbage. Never pass `maxSize` to SCRFD without passing the same value to the raw buffer resize.
+
+19. **EXIF rotation must be applied before SCRFD** — SCRFD was trained on upright faces. Phone portrait photos (EXIF orientation 6/8) have sideways pixels in the raw file. Always use Sharp `.rotate()` (no arguments = auto-rotate by EXIF) before feeding to SCRFD. Do NOT use `.withMetadata({ orientation: undefined })` for the SCRFD input — that disables auto-rotation and SCRFD will fail to detect faces in rotated photos.
+
+20. **Multi-ref matching: use `centroid` not `best`** — With N reference photos, the `best` (max) strategy gives every scan face N chances to match, inflating scores for all faces uniformly (~60–80%). Use `computeCentroid(refEmbeddings)` to average all refs into one prototype vector first, then do a single cosine similarity. This produces a ~19% score gap between the matching child and others.
+
+21. **Group photos: reference-guided face selection** — `fileToEmbeddingWithSource` stores only one face embedding per photo. By default it picks the highest-confidence face, but when `referenceEmbeddings` is provided (during batch scan), it computes the reference centroid and picks the face most similar to the target child instead. This is configured automatically in `embed:batch` — the handler extracts face-source reference embeddings and passes them as `referenceEmbeddings`. The SQLite schema still enforces `UNIQUE(photoPath)` (one face per path), but it's now the RIGHT face for the search target.
+
+22. **`align.ts` orientation transform is defensive code, always receives `exifOrientation=1`** — `detector.ts` applies Sharp `.rotate()` before reading the raw buffer, so KPS from SCRFD are already in visual (post-rotation) coordinate space and `exifOrientation=1` is hardcoded before calling `alignFace()`. The `transformKpsForOrientation()` function supports orientations 2–8 for future use but is never triggered by current code. Do NOT remove it or change the hardcoded `exifOrientation=1` without updating the full pipeline EXIF handling.
+
+23. **Reference photo face selection: use `selectReferenceEmbeddings()`, not `fileToEmbeddingWithSource()` per file** — When extracting reference embeddings, calling `fileToEmbeddingWithSource()` one photo at a time picks the highest-confidence face, which is often a parent (larger/clearer face) in family photos. This contaminates the centroid and breaks all downstream matching. Use `selectReferenceEmbeddings()` instead — it implements a bootstrapped centroid: builds an initial centroid from single-face photos (guaranteed to be the target child), then uses that centroid to pick the correct child face from multi-face photos. The `embed:references` IPC handler already uses this function.
 
 ---
 

@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { detectFaces } from './detector';
+import { cosineSimilarity, computeCentroid } from './similarity';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 
@@ -81,6 +82,12 @@ export interface EmbeddingOptions {
   minConfidence?: number;
   /** 抓不到臉時是否自動以更寬鬆條件重試一次 */
   retryOnNoFace?: boolean;
+  /**
+   * 參考引導選臉：提供參考照的 embedding（僅限 face-source）。
+   * 當照片偵測到多張臉時，選擇與參考 centroid 最相似的臉，
+   * 而非預設的最高信心度臉。解決團體照中目標小孩不是最大臉的問題。
+   */
+  referenceEmbeddings?: number[][];
 }
 
 export async function fileToEmbeddingWithSource(
@@ -231,15 +238,46 @@ export async function fileToEmbeddingWithSource(
       }
     }
     if (faces.length > 0) {
-      // 使用信心度最高的臉部
-      const bestFace = faces.reduce((best, current) =>
+      // ── 選臉策略 ─────────────────────────────────────────────────────
+      // 1. 參考引導選臉：當有 referenceEmbeddings 且偵測到 ≥2 張臉時，
+      //    計算參考照的 centroid，選擇與 centroid 最相似的臉。
+      //    解決團體照中目標小孩不是最大/最清晰臉的問題。
+      // 2. 預設：取信心度最高的臉（適用於個人照或無參考照場景）。
+      let selectedFace = faces.reduce((best, current) =>
         current.confidence > best.confidence ? current : best
       );
+      let selectionMethod = 'highest-confidence';
 
-      if (!bestFace.embedding || bestFace.embedding.length === 0) {
+      if (
+        options.referenceEmbeddings &&
+        options.referenceEmbeddings.length > 0 &&
+        faces.length > 1
+      ) {
+        // 計算參考照 centroid，與每張偵測到的臉比較
+        const refCentroid = computeCentroid(options.referenceEmbeddings);
+        if (refCentroid.length > 0) {
+          let bestRefSim = -1;
+          for (const face of faces) {
+            if (!face.embedding || face.embedding.length === 0) continue;
+            const sim = cosineSimilarity(face.embedding, refCentroid);
+            if (sim > bestRefSim) {
+              bestRefSim = sim;
+              selectedFace = face;
+            }
+          }
+          selectionMethod = `ref-guided(sim=${bestRefSim.toFixed(3)})`;
+          logger.info(
+            `🎯 Reference-guided face selection: ${faces.length} faces detected, ` +
+              `selected face with ref-similarity=${bestRefSim.toFixed(3)} ` +
+              `(conf=${selectedFace.confidence.toFixed(3)}) for: ${filePath}`
+          );
+        }
+      }
+
+      if (!selectedFace.embedding || selectedFace.embedding.length === 0) {
         // 偵測到臉但沒有 embedding — 通常代表 face recognition model 未載入
         logger.error(
-          `❌ Face detected (confidence=${bestFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
+          `❌ Face detected (confidence=${selectedFace.confidence.toFixed(3)}) but embedding is EMPTY for: ${filePath}` +
             ' — the face recognition model may have failed to load.' +
             ' Check that face_recognition_model weights exist in the models directory.'
         );
@@ -247,25 +285,27 @@ export async function fileToEmbeddingWithSource(
         detectionErrorCode = 'RECOGNITION_MODEL_MISSING';
       }
 
-      if (bestFace.embedding && bestFace.embedding.length > 0) {
+      if (selectedFace.embedding && selectedFace.embedding.length > 0) {
         // 確保向量已正規化
         let norm = 0;
-        for (let i = 0; i < bestFace.embedding.length; i++)
-          norm += bestFace.embedding[i] * bestFace.embedding[i];
+        for (let i = 0; i < selectedFace.embedding.length; i++)
+          norm += selectedFace.embedding[i] * selectedFace.embedding[i];
         norm = Math.sqrt(norm) + 1e-12;
-        const normalized = bestFace.embedding.map(v => v / norm);
+        const normalized = selectedFace.embedding.map(v => v / norm);
 
         logger.info(
-          `✅ Face detection successful for: ${filePath} (${normalized.length} dims, confidence=${bestFace.confidence.toFixed(3)}, ms=${Date.now() - startedAt})`
+          `✅ Face detection successful for: ${filePath} (${normalized.length} dims, ` +
+            `confidence=${selectedFace.confidence.toFixed(3)}, selection=${selectionMethod}, ` +
+            `faces=${faces.length}, ms=${Date.now() - startedAt})`
         );
         return {
           embedding: normalized,
           source: 'face' as const,
           dimensions: normalized.length,
           faceAnalysis: {
-            confidence: bestFace.confidence,
-            age: bestFace.age,
-            gender: bestFace.gender,
+            confidence: selectedFace.confidence,
+            age: selectedFace.age,
+            gender: selectedFace.gender,
             faceCount: faces.length,
           },
         };
@@ -302,6 +342,297 @@ export async function fileToEmbeddingWithSource(
       originalError: error,
     });
   }
+}
+
+// ── Bootstrapped Centroid: Reference Photo Selection ──────────────────────
+
+/**
+ * 參考照選臉結果
+ */
+export interface ReferenceSelectionResult {
+  filePath: string;
+  embedding: number[];
+  source: 'face' | 'deterministic';
+  faceCount: number;
+  /** 選臉策略：single-face=唯一臉、bootstrapped=用初始centroid引導、highest-confidence=退回最高信心度、deterministic-fallback=無臉 */
+  selectionMethod:
+    | 'single-face'
+    | 'bootstrapped'
+    | 'highest-confidence'
+    | 'deterministic-fallback';
+  /** bootstrapped 時與初始 centroid 的相似度 */
+  bootstrapSimilarity?: number;
+  confidence: number;
+  faceAnalysis?: FaceAnalysis;
+}
+
+/**
+ * Bootstrapped Centroid 參考照選臉
+ *
+ * 問題：使用者提供的參考照可能包含多張臉（父母、兄弟姐妹），
+ *       若直接取最高信心度的臉，通常是大人而非目標小孩，
+ *       汙染 centroid 導致整體匹配失敗。
+ *
+ * 解法：
+ *   Phase 1：提取所有參考照的所有臉
+ *   Phase 2：找出只有 1 張臉的參考照 → 計算 initialCentroid（保證是目標小孩）
+ *   Phase 3：用 initialCentroid 從多臉參考照中選出最像的臉
+ *   Phase 4：回傳每個檔案一個最佳 embedding
+ *
+ * Fallback：若無任何單臉參考照，退回取最高信心度（現有行為）。
+ */
+export async function selectReferenceEmbeddings(
+  files: string[],
+  options?: {
+    maxSize?: number;
+    minConfidence?: number;
+    retryOnNoFace?: boolean;
+  }
+): Promise<ReferenceSelectionResult[]> {
+  if (files.length === 0) return [];
+
+  const maxSize = options?.maxSize ?? 1280;
+  const retryOnNoFace = options?.retryOnNoFace ?? true;
+
+  // ── Phase 1: 對每張參考照提取所有臉 ──────────────────────
+  logger.info(
+    `🔬 selectReferenceEmbeddings: Phase 1 — extracting ALL faces from ${files.length} reference photos`
+  );
+
+  interface PerFileData {
+    filePath: string;
+    faces: Array<{ embedding: number[]; confidence: number }>;
+    faceCount: number;
+    error?: string;
+  }
+
+  const perFileData: PerFileData[] = [];
+
+  for (const filePath of files) {
+    try {
+      const faces = await detectFaces(filePath, {
+        enableAgeGender: false,
+        maxSize,
+        minConfidence: options?.minConfidence ?? 0.01,
+      });
+
+      // 若第一次沒臉且允許重試，使用 fileToEmbeddingWithSource 的重試策略
+      if (faces.length === 0 && retryOnNoFace) {
+        // Retry #2: 降低信心度
+        let retryFaces = await detectFaces(filePath, {
+          maxSize,
+          minConfidence: 0.1,
+          overrideDetectorMinConfidence: 0.1,
+        }).catch(() => [] as Awaited<ReturnType<typeof detectFaces>>);
+
+        if (retryFaces.length === 0) {
+          // Retry #3: portrait crop
+          retryFaces = await detectFaces(filePath, {
+            maxSize,
+            minConfidence: 0.1,
+            overrideDetectorMinConfidence: 0.1,
+            cropTopFraction: 0.55,
+          }).catch(() => [] as Awaited<ReturnType<typeof detectFaces>>);
+        }
+
+        if (retryFaces.length === 0) {
+          // Retry #4: tight head crop
+          retryFaces = await detectFaces(filePath, {
+            maxSize,
+            minConfidence: 0.05,
+            overrideDetectorMinConfidence: 0.05,
+            cropTopFraction: 0.38,
+          }).catch(() => [] as Awaited<ReturnType<typeof detectFaces>>);
+        }
+
+        if (retryFaces.length === 0) {
+          // Retry #5: full resolution
+          retryFaces = await detectFaces(filePath, {
+            maxSize: 3072,
+            minConfidence: 0.05,
+            overrideDetectorMinConfidence: 0.05,
+          }).catch(() => [] as Awaited<ReturnType<typeof detectFaces>>);
+        }
+
+        if (retryFaces.length > 0) {
+          const validFaces = retryFaces
+            .filter(f => f.embedding && f.embedding.length > 0)
+            .map(f => ({ embedding: f.embedding, confidence: f.confidence }));
+          perFileData.push({
+            filePath,
+            faces: validFaces,
+            faceCount: retryFaces.length,
+          });
+          continue;
+        }
+      }
+
+      const validFaces = faces
+        .filter(f => f.embedding && f.embedding.length > 0)
+        .map(f => ({ embedding: f.embedding, confidence: f.confidence }));
+
+      perFileData.push({ filePath, faces: validFaces, faceCount: faces.length });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`⚠️ selectReferenceEmbeddings: detection failed for ${filePath}: ${msg}`);
+      perFileData.push({ filePath, faces: [], faceCount: 0, error: msg });
+    }
+  }
+
+  // ── Phase 2: 找單臉參考照 → 初始 centroid ──────────────────
+  const singleFaceEmbeddings: number[][] = [];
+  const singleFaceFiles: string[] = [];
+
+  for (const data of perFileData) {
+    if (data.faces.length === 1) {
+      singleFaceEmbeddings.push(data.faces[0].embedding);
+      singleFaceFiles.push(data.filePath);
+    }
+  }
+
+  const hasSingleFaceRefs = singleFaceEmbeddings.length > 0;
+  let initialCentroid: number[] = [];
+
+  if (hasSingleFaceRefs) {
+    initialCentroid = computeCentroid(singleFaceEmbeddings);
+    logger.info(
+      `🔬 selectReferenceEmbeddings: Phase 2 — ${singleFaceEmbeddings.length} single-face refs found, ` +
+        `initialCentroid computed (${initialCentroid.length} dims)`
+    );
+  } else {
+    logger.warn(
+      `⚠️ selectReferenceEmbeddings: Phase 2 — NO single-face refs found! ` +
+        `Falling back to highest-confidence face selection.`
+    );
+  }
+
+  // ── Phase 3 & 4: 選臉 + 建結果 ─────────────────────────────
+  const results: ReferenceSelectionResult[] = [];
+
+  for (const data of perFileData) {
+    // 無臉 → deterministic fallback
+    if (data.faces.length === 0) {
+      try {
+        const detEmb = await fileToDeterministicEmbedding(data.filePath, EMBEDDING_DIMS);
+        results.push({
+          filePath: data.filePath,
+          embedding: detEmb,
+          source: 'deterministic',
+          faceCount: 0,
+          selectionMethod: 'deterministic-fallback',
+          confidence: 0,
+        });
+        logger.warn(
+          `🔶 selectReferenceEmbeddings: ${data.filePath} — no face, using deterministic fallback`
+        );
+      } catch {
+        // 連 deterministic 都失敗，給空 embedding
+        results.push({
+          filePath: data.filePath,
+          embedding: new Array(EMBEDDING_DIMS).fill(0),
+          source: 'deterministic',
+          faceCount: 0,
+          selectionMethod: 'deterministic-fallback',
+          confidence: 0,
+        });
+      }
+      continue;
+    }
+
+    // 只有一張臉 → 直接用
+    if (data.faces.length === 1) {
+      const face = data.faces[0];
+      const normalized = normalizeEmbedding(face.embedding);
+      results.push({
+        filePath: data.filePath,
+        embedding: normalized,
+        source: 'face',
+        faceCount: 1,
+        selectionMethod: 'single-face',
+        confidence: face.confidence,
+        faceAnalysis: { confidence: face.confidence, faceCount: 1 },
+      });
+      continue;
+    }
+
+    // 多臉 → 用 bootstrapped centroid 或 highest-confidence
+    if (hasSingleFaceRefs && initialCentroid.length > 0) {
+      // Bootstrapped: 選與 initialCentroid 最像的臉
+      let bestSim = -1;
+      let bestFace = data.faces[0];
+      for (const face of data.faces) {
+        const sim = cosineSimilarity(face.embedding, initialCentroid);
+        if (sim > bestSim) {
+          bestSim = sim;
+          bestFace = face;
+        }
+      }
+
+      const normalized = normalizeEmbedding(bestFace.embedding);
+      results.push({
+        filePath: data.filePath,
+        embedding: normalized,
+        source: 'face',
+        faceCount: data.faces.length,
+        selectionMethod: 'bootstrapped',
+        bootstrapSimilarity: bestSim,
+        confidence: bestFace.confidence,
+        faceAnalysis: { confidence: bestFace.confidence, faceCount: data.faces.length },
+      });
+
+      // 找出 highest-confidence face 的 similarity 以便比較
+      const hcFace = data.faces.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+      const hcSim = cosineSimilarity(hcFace.embedding, initialCentroid);
+      const changed = bestFace !== hcFace;
+
+      logger.info(
+        `🎯 selectReferenceEmbeddings: ${data.filePath} — ${data.faces.length} faces, ` +
+          `bootstrapped: sim=${bestSim.toFixed(3)} conf=${bestFace.confidence.toFixed(3)}` +
+          (changed
+            ? ` (CHANGED from highest-conf face: sim=${hcSim.toFixed(3)} conf=${hcFace.confidence.toFixed(3)})`
+            : ` (same as highest-conf face)`)
+      );
+    } else {
+      // Fallback: 取最高信心度
+      const bestFace = data.faces.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+      const normalized = normalizeEmbedding(bestFace.embedding);
+      results.push({
+        filePath: data.filePath,
+        embedding: normalized,
+        source: 'face',
+        faceCount: data.faces.length,
+        selectionMethod: 'highest-confidence',
+        confidence: bestFace.confidence,
+        faceAnalysis: { confidence: bestFace.confidence, faceCount: data.faces.length },
+      });
+    }
+  }
+
+  // 統計
+  const methodCounts = {
+    'single-face': results.filter(r => r.selectionMethod === 'single-face').length,
+    bootstrapped: results.filter(r => r.selectionMethod === 'bootstrapped').length,
+    'highest-confidence': results.filter(r => r.selectionMethod === 'highest-confidence').length,
+    'deterministic-fallback': results.filter(r => r.selectionMethod === 'deterministic-fallback')
+      .length,
+  };
+  logger.info(
+    `🔬 selectReferenceEmbeddings: done. ` +
+      `single-face=${methodCounts['single-face']}, ` +
+      `bootstrapped=${methodCounts.bootstrapped}, ` +
+      `highest-confidence=${methodCounts['highest-confidence']}, ` +
+      `deterministic=${methodCounts['deterministic-fallback']}`
+  );
+
+  return results;
+}
+
+/** L2 正規化 embedding */
+function normalizeEmbedding(emb: number[]): number[] {
+  let norm = 0;
+  for (let i = 0; i < emb.length; i++) norm += emb[i] * emb[i];
+  norm = Math.sqrt(norm) + 1e-12;
+  return emb.map(v => v / norm);
 }
 
 /**

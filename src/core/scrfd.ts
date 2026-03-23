@@ -283,7 +283,7 @@ function nms(faces: SCRFDFace[], iouThreshold: number): SCRFDFace[] {
  * @returns 偵測到的臉部列表（含 bbox、kps、score，座標在原圖空間）
  */
 export async function detectFacesSCRFD(
-  imagePath: string,
+  imagePath: string | Buffer,
   options: {
     minConfidence?: number;
     inputSize?: number;

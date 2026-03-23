@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { MatchResult, ScanProgress, AppSettings, AppInfo } from '../../types/api';
 import { safeLocalStorageSet } from '../../utils/safe-storage';
 
-export type MultiRefStrategy = 'best' | 'average' | 'weighted';
+export type MultiRefStrategy = 'best' | 'average' | 'weighted' | 'centroid';
 
 export interface RefFileResult {
   path: string;
@@ -104,7 +104,7 @@ export function useScanState(): ScanState {
   const [scanWarnings, setScanWarnings] = useState<string[]>([]);
   const [refQualityResults, setRefQualityResults] = useState<RefFileResult[]>([]);
   const [enhancingPath, setEnhancingPath] = useState<string | null>(null);
-  const [multiRefStrategy, setMultiRefStrategy] = useState<MultiRefStrategy>('best');
+  const [multiRefStrategy, setMultiRefStrategy] = useState<MultiRefStrategy>('centroid');
   const scanStartTimeRef = useRef<number>();
   const refPathsTextareaRef = useRef<HTMLTextAreaElement>(null);
 

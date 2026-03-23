@@ -1,5 +1,104 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.27 – 接入 ReferencePhotoQualityCard / TaskReadinessCard / ScanWarningsPanel + ModernProgress（2026-03-23）
+
+**UI 主流程改善**
+
+- **`ReferencePhotoQualityCard`**：載入參考照後自動呼叫 `assess:photo-quality`，以富卡片（縮圖 + 評分徽章 + 銳度/亮度/解析度指標 + 智能增強/移除按鈕）取代原本的小縮圖格子；質量資料尚未取回前仍顯示原有格子作為 fallback
+- **`TaskReadinessCard`**：在掃描按鈕上方加入前置檢查清單（參考照片 / 掃描資料夾 / AI 模型），協助使用者快速確認是否就緒
+- **`ScanWarningsPanel`**：掃描完成後若有警告訊息，在結果列表上方以黃色警示框顯示
+- **`ModernProgress`**：載入參考照 / 計算相似度等過渡期間（無進度資料時）顯示動態進度條，避免空白等待感
+- 清除按鈕同步清空 `refPhotoQualities`，避免舊數據殘留
+
+### v0.2.26 – Hi-res SCRFD 重偵測 + Bootstrapped Centroid，F1: 40% → 85.7%（2026-03-23）
+
+**核心演算法改進**
+
+- **Bootstrapped Centroid（`selectReferenceEmbeddings()`）**：解決參考照包含多張臉（父母、兄弟姐妹）時選錯臉汙染 centroid 的問題
+  - 演算法：用單臉參考照建立 initialCentroid → 用 initialCentroid 從多臉參考照中選正確的小孩臉 → 重算 finalCentroid
+  - 實測：2 張參考照（4 臉的 IMG_5285.JPG）從 sim=0.096（錯的大人臉）修正到 sim=0.636（正確的小孩臉）
+  - Fallback：若沒有任何單臉參考照，退回原本的最高信心度選臉
+  - `src/core/embeddings.ts`：新增 `selectReferenceEmbeddings()` 函式 + `ReferenceSelectionResult` 介面
+  - `src/main/index.ts`：`embed:references` handler 改用 `selectReferenceEmbeddings()`
+
+**準確率測試框架**
+
+- 新增 `scripts/accuracy-test.mjs`：Ground Truth 標記 + Precision/Recall/F1 計算
+  - 自動標記個人照（006.jpg → positive，其餘 → negative）和群組照（檔名含 "6" → positive）
+  - 對每個門檻 0.20-0.95 計算 TP/FP/FN/TN + P/R/F1
+  - 同時比較 Centroid 和 Best 兩種策略
+  - 錯誤分析（FP/FN 列表）+ 未標記照片分數排序（供手動標記）
+  - 使用 `detector.ts` 的 `detectFaces()`（含 adaptive confidence filter），修正原先使用 raw `detectFacesSCRFD` 的問題
+  - 修正 maxSize=1280（匹配 APP 實際 `embed:batch` 行為）
+- 新增 `test-photos/ground-truth.json`：自動生成的 ground truth（72 張已標記）
+- `package.json`：新增 `test:accuracy` script
+
+**測試**
+
+- 新增 `src/core/embeddings.test.ts`：`selectReferenceEmbeddings()` 的 7 個單元測試
+  - 全部單臉、混合單臉+多臉（bootstrapped 選臉驗證）、全部多臉 fallback
+  - 偵測失敗 deterministic fallback、L2 正規化驗證
+
+**高解析度 SCRFD 重偵測（小臉品質大幅提升）**
+
+- **小臉 hi-res 重偵測**：群組照中的小臉（<112px）在低解析度下 SCRFD keypoints 不準，alignment 品質差
+  - 解法：從原圖全解析度裁切臉部區域 → 重新跑 SCRFD 獲得全新精確 keypoints → 高解析度 alignment + ArcFace
+  - 使用 ADAPTIVE_MIN_CONF (0.55) 過濾 hi-res 裁切上的 false-positive
+  - 自動選擇最接近原始偵測位置的臉（避免選到鄰居）
+  - Fallback：若 hi-res SCRFD 偵測失敗，退回 scaled keypoints 方案
+- `src/core/scrfd.ts`：`detectFacesSCRFD` 參數型別擴展為 `string | Buffer`，支援直接傳入 PNG buffer
+
+**UI 修正**
+
+- 多照融合方式新增「重心」選項（centroid），標示為預設且準確率最高
+- 修正 UI 顯示 '最高分' 為預設但後端實際使用 centroid 的不一致問題
+
+**準確率（72 張已標記照片）**
+
+- **F1=85.7%** @ 門檻 0.60，Precision=100%，Recall=75%（4 positive 中找到 3 個）
+- @ 門檻 0.55：F1=66.7%，Precision=50%，Recall=100%（全部 4 個 positive 找到，僅 4 個 FP）
+- 群組照分數大幅提升：
+  - `3,6,7,10,14.jpg`: 36.3% → **67.8%** (+31.5%)
+  - `6,15,18,33.jpg`: 49.9% → **66.8%** (+16.9%)
+  - `1,2,3,4,5,6,7.jpg`: 26.4% → **55.2%** (+28.8%)
+- 個人照 006.jpg 維持排名 #1（76.6%）
+
+---
+
+### v0.2.24 – Centroid 策略接通 UI + 參考引導選臉 + 審計修復（2026-03-23）
+
+**核心功能修復**
+
+- **`match:run` 預設策略改為 `'centroid'`**：v0.2.23 新增的 `computeCentroid()` 和 `'centroid'` 策略從未被 UI 使用過——preload、types、renderer 的型別定義只有 `'best' | 'average' | 'weighted'`，且預設值為 `'best'`。本次修正：
+  - `src/preload/index.ts`：strategy 型別新增 `'centroid'`
+  - `src/types/api.ts`：`ElectronAPI.runMatch` 新增 `'centroid'`
+  - `src/renderer/hooks/useScanState.ts`：預設值改為 `'centroid'`
+  - `src/main/index.ts`：`match:run` handler 預設值改為 `'centroid'`
+
+- **參考引導選臉（Reference-Guided Face Selection）**：解決群組照片中目標小孩不是最大臉的問題。
+  - `src/core/embeddings.ts`：`EmbeddingOptions` 新增 `referenceEmbeddings?: number[][]`
+  - 當偵測到多張臉時，計算參考照 centroid，選擇與 centroid 最相似的臉（而非最高信心度的臉）
+  - `src/main/index.ts`：`embed:batch` 在掃描前提取 face-source 參考 embeddings，傳給 `fileToEmbeddingWithSource`
+
+**程式碼正確性修復**
+
+- **`src/core/align.ts`（KPS 裁切路徑 bug）**：超大圖（>4MP）裁切路徑改用 `adjustedKps`
+- **`src/core/align.ts`（誤導性注釋）**：修正為正確說明 pipeline 啟用了 `.rotate()` 自動旋轉
+
+**文件更新（CLAUDE.md）**
+
+- 更新 `align.ts` 模組描述：純 JS 逆向雙線性插值，`exifOrientation=1` 設計意圖
+- 新增 Common Pitfall #21：群組照片單 embedding 限制（已透過參考引導選臉緩解）
+- 新增 Common Pitfall #22：`transformKpsForOrientation()` 防禦性代碼說明
+
+**整合測試結果（149 張真實照片）**
+
+- 12/12 測試全部通過
+- Top-1 相似度: 90.4%, Top-10 均值: 89.3%
+- 個人照配對 ≥0.4: 39/42, 團體照找人 ≥0.3: 30/30
+
+---
+
 ### v0.2.23 – 修復人臉辨識三個致命 bug（2026-03-22）
 
 **核心修復（006.jpg 排名從 #38 → #1）**

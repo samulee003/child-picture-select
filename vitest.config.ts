@@ -13,6 +13,7 @@ export default defineConfig({
     exclude: [
       'tests/e2e/**',
       'node_modules/**',
+      '.claude/**',
     ],
     server: {
       deps: {
