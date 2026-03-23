@@ -20,8 +20,17 @@ temp_fix/
 
 # 暫存與測試用檔案（勿提交）
 debug.png
+debug_*.jpg
+debug_*.png
 test-face.jpg
 temp_*.cjs
 test-*-tensor.cjs
+test-*.cjs
+test-*.ts
+test.jpg
+out_112.png
+nul
+test-photos/
+scripts/integration-test.mjs
 
 
