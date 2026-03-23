@@ -1,5 +1,42 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.25 – Bootstrapped Centroid + 準確率測試框架（2026-03-23）
+
+**核心演算法改進**
+
+- **Bootstrapped Centroid（`selectReferenceEmbeddings()`）**：解決參考照包含多張臉（父母、兄弟姐妹）時選錯臉汙染 centroid 的問題
+  - 演算法：用單臉參考照建立 initialCentroid → 用 initialCentroid 從多臉參考照中選正確的小孩臉 → 重算 finalCentroid
+  - 實測：2 張參考照（4 臉的 IMG_5285.JPG）從 sim=0.096（錯的大人臉）修正到 sim=0.636（正確的小孩臉）
+  - Fallback：若沒有任何單臉參考照，退回原本的最高信心度選臉
+  - `src/core/embeddings.ts`：新增 `selectReferenceEmbeddings()` 函式 + `ReferenceSelectionResult` 介面
+  - `src/main/index.ts`：`embed:references` handler 改用 `selectReferenceEmbeddings()`
+
+**準確率測試框架**
+
+- 新增 `scripts/accuracy-test.mjs`：Ground Truth 標記 + Precision/Recall/F1 計算
+  - 自動標記個人照（006.jpg → positive，其餘 → negative）和群組照（檔名含 "6" → positive）
+  - 對每個門檻 0.20-0.95 計算 TP/FP/FN/TN + P/R/F1
+  - 同時比較 Centroid 和 Best 兩種策略
+  - 錯誤分析（FP/FN 列表）+ 未標記照片分數排序（供手動標記）
+  - 使用 `detector.ts` 的 `detectFaces()`（含 adaptive confidence filter），修正原先使用 raw `detectFacesSCRFD` 的問題
+  - 修正 maxSize=1280（匹配 APP 實際 `embed:batch` 行為）
+- 新增 `test-photos/ground-truth.json`：自動生成的 ground truth（72 張已標記）
+- `package.json`：新增 `test:accuracy` script
+
+**測試**
+
+- 新增 `src/core/embeddings.test.ts`：`selectReferenceEmbeddings()` 的 7 個單元測試
+  - 全部單臉、混合單臉+多臉（bootstrapped 選臉驗證）、全部多臉 fallback
+  - 偵測失敗 deterministic fallback、L2 正規化驗證
+
+**目前準確率（72 張已標記照片）**
+
+- F1=40% @ 門檻 0.60，Precision=100%，Recall=25%（4 positive 中找到 1 個）
+- 瓶頸：群組照（4-7 人）中目標小孩的臉太小，ArcFace embedding 品質不足（26-50%）
+- 個人照 006.jpg 正確排名 #1（76.5%）
+
+---
+
 ### v0.2.24 – Centroid 策略接通 UI + 參考引導選臉 + 審計修復（2026-03-23）
 
 **核心功能修復**

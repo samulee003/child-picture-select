@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { mkdir, readdir, copyFile } from 'fs/promises';
 import {
   fileToEmbeddingWithSource,
+  selectReferenceEmbeddings,
   Embedding,
   DETERMINISTIC_SCORE_PENALTY,
   type FaceAnalysis,
@@ -599,43 +600,35 @@ function wireIpc() {
         };
       }> = [];
 
-      for (const f of files) {
-        const startedAt = Date.now();
-        logger.info(`🧩 Reference embedding start: ${f}`);
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const result = await Promise.race([
-          fileToEmbeddingWithSource(f, {
-            maxSize: 1280,
-            minConfidence: 0.01,
-            retryOnNoFace: true,
-          }).finally(() => {
-            if (timeoutId !== undefined) clearTimeout(timeoutId);
-          }),
-          new Promise<never>((_resolve, reject) => {
-            timeoutId = setTimeout(
-              () =>
-                reject(
-                  new AppError(`Reference embedding timed out for: ${f}`, 'REFERENCE_EMBED_TIMEOUT')
-                ),
-              300_000
-            );
-          }),
-        ]);
-        logger.info(
-          `🧩 Reference embedding done: ${f} (source=${result.source}, dims=${result.dimensions}, ms=${Date.now() - startedAt})`
-        );
+      // ── Bootstrapped Centroid：正確選出目標小孩的臉 ──────────
+      // 使用 selectReferenceEmbeddings 取代逐檔 fileToEmbeddingWithSource。
+      // 演算法：先從單臉參考照建 initial centroid，再從多臉參考照中
+      // 選出最像 centroid 的臉（而非最高信心度的臉，那通常是大人）。
+      const selectionResults = await selectReferenceEmbeddings(files, {
+        maxSize: 1280,
+        minConfidence: 0.01,
+        retryOnNoFace: true,
+      });
+
+      for (const result of selectionResults) {
         referenceEmbeddings.push(result.embedding);
         referenceEmbeddingSources.push(result.source === 'face' ? 'face' : 'deterministic');
         perFileResults.push({
-          path: f,
+          path: result.filePath,
           source: result.source,
-          faceAnalysis: result.faceAnalysis,
-        });
+          faceAnalysis: result.faceAnalysis
+            ? {
+                confidence: result.faceAnalysis.confidence,
+                faceCount: result.faceAnalysis.faceCount,
+              }
+            : undefined,
+        } as any);
         if (result.source === 'face') {
           faceCount++;
         } else {
           deterministicCount++;
-          if (result.fallbackReason === 'detection_error') detectionErrorFallbackCount++;
+          // selectReferenceEmbeddings 內部已處理重試，若仍為 deterministic 視為偵測失敗
+          detectionErrorFallbackCount++;
         }
       }
 

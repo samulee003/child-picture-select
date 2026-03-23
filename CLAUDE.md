@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.24
+- **Version**: 0.2.25
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
@@ -452,6 +452,12 @@ logger.error('Face detection failed', error);
 ### `src/core/embeddings.ts`
 - `fileToEmbeddingWithSource(filePath, options)` — Returns `{ embedding, source }`
   - `options.referenceEmbeddings?: number[][]` — When provided and multiple faces detected, selects the face most similar to the reference centroid instead of the highest-confidence face. Used by `embed:batch` for group photo face selection.
+- `selectReferenceEmbeddings(files, options)` — **Bootstrapped Centroid** reference photo face selection
+  - Phase 1: extract all faces from all reference photos
+  - Phase 2: single-face refs (guaranteed to be target child) → compute `initialCentroid`
+  - Phase 3: multi-face refs → pick face most similar to `initialCentroid` (not highest-confidence, which is often a parent)
+  - Fallback: if no single-face refs exist, falls back to highest-confidence selection
+  - Used by `embed:references` IPC handler; fixes centroid contamination from parent/sibling faces
 - `fileToEmbedding(filePath)` — Legacy backward-compatible wrapper
 - `fileToDeterministicEmbedding(filePath, dims)` — SHA-256 hash fallback
 - Constants: `EMBEDDING_DIMS = 512`, `DETERMINISTIC_SCORE_PENALTY = 0.12`
@@ -597,6 +603,8 @@ npm test
 21. **Group photos: reference-guided face selection** — `fileToEmbeddingWithSource` stores only one face embedding per photo. By default it picks the highest-confidence face, but when `referenceEmbeddings` is provided (during batch scan), it computes the reference centroid and picks the face most similar to the target child instead. This is configured automatically in `embed:batch` — the handler extracts face-source reference embeddings and passes them as `referenceEmbeddings`. The SQLite schema still enforces `UNIQUE(photoPath)` (one face per path), but it's now the RIGHT face for the search target.
 
 22. **`align.ts` orientation transform is defensive code, always receives `exifOrientation=1`** — `detector.ts` applies Sharp `.rotate()` before reading the raw buffer, so KPS from SCRFD are already in visual (post-rotation) coordinate space and `exifOrientation=1` is hardcoded before calling `alignFace()`. The `transformKpsForOrientation()` function supports orientations 2–8 for future use but is never triggered by current code. Do NOT remove it or change the hardcoded `exifOrientation=1` without updating the full pipeline EXIF handling.
+
+23. **Reference photo face selection: use `selectReferenceEmbeddings()`, not `fileToEmbeddingWithSource()` per file** — When extracting reference embeddings, calling `fileToEmbeddingWithSource()` one photo at a time picks the highest-confidence face, which is often a parent (larger/clearer face) in family photos. This contaminates the centroid and breaks all downstream matching. Use `selectReferenceEmbeddings()` instead — it implements a bootstrapped centroid: builds an initial centroid from single-face photos (guaranteed to be the target child), then uses that centroid to pick the correct child face from multi-face photos. The `embed:references` IPC handler already uses this function.
 
 ---
 
