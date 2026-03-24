@@ -1,148 +1,14 @@
-/**
- * 滑動式快速審核
- * 全螢幕卡片式介面，左右滑動或按鍵快速 accept/reject
- * 設計靈感：Tinder-style photo review for parents
- */
+with open("src/renderer/components/SwipeReview.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { theme } from '../styles/theme';
-import type { MatchResult } from '../../types/api';
+# Locate the start of the final return statement
+idx = content.rfind("  return (\n    <div\n      style={{\n        position: 'fixed', inset: 0, zIndex: 9999,\n        background: 'rgba(0,0,0,0.9)'")
+if idx == -1:
+    print("Warning: Could not find main return block")
+else:
+    print(f"Found main return at {idx}")
 
-interface SwipeReviewProps {
-  results: MatchResult[];
-  reviewDecisions: Record<string, 'accepted' | 'rejected'>;
-  onDecision: (path: string, decision: 'accepted' | 'rejected' | null) => void;
-  onClose: () => void;
-}
-
-export function SwipeReview({ results, reviewDecisions, onDecision, onClose }: SwipeReviewProps) {
-  // Only show pending (undecided) items
-  const pendingResults = results.filter(r => !reviewDecisions[r.path]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef(0);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  const current = pendingResults[currentIndex];
-  const remaining = pendingResults.length - currentIndex;
-
-  const handleDecision = useCallback((decision: 'accepted' | 'rejected') => {
-    if (!current) return;
-    setSwipeDirection(decision === 'accepted' ? 'right' : 'left');
-    setTimeout(() => {
-      onDecision(current.path, decision);
-      setSwipeDirection(null);
-      setDragX(0);
-      // Stay at same index since the item will be removed from pending list
-    }, 250);
-  }, [current, onDecision]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'd') handleDecision('accepted');
-      else if (e.key === 'ArrowLeft' || e.key === 'a') handleDecision('rejected');
-      else if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowDown' || e.key === 's') {
-        // Skip — move to next without deciding
-        if (currentIndex < pendingResults.length - 1) {
-          setCurrentIndex(i => i + 1);
-        }
-      }
-      else if (e.key === 'ArrowUp' || e.key === 'w') {
-        if (currentIndex > 0) setCurrentIndex(i => i - 1);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleDecision, onClose, currentIndex, pendingResults.length]);
-
-  // Touch/mouse drag
-  const handleDragStart = useCallback((clientX: number) => {
-    setIsDragging(true);
-    dragStartRef.current = clientX;
-  }, []);
-
-  const handleDragMove = useCallback((clientX: number) => {
-    if (!isDragging) return;
-    const dx = clientX - dragStartRef.current;
-    setDragX(dx);
-  }, [isDragging]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    if (Math.abs(dragX) > 100) {
-      handleDecision(dragX > 0 ? 'accepted' : 'rejected');
-    } else {
-      setDragX(0);
-    }
-  }, [dragX, handleDecision]);
-
-  // All done
-  if (!current || remaining === 0) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        color: '#2c2f31',
-        fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif"
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.7)',
-          backdropFilter: 'blur(20px)',
-          padding: '40px',
-          borderRadius: '24px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center'
-        }}>
-          <div style={{ fontSize: '64px', marginBottom: '24px' }}>✨</div>
-          <h2 style={{ margin: 0, fontSize: '32px', fontWeight: 700, color: '#006a28' }}>全部審核完畢！</h2>
-          <p style={{ color: '#595c5e', marginTop: '12px', fontSize: '18px' }}>
-            已審核 {Object.keys(reviewDecisions).length} 張照片
-          </p>
-          <button
-            onClick={onClose}
-            style={{
-              marginTop: '32px',
-              padding: '16px 48px',
-              borderRadius: '9999px',
-              border: 'none',
-              background: '#006a28',
-              color: '#cfffce',
-              fontSize: '18px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(0, 106, 40, 0.3)',
-              transition: 'transform 0.2s'
-            }}
-            onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
-            onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            返回結果
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const score = Math.round(current.score * 100);
-  const rotation = dragX * 0.05;
-  const opacity = Math.max(0.3, 1 - Math.abs(dragX) / 400);
-
-  const cardTransform = swipeDirection === 'right'
-    ? 'translateX(120vw) rotate(20deg)'
-    : swipeDirection === 'left'
-      ? 'translateX(-120vw) rotate(-20deg)'
-      : `translateX(${dragX}px) rotate(${rotation}deg)`;
-
-  const imgSrc = current.thumbPath
-    ? `file://${current.thumbPath.replace(/\\/g, '/')}`
-    : `file://${current.path.replace(/\\/g, '/')}`;
-
-  return (
+    replacement = r"""  return (
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
@@ -437,3 +303,9 @@ export function SwipeReview({ results, reviewDecisions, onDecision, onClose }: S
     </div>
   );
 }
+"""
+
+    new_content = content[:idx] + replacement
+    with open("src/renderer/components/SwipeReview.tsx", "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print("Done writing")
