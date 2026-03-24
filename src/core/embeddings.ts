@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { detectFaces } from './detector';
-import { cosineSimilarity, computeCentroid } from './similarity';
+import { cosineSimilarity, computeCentroid, computeRobustCentroid } from './similarity';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 
@@ -494,10 +494,12 @@ export async function selectReferenceEmbeddings(
   let initialCentroid: number[] = [];
 
   if (hasSingleFaceRefs) {
-    initialCentroid = computeCentroid(singleFaceEmbeddings);
+    // Use robust centroid to filter out misaligned/side-profile single-face references
+    // before building the initial prototype used to guide multi-face selection.
+    initialCentroid = computeRobustCentroid(singleFaceEmbeddings, 0.25);
     logger.info(
       `🔬 selectReferenceEmbeddings: Phase 2 — ${singleFaceEmbeddings.length} single-face refs found, ` +
-        `initialCentroid computed (${initialCentroid.length} dims)`
+        `robust initialCentroid computed (${initialCentroid.length} dims)`
     );
   } else {
     logger.warn(

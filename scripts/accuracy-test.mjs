@@ -75,7 +75,11 @@ Module.prototype.require = function (id) {
 };
 
 // ── Load compiled modules ────────────────────────────────────
-const { cosineSimilarity, computeCentroid } = require(path.join(coreDistDir, 'similarity.cjs'));
+const {
+  cosineSimilarity,
+  computeCentroid,
+  computeRobustCentroid,
+} = require(path.join(coreDistDir, 'similarity.cjs'));
 // 使用 detectFaces (detector.ts) 而非 detectFacesSCRFD，因為 detector.ts 包含：
 // 1. Adaptive confidence filter (丟棄 0.50-0.52 的 false-positive faces)
 // 2. 正確的 maxSize 同步 (SCRFD 和 raw buffer 使用相同 maxSize)
@@ -350,6 +354,56 @@ function computeMetrics(scores, labels, threshold) {
   return { TP, FP, FN, TN, precision, recall, f1 };
 }
 
+/**
+ * Compute Area Under the ROC Curve (AUC) using the trapezoidal rule.
+ * @param {Array<{relPath:string, score:number}>} scores
+ * @param {Object} labels
+ * @returns {number} AUC in [0,1]
+ */
+function computeAUC(scores, labels) {
+  const labeled = scores.filter(s => labels[s.relPath] !== null && labels[s.relPath] !== undefined);
+  if (labeled.length === 0) return 0;
+
+  const positives = labeled.filter(s => labels[s.relPath] === true).length;
+  const negatives = labeled.filter(s => labels[s.relPath] === false).length;
+  if (positives === 0 || negatives === 0) return 0;
+
+  // Sort descending by score
+  const sorted = [...labeled].sort((a, b) => b.score - a.score);
+
+  let auc = 0;
+  let prevFPR = 0;
+  let prevTPR = 0;
+  let tp = 0;
+  let fp = 0;
+
+  for (const item of sorted) {
+    if (labels[item.relPath] === true) {
+      tp++;
+    } else {
+      fp++;
+    }
+    const tpr = tp / positives;
+    const fpr = fp / negatives;
+    // Trapezoidal rule
+    auc += (fpr - prevFPR) * (tpr + prevTPR) / 2;
+    prevFPR = fpr;
+    prevTPR = tpr;
+  }
+  return auc;
+}
+
+/**
+ * Category of a relative path based on which subdirectory it's in.
+ * Returns 'individual' | 'group' | 'event' | 'other'
+ */
+function getCategory(relPath) {
+  if (relPath.includes('揮春_個人照')) return 'individual';
+  if (relPath.includes('新年服裝_小組')) return 'group';
+  if (relPath.includes('當天照片')) return 'event';
+  return 'other';
+}
+
 // ── Main ─────────────────────────────────────────────────────
 async function main() {
   console.log('=== 準確率測試報告 ===\n');
@@ -408,9 +462,14 @@ async function main() {
 
   console.log(`\n有效參考照 embedding: ${refEmbeddings.length}/${refPaths.length}`);
 
-  // Compute centroid of reference embeddings (now from bootstrapped selection)
-  const centroid = computeCentroid(refEmbeddings);
-  console.log(`Centroid 已計算 (${centroid.length} dims)\n`);
+  // Compute ROBUST centroid: removes outlier reference embeddings (misaligned faces,
+  // side profiles, occlusion) before averaging, producing a cleaner prototype.
+  const centroid = computeRobustCentroid(refEmbeddings, 0.25);
+  const plainCentroid = computeCentroid(refEmbeddings);
+  const centroidSim = cosineSimilarity(centroid, plainCentroid);
+  console.log(
+    `Robust Centroid 已計算 (${centroid.length} dims, sim-to-plain=${(centroidSim * 100).toFixed(1)}%)\n`
+  );
 
   // Scan all photos and compute similarity
   const allImages = findImages(SCAN_DIR);
@@ -464,8 +523,9 @@ async function main() {
   console.log(`\n\n掃描完成: ${scores.length} 張照片`);
 
   // ── 計算 Precision / Recall / F1 (centroid strategy) ───────
+  // Fine-grained sweep (0.01 steps) for more accurate threshold optimization
   const thresholds = [];
-  for (let t = 0.20; t <= 0.95; t += 0.05) {
+  for (let t = 0.20; t <= 0.95; t += 0.01) {
     thresholds.push(Math.round(t * 100) / 100);
   }
 
@@ -542,10 +602,37 @@ async function main() {
 
   console.log(`\n★ 最佳門檻 (Best strategy): ${bestThresholdBest.toFixed(2)} (F1=${bestF1Best >= 0 ? (bestF1Best * 100).toFixed(1) + '%' : 'N/A'})`);
 
+  // ── AUC ────────────────────────────────────────────────────
+  const aucCentroid = computeAUC(scores, labels);
+  const aucBest = computeAUC(scores.map(s => ({ relPath: s.relPath, score: s.scoreBest })), labels);
+
   // ── 策略比較摘要 ───────────────────────────────────────────
   console.log('\n=== 策略比較 ===');
-  console.log(`  Centroid: 最佳 F1=${bestF1 >= 0 ? (bestF1 * 100).toFixed(1) + '%' : 'N/A'} @ threshold=${bestThreshold.toFixed(2)}`);
-  console.log(`  Best:     最佳 F1=${bestF1Best >= 0 ? (bestF1Best * 100).toFixed(1) + '%' : 'N/A'} @ threshold=${bestThresholdBest.toFixed(2)}`);
+  console.log(`  Centroid: 最佳 F1=${bestF1 >= 0 ? (bestF1 * 100).toFixed(1) + '%' : 'N/A'} @ threshold=${bestThreshold.toFixed(2)}, AUC=${(aucCentroid * 100).toFixed(1)}%`);
+  console.log(`  Best:     最佳 F1=${bestF1Best >= 0 ? (bestF1Best * 100).toFixed(1) + '%' : 'N/A'} @ threshold=${bestThresholdBest.toFixed(2)}, AUC=${(aucBest * 100).toFixed(1)}%`);
+
+  // ── Per-category breakdown ─────────────────────────────────
+  const categories = ['individual', 'group', 'event', 'other'];
+  const categoryNames = { individual: '個人照', group: '群組照', event: '活動照', other: '其他' };
+  console.log(`\n=== 各類別準確率 (門檻 ${bestThreshold.toFixed(2)}) ===\n`);
+  console.log('類別      TP  FP  FN  TN   Precision  Recall     F1        AUC');
+  console.log('─'.repeat(72));
+
+  for (const cat of categories) {
+    const catScores = scores.filter(s => getCategory(s.relPath) === cat);
+    if (catScores.length === 0) continue;
+    const m = computeMetrics(catScores, labels, bestThreshold);
+    const catAUC = computeAUC(catScores, labels);
+    const pStr = m.precision !== null ? `${(m.precision * 100).toFixed(1)}%` : 'N/A';
+    const rStr = m.recall !== null ? `${(m.recall * 100).toFixed(1)}%` : 'N/A';
+    const f1Str = m.f1 !== null ? `${(m.f1 * 100).toFixed(1)}%` : 'N/A';
+    const aucStr = `${(catAUC * 100).toFixed(1)}%`;
+    console.log(
+      `${(categoryNames[cat] || cat).padEnd(8)}  ${String(m.TP).padStart(2)}  ${String(m.FP).padStart(2)}  ` +
+      `${String(m.FN).padStart(2)}  ${String(m.TN).padStart(2)}   ` +
+      `${pStr.padStart(9)}  ${rStr.padStart(6)}  ${f1Str.padStart(6)}  ${aucStr.padStart(6)}`
+    );
+  }
 
   // ── 錯誤分析 (使用最佳門檻) ────────────────────────────────
   const analysisThreshold = bestThreshold;
@@ -642,11 +729,12 @@ async function main() {
   console.log(`參考照: ${refEmbeddings.length}/${refPaths.length} (有臉/總計)`);
   console.log(`掃描照: ${scores.length}`);
   console.log(`Ground Truth: ${labeledCount} 已標記, ${unlabeledCount} 未標記`);
-  console.log(`\nCentroid Strategy:`);
+  console.log(`\nCentroid Strategy (Robust Centroid):`);
   console.log(`  最佳門檻: ${bestThreshold.toFixed(2)}`);
   console.log(`  Precision: ${bestMetrics.precision !== null ? (bestMetrics.precision * 100).toFixed(1) + '%' : 'N/A'}`);
   console.log(`  Recall:    ${bestMetrics.recall !== null ? (bestMetrics.recall * 100).toFixed(1) + '%' : 'N/A'}`);
   console.log(`  F1:        ${bestMetrics.f1 !== null ? (bestMetrics.f1 * 100).toFixed(1) + '%' : 'N/A'}`);
+  console.log(`  AUC:       ${(aucCentroid * 100).toFixed(1)}%`);
   console.log(`  TP=${bestMetrics.TP} FP=${bestMetrics.FP} FN=${bestMetrics.FN} TN=${bestMetrics.TN}`);
   console.log(`\n提示: 手動編輯 test-photos/ground-truth.json 將 null → true/false，重跑本測試即可更新結果。`);
 

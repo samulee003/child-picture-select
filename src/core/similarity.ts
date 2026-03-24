@@ -88,6 +88,81 @@ export function computeCentroid(embeddings: number[][]): number[] {
 }
 
 /**
+ * 穩健 centroid：移除與初始 centroid 相似度低於門檻的離群 embedding 後再平均。
+ *
+ * 用途：參考照中可能有對齊失敗、側臉、遮擋等低品質 embedding，
+ *       這些離群值會拉偏原型向量，導致相似度計算不準。
+ *
+ * @param embeddings    所有待平均的 embedding 陣列
+ * @param minSimilarity 與初始 centroid 的最低餘弦相似度（預設 0.3）。
+ *                      低於此值的 embedding 被視為離群值並排除。
+ *                      當所有 embedding 都低於門檻時退回使用全部（保守策略）。
+ * @returns L2 歸一化的穩健 centroid
+ */
+export function computeRobustCentroid(
+  embeddings: number[][],
+  minSimilarity = 0.3
+): number[] {
+  if (embeddings.length <= 2) return computeCentroid(embeddings);
+
+  // Step 1：計算初始 centroid（包含所有 embedding）
+  const initial = computeCentroid(embeddings);
+
+  // Step 2：計算每個 embedding 與初始 centroid 的相似度
+  const sims = embeddings.map(emb => cosineSimilarity(emb, initial));
+
+  // Step 3：過濾離群值
+  const filtered = embeddings.filter((_, i) => sims[i] >= minSimilarity);
+
+  // 若所有 embedding 都被過濾掉（極端情況），退回使用全部
+  if (filtered.length === 0) return initial;
+
+  // 若過濾後只剩相同數量，不需重算
+  if (filtered.length === embeddings.length) return initial;
+
+  logger.debug(
+    `computeRobustCentroid: removed ${embeddings.length - filtered.length} outlier(s) ` +
+      `(sim<${minSimilarity}) out of ${embeddings.length} embeddings`
+  );
+
+  return computeCentroid(filtered);
+}
+
+/**
+ * 加權 centroid：每個 embedding 乘以對應的權重後平均再歸一化。
+ * 適用於以偵測信心度或品質分數加權參考照。
+ *
+ * @param embeddings  embedding 陣列
+ * @param weights     對應的非負權重（長度必須與 embeddings 相同）
+ * @returns L2 歸一化的加權 centroid
+ */
+export function computeWeightedCentroid(embeddings: number[][], weights: number[]): number[] {
+  if (embeddings.length === 0) return [];
+  if (embeddings.length === 1) return normalizeVector(embeddings[0]);
+  if (embeddings.length !== weights.length) {
+    logger.warn(
+      `computeWeightedCentroid: embeddings.length (${embeddings.length}) ≠ weights.length (${weights.length}), falling back to unweighted centroid`
+    );
+    return computeCentroid(embeddings);
+  }
+
+  const dim = embeddings[0].length;
+  const sum = new Array(dim).fill(0);
+  let totalWeight = 0;
+
+  for (let j = 0; j < embeddings.length; j++) {
+    const w = Math.max(0, weights[j]); // 確保非負
+    totalWeight += w;
+    for (let i = 0; i < dim; i++) {
+      sum[i] += embeddings[j][i] * w;
+    }
+  }
+
+  if (totalWeight === 0) return computeCentroid(embeddings);
+  return normalizeVector(sum.map(v => v / totalWeight));
+}
+
+/**
  * 計算目標向量對一組參考向量的融合相似度
  * 自動處理向量維度不一致的情況
  */

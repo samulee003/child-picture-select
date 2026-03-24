@@ -9,6 +9,9 @@ import {
   euclideanDistance,
   normalizeVector,
   multiReferenceSimilarity,
+  computeRobustCentroid,
+  computeWeightedCentroid,
+  computeCentroid,
   type MultiRefStrategy,
 } from '../../../src/core/similarity';
 
@@ -148,6 +151,13 @@ describe('multiReferenceSimilarity', () => {
     expect(score).toBe(0);
   });
 
+  it('centroid strategy returns score based on averaged face embeddings', () => {
+    const faceRefs = refs.filter(r => r.isFace);
+    const score = multiReferenceSimilarity(target, faceRefs, 'centroid');
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(1);
+  });
+
   it('all strategies produce scores in [0, 1] range for normalized vectors', () => {
     const normTarget = normalizeVector([0.5, 0.5, 0.5]);
     const normRefs = [
@@ -160,5 +170,124 @@ describe('multiReferenceSimilarity', () => {
       expect(score).toBeGreaterThanOrEqual(-0.01);
       expect(score).toBeLessThanOrEqual(1.01);
     }
+  });
+});
+
+// ──────────────────────────────────────────────
+// computeRobustCentroid
+// ──────────────────────────────────────────────
+describe('computeRobustCentroid', () => {
+  it('returns empty for empty input', () => {
+    expect(computeRobustCentroid([])).toEqual([]);
+  });
+
+  it('returns single embedding unchanged', () => {
+    const e = [1, 0, 0];
+    expect(computeRobustCentroid([e])).toEqual(e);
+  });
+
+  it('passes through two embeddings unchanged (≤2 items bypass filtering)', () => {
+    const a = normalizeVector([1, 0]);
+    const b = normalizeVector([0.8, 0.2]);
+    const result = computeRobustCentroid([a, b], 0.9);
+    // Should equal computeCentroid result
+    const plain = computeCentroid([a, b]);
+    expect(result[0]).toBeCloseTo(plain[0], 5);
+    expect(result[1]).toBeCloseTo(plain[1], 5);
+  });
+
+  it('removes an outlier and produces a tighter centroid', () => {
+    const good1 = normalizeVector([1, 0.1, 0]);
+    const good2 = normalizeVector([0.95, 0.15, 0]);
+    const good3 = normalizeVector([0.9, 0.2, 0]);
+    const outlier = normalizeVector([-1, 0, 0]);
+
+    const robust = computeRobustCentroid([good1, good2, good3, outlier], 0.3);
+    const plain = computeCentroid([good1, good2, good3, outlier]);
+
+    // Robust should be closer to [1,0,0] than plain
+    const robustSim = cosineSimilarity(robust, [1, 0, 0]);
+    const plainSim = cosineSimilarity(plain, [1, 0, 0]);
+    expect(robustSim).toBeGreaterThan(plainSim);
+  });
+
+  it('falls back to full centroid when all embeddings are below threshold', () => {
+    const a = normalizeVector([1, 0, 0]);
+    const b = normalizeVector([0, 1, 0]);
+    const c = normalizeVector([0, 0, 1]);
+    // With threshold 0.99, all are filtered → fallback
+    const result = computeRobustCentroid([a, b, c], 0.99);
+    const mag = Math.sqrt(result.reduce((s, v) => s + v * v, 0));
+    expect(mag).toBeCloseTo(1, 5);
+  });
+
+  it('result is always unit-length', () => {
+    const embs = [
+      normalizeVector([1, 0.2, -0.3]),
+      normalizeVector([0.8, 0.5, 0.1]),
+      normalizeVector([0.9, 0.3, -0.1]),
+      normalizeVector([-0.9, 0.1, 0.2]),
+    ];
+    const result = computeRobustCentroid(embs, 0.4);
+    const mag = Math.sqrt(result.reduce((s, v) => s + v * v, 0));
+    expect(mag).toBeCloseTo(1, 5);
+  });
+});
+
+// ──────────────────────────────────────────────
+// computeWeightedCentroid
+// ──────────────────────────────────────────────
+describe('computeWeightedCentroid', () => {
+  it('returns empty for empty input', () => {
+    expect(computeWeightedCentroid([], [])).toEqual([]);
+  });
+
+  it('returns normalized single embedding', () => {
+    const result = computeWeightedCentroid([[3, 4]], [1]);
+    const mag = Math.sqrt(result.reduce((s, v) => s + v * v, 0));
+    expect(mag).toBeCloseTo(1, 5);
+  });
+
+  it('equal weights match computeCentroid', () => {
+    const a = normalizeVector([1, 0.5]);
+    const b = normalizeVector([0.5, 1]);
+    const plain = computeCentroid([a, b]);
+    const weighted = computeWeightedCentroid([a, b], [1, 1]);
+    expect(weighted[0]).toBeCloseTo(plain[0], 5);
+    expect(weighted[1]).toBeCloseTo(plain[1], 5);
+  });
+
+  it('high weight on one embedding pulls centroid toward it', () => {
+    const dominant = normalizeVector([1, 0]);
+    const weak = normalizeVector([0, 1]);
+    const result = computeWeightedCentroid([dominant, weak], [10, 1]);
+    const simToDominant = cosineSimilarity(result, dominant);
+    const simToWeak = cosineSimilarity(result, weak);
+    expect(simToDominant).toBeGreaterThan(simToWeak);
+  });
+
+  it('falls back to unweighted centroid on length mismatch (no throw)', () => {
+    const a = normalizeVector([1, 0]);
+    const b = normalizeVector([0, 1]);
+    expect(() => computeWeightedCentroid([a, b], [1])).not.toThrow();
+  });
+
+  it('zero total weight falls back to unweighted centroid', () => {
+    const a = normalizeVector([1, 0]);
+    const b = normalizeVector([0, 1]);
+    const result = computeWeightedCentroid([a, b], [0, 0]);
+    const mag = Math.sqrt(result.reduce((s, v) => s + v * v, 0));
+    expect(mag).toBeCloseTo(1, 5);
+  });
+
+  it('result is always unit-length', () => {
+    const embs = [
+      normalizeVector([1, 2, 3]),
+      normalizeVector([4, 5, 6]),
+      normalizeVector([-1, 0, 1]),
+    ];
+    const result = computeWeightedCentroid(embs, [0.8, 0.9, 0.5]);
+    const mag = Math.sqrt(result.reduce((s, v) => s + v * v, 0));
+    expect(mag).toBeCloseTo(1, 5);
   });
 });

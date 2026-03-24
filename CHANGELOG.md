@@ -1,5 +1,33 @@
 ## Changelog - Find My Kid (Offline)
 
+### v0.2.28 – Robust Centroid + 加權 Centroid + Benchmark 強化（2026-03-23）
+
+**核心演算法改進**
+
+- **`computeRobustCentroid(embeddings, minSimilarity=0.3)`**（`src/core/similarity.ts`）：
+  - 移除與初始 centroid 相似度低於門檻的離群 embedding（對齊失敗、側臉、遮擋）後再計算 centroid
+  - 避免單張低品質參考照拉偏整體原型向量
+  - Fallback：當所有 embedding 都被過濾時退回使用全部（保守策略）
+- **`computeWeightedCentroid(embeddings, weights)`**（`src/core/similarity.ts`）：
+  - 以偵測信心度或品質分數加權各參考照，讓高品質偵測對 centroid 貢獻更多
+  - L2 歸一化輸出；長度不匹配時退回等權重 centroid
+- **`selectReferenceEmbeddings()`**（`src/core/embeddings.ts`）：
+  - Phase 2 改用 `computeRobustCentroid(singleFaceEmbeddings, 0.25)` 建立初始 centroid，
+    進一步排除對齊不良的單臉參考照對初始原型的汙染
+
+**Benchmark 強化**（`scripts/accuracy-test.mjs`）
+
+- 門檻掃描細粒度從 0.05 → 0.01（0.20–0.95），更精確找到最佳門檻
+- 新增 **AUC（ROC 曲線下面積）** 計算：Centroid / Best 兩種策略各自報告 AUC
+- 新增 **各類別準確率分解**：個人照 / 群組照 / 活動照 / 其他 各自顯示 TP/FP/FN/TN + P/R/F1 + AUC
+- 改用 `computeRobustCentroid` 計算參考照 centroid，並顯示與原始 centroid 的相似度差異
+
+**單元測試**
+
+- `src/core/similarity.test.ts`：新增 `computeCentroid`、`computeRobustCentroid`、`computeWeightedCentroid` 完整測試（共 +27 個測試案例）
+- `tests/unit/core/similarity.test.ts`：同步新增 `computeRobustCentroid`、`computeWeightedCentroid` 測試（共 +14 個測試案例）
+- 全部 214 個測試通過
+
 ### v0.2.27 – 接入 ReferencePhotoQualityCard / TaskReadinessCard / ScanWarningsPanel + ModernProgress（2026-03-23）
 
 **UI 主流程改善**
