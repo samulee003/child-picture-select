@@ -1,100 +1,12 @@
-/**
- * 匹配结果卡片 - 显示解释性信息
- */
+import re
 
-import React, { useState } from 'react';
-import { theme } from '../styles/theme';
-import type { MatchResult } from '../../types/api';
+with open("src/renderer/components/MatchResultCard.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
 
-interface MatchResultCardProps {
-  result: MatchResult;
-  index: number;
-  compact?: boolean;
-  onPreview?: (path: string) => void;
-  reviewDecision?: 'accepted' | 'rejected';
-  reviewScore?: number;
-  onDecision?: (path: string, decision: 'accepted' | 'rejected' | null) => void;
-  onReviewScore?: (path: string, score: number) => void;
-  onFavorite?: (path: string) => void;
-  isFavorite?: boolean;
-  /** Ordered list of reference photo paths (to show which one matched best) */
-  refPaths?: string[];
-}
+# Replace the return block of MatchResultCard
+start_idx = content.find("  return (")
 
-interface MatchExplanation {
-  confidenceLevel: 'high' | 'medium' | 'low';
-  previewMode?: 'face-only' | 'full-image';
-  reasons: string[];
-}
-
-function getExplanation(result: MatchResult): MatchExplanation {
-  const score = result.score * 100;
-  const reasons: string[] = [];
-
-  if (score >= 80) {
-    reasons.push('臉部特徵高度相似');
-  } else if (score >= 60) {
-    reasons.push('臉部特徵中度相似');
-  } else {
-    reasons.push('僅部分特徵匹配');
-  }
-
-  if (score >= 70) {
-    reasons.push('輪廓匹配度良好');
-  }
-
-  return {
-    confidenceLevel: score >= 75 ? 'high' : score >= 55 ? 'medium' : 'low',
-    previewMode: score >= 70 ? 'face-only' : 'full-image',
-    reasons,
-  };
-}
-
-function ConfidenceBadge({ level }: { level: MatchExplanation['confidenceLevel'] }) {
-  const config = {
-    high: { color: '#10b981', bg: 'rgba(16, 185, 129, 0.2)', label: '高信心度', icon: '✓' },
-    medium: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.2)', label: '中信心', icon: '~' },
-    low: { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.2)', label: '低信心度', icon: '!' },
-  };
-
-  const c = config[level];
-
-  return (
-    <div style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
-      background: c.bg,
-      borderRadius: theme.borderRadius.full,
-      fontSize: theme.typography.fontSize.xs,
-      fontWeight: theme.typography.fontWeight.semibold,
-      color: c.color,
-    }}>
-      <span>{c.icon}</span>
-      <span>{c.label}</span>
-    </div>
-  );
-}
-
-export function MatchResultCard({ result, index, compact = false, onPreview, reviewDecision, reviewScore, onDecision, onReviewScore, onFavorite, isFavorite = false, refPaths }: MatchResultCardProps) {
-  const [showExplain, setShowExplain] = useState(false);
-  const explanation = getExplanation(result);
-  const fileName = result.path.split(/[/\\]/).pop() || '';
-  const humanScore = reviewScore ?? Math.round(result.score * 100);
-
-  const confidenceHint = {
-    high: '看起來很像你的小孩，通常可直接放進收藏',
-    medium: '有機會是同班其他小孩，建議先看大圖再決定',
-    low: '可能是誤判，建議先標記待複核',
-  }[explanation.confidenceLevel];
-  const sourceHint = result.source === 'face'
-    ? { label: '來源：臉部特徵', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' }
-    : result.source === 'deterministic'
-      ? { label: '來源：保底特徵（建議複核）', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' }
-      : { label: '來源：未標記', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)' };
-
-  return (
+new_return = r"""  return (
     <div style={{
       width: '100%',
       height: '100%',
@@ -127,7 +39,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
         boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
         fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}>
-        {humanScore}% 相似
+        {(result.score * 100).toFixed(1)}% 相似
       </div>
 
       {/* Favorite Button (Heart) */}
@@ -176,7 +88,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
         onClick={() => onPreview?.(result.path)}
       >
         <img
-          src={result.thumbPath ? `file://${result.thumbPath.replace(/\\/g, '/')}` : `file://${result.path.replace(/\\/g, '/')}`}
+          src={imgSrc}
           alt=""
           loading="lazy"
           style={{
@@ -195,8 +107,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             position: 'absolute',
             bottom: '8px',
             right: '8px',
-            background: sourceHint.bg,
-            color: sourceHint.color,
+            background: sourceHint.color,
+            color: '#fff',
             padding: '4px 8px',
             borderRadius: '8px',
             fontSize: '11px',
@@ -227,13 +139,13 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             marginBottom: '8px',
             fontWeight: 500
           }} title={result.path}>
-            {fileName}
+            {result.path.split(/[\\/]/).pop()}
           </div>
 
           {/* Explanation Reasons (Only in detailed view) */}
           {!compact && explanation.reasons.length > 0 && (
              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-               {explanation.reasons.map((reason: string, i: number) => (
+               {explanation.reasons.map((reason, i) => (
                  <span key={i} style={{
                    background: 'rgba(0,0,0,0.04)',
                    color: '#2c2f31',
@@ -257,7 +169,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
             marginTop: 'auto'
           }}>
             <button
-              onClick={(e) => { e.stopPropagation(); onDecision(result.path, reviewDecision === 'accepted' ? null : 'accepted'); }}
+              onClick={() => onDecision(result.path, 'accepted')}
               style={{
                 flex: 1,
                 padding: '10px',
@@ -276,10 +188,10 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
               }}
               title="保留此照片"
             >
-              {reviewDecision === 'accepted' ? '已接受' : '✓ 要'}
+              ✓ 要
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); onDecision(result.path, reviewDecision === 'rejected' ? null : 'rejected'); }}
+              onClick={() => onDecision(result.path, 'rejected')}
               style={{
                 flex: 1,
                 padding: '10px',
@@ -298,7 +210,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
               }}
               title="排除此照片"
             >
-              {reviewDecision === 'rejected' ? '已排除' : '✕ 不要'}
+              ✕ 不要
             </button>
           </div>
         )}
@@ -306,3 +218,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
     </div>
   );
 }
+"""
+
+new_content = content[:start_idx] + new_return
+with open("src/renderer/components/MatchResultCard.tsx", "w", encoding="utf-8") as f:
+    f.write(new_content)

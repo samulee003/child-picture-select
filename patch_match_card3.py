@@ -1,100 +1,9 @@
-/**
- * 匹配结果卡片 - 显示解释性信息
- */
+with open("src/renderer/components/MatchResultCard.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
 
-import React, { useState } from 'react';
-import { theme } from '../styles/theme';
-import type { MatchResult } from '../../types/api';
+start_idx = content.find("  return (")
 
-interface MatchResultCardProps {
-  result: MatchResult;
-  index: number;
-  compact?: boolean;
-  onPreview?: (path: string) => void;
-  reviewDecision?: 'accepted' | 'rejected';
-  reviewScore?: number;
-  onDecision?: (path: string, decision: 'accepted' | 'rejected' | null) => void;
-  onReviewScore?: (path: string, score: number) => void;
-  onFavorite?: (path: string) => void;
-  isFavorite?: boolean;
-  /** Ordered list of reference photo paths (to show which one matched best) */
-  refPaths?: string[];
-}
-
-interface MatchExplanation {
-  confidenceLevel: 'high' | 'medium' | 'low';
-  previewMode?: 'face-only' | 'full-image';
-  reasons: string[];
-}
-
-function getExplanation(result: MatchResult): MatchExplanation {
-  const score = result.score * 100;
-  const reasons: string[] = [];
-
-  if (score >= 80) {
-    reasons.push('臉部特徵高度相似');
-  } else if (score >= 60) {
-    reasons.push('臉部特徵中度相似');
-  } else {
-    reasons.push('僅部分特徵匹配');
-  }
-
-  if (score >= 70) {
-    reasons.push('輪廓匹配度良好');
-  }
-
-  return {
-    confidenceLevel: score >= 75 ? 'high' : score >= 55 ? 'medium' : 'low',
-    previewMode: score >= 70 ? 'face-only' : 'full-image',
-    reasons,
-  };
-}
-
-function ConfidenceBadge({ level }: { level: MatchExplanation['confidenceLevel'] }) {
-  const config = {
-    high: { color: '#10b981', bg: 'rgba(16, 185, 129, 0.2)', label: '高信心度', icon: '✓' },
-    medium: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.2)', label: '中信心', icon: '~' },
-    low: { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.2)', label: '低信心度', icon: '!' },
-  };
-
-  const c = config[level];
-
-  return (
-    <div style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
-      background: c.bg,
-      borderRadius: theme.borderRadius.full,
-      fontSize: theme.typography.fontSize.xs,
-      fontWeight: theme.typography.fontWeight.semibold,
-      color: c.color,
-    }}>
-      <span>{c.icon}</span>
-      <span>{c.label}</span>
-    </div>
-  );
-}
-
-export function MatchResultCard({ result, index, compact = false, onPreview, reviewDecision, reviewScore, onDecision, onReviewScore, onFavorite, isFavorite = false, refPaths }: MatchResultCardProps) {
-  const [showExplain, setShowExplain] = useState(false);
-  const explanation = getExplanation(result);
-  const fileName = result.path.split(/[/\\]/).pop() || '';
-  const humanScore = reviewScore ?? Math.round(result.score * 100);
-
-  const confidenceHint = {
-    high: '看起來很像你的小孩，通常可直接放進收藏',
-    medium: '有機會是同班其他小孩，建議先看大圖再決定',
-    low: '可能是誤判，建議先標記待複核',
-  }[explanation.confidenceLevel];
-  const sourceHint = result.source === 'face'
-    ? { label: '來源：臉部特徵', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' }
-    : result.source === 'deterministic'
-      ? { label: '來源：保底特徵（建議複核）', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' }
-      : { label: '來源：未標記', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)' };
-
-  return (
+new_return = r"""  return (
     <div style={{
       width: '100%',
       height: '100%',
@@ -306,3 +215,8 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
     </div>
   );
 }
+"""
+
+new_content = content[:start_idx] + new_return
+with open("src/renderer/components/MatchResultCard.tsx", "w", encoding="utf-8") as f:
+    f.write(new_content)
