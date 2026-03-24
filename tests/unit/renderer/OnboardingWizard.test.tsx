@@ -67,7 +67,7 @@ describe('OnboardingWizard', () => {
     const onSkip = vi.fn();
     render(<OnboardingWizard onSkip={onSkip} />);
 
-    const skipButton = screen.getByText('跳過，先直接使用');
+    const skipButton = screen.getByText('跳過，直接使用');
     fireEvent.click(skipButton);
 
     expect(onSkip).toHaveBeenCalledTimes(1);

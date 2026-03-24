@@ -1,53 +1,18 @@
-import React from 'react';
-import { GlassCard } from './GlassCard';
-import { ModernButton } from './ModernButton';
-import { theme } from '../styles/theme';
+import re
 
-interface WelcomeStateProps {
-  refPaths: string;
-  folder: string;
-  isProcessing: boolean;
-  onBrowseFiles: () => void;
-  onBrowseFolder: () => void;
-  onRunScan: () => void;
-}
+with open("src/renderer/components/WelcomeState.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
 
-export function WelcomeState({
-  refPaths,
-  folder,
-  isProcessing,
-  onBrowseFiles,
-  onBrowseFolder,
-  onRunScan,
-}: WelcomeStateProps) {
-  const hasRefs = refPaths.split(/\r?\n/).filter(s => s.trim()).length > 0;
-  const hasFolder = folder.trim().length > 0;
+# We want to replace the return statement with the new design
+# The old return statement:
+# return (
+#   <div style={{
+#     flex: 1,
+#     display: 'flex', ...
 
-  const steps = [
-    {
-      step: 1,
-      label: '選擇小孩的照片',
-      desc: '3-10 張清晰正面照作為參考',
-      done: hasRefs,
-      color: theme.colors.primary[500],
-    },
-    {
-      step: 2,
-      label: '選擇要搜尋的資料夾',
-      desc: '班級照、活動照的資料夾',
-      done: hasFolder,
-      color: theme.colors.secondary[500],
-    },
-    {
-      step: 3,
-      label: '按「開始搜尋」',
-      desc: 'AI 會自動找出你的小孩',
-      done: false,
-      color: '#10b981',
-    },
-  ];
+idx = content.find("  return (")
 
-  return (
+new_return = """  return (
     <div style={{
       flex: 1,
       display: 'flex',
@@ -234,3 +199,8 @@ export function WelcomeState({
     </div>
   );
 }
+"""
+
+new_content = content[:idx] + new_return
+with open("src/renderer/components/WelcomeState.tsx", "w", encoding="utf-8") as f:
+    f.write(new_content)

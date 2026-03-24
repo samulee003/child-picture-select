@@ -1,133 +1,12 @@
-/**
- * 任務導向首次導覽
- * 聚焦「先做什麼」與「下一步怎麼補救」
- */
-import React, { useMemo, useState } from 'react';
-import { safeLocalStorageSet } from '../../utils/safe-storage';
-import { theme } from '../styles/theme';
+import re
 
-interface OnboardingStep {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  reassurance?: string;
-  tips: string[];
-}
+with open("src/renderer/components/OnboardingWizard.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
 
-interface FirstRunChecklist {
-  hasRefs: boolean;
-  hasFolder: boolean;
-  modelLoaded: boolean | null;
-}
+# We want to replace the `return (...)` block of OnboardingWizard
+start_idx = content.find("  return (")
 
-interface OnboardingWizardProps {
-  onComplete?: () => void;
-  onSkip?: () => void;
-  checklist?: FirstRunChecklist;
-}
-
-const steps: OnboardingStep[] = [
-  {
-    id: 'refs',
-    title: '先準備參考照',
-    description: '先放 3-5 張清晰正面照就好，之後可以再補。',
-    icon: '📸',
-    reassurance: '先求有結果，不用一次就做到完美。',
-    tips: [
-      '建議使用光線好、臉部清楚的照片',
-      '可混合不同角度，提升找回率',
-      '如果結果少，再補 2-3 張通常會變好',
-    ],
-  },
-  {
-    id: 'folder',
-    title: '再選照片資料夾',
-    description: '可以直接丟班級照或活動照資料夾，會自動遞迴掃描。',
-    icon: '📁',
-    reassurance: '資料夾很大也可以，過程中可暫停或取消。',
-    tips: [
-      '先從最常用的相簿開始',
-      '第一次先跑一輪，之後再微調門檻',
-      '掃描中可看進度，不用猜還要多久',
-    ],
-  },
-  {
-    id: 'scan',
-    title: '開始搜尋與複核',
-    description: '先跑出候選照片，再用「低信心提醒」快速複核。',
-    icon: '🔎',
-    reassurance: '看起來不確定的照片，先標記待複核即可。',
-    tips: [
-      '門檻 0.55-0.65 是常用起點',
-      '低信心結果先看大圖再決定',
-      '可用收藏功能先保留高價值照片',
-    ],
-  },
-  {
-    id: 'export',
-    title: '匯出與補救',
-    description: '可先匯出，再重試失敗項目，不會讓你重來全部流程。',
-    icon: '📦',
-    reassurance: '真的不用急，先完成第一版結果最重要。',
-    tips: [
-      '匯出失敗可只重試失敗清單',
-      '找不到時先放寬門檻或補參考照',
-      '上次設定可直接載入，重跑更快',
-    ],
-  },
-];
-
-export function OnboardingWizard({ onComplete, onSkip, checklist }: OnboardingWizardProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const isFinalStep = currentStep === steps.length - 1;
-  const step = steps[currentStep];
-  const progress = ((currentStep + 1) / steps.length) * 100;
-
-  const checklistRows = useMemo(() => {
-    if (!checklist) return [];
-    return [
-      {
-        label: '已準備參考照',
-        ok: checklist.hasRefs,
-        pendingText: '先放 3 張即可開始',
-      },
-      {
-        label: '已選擇照片資料夾',
-        ok: checklist.hasFolder,
-        pendingText: '先選一個常用相簿',
-      },
-      {
-        label: '模型狀態',
-        ok: checklist.modelLoaded === true,
-        pendingText: checklist.modelLoaded === null ? '初始化中' : '尚未就緒，先載入參考照可觸發',
-      },
-    ];
-  }, [checklist]);
-
-  const finish = () => {
-    safeLocalStorageSet('onboardingCompleted', 'true');
-    onComplete?.();
-  };
-
-  const handleNext = () => {
-    if (isFinalStep) {
-      finish();
-      return;
-    }
-    setCurrentStep((prev) => prev + 1);
-  };
-
-  const handlePrev = () => {
-    setCurrentStep((prev) => Math.max(0, prev - 1));
-  };
-
-  const handleSkip = () => {
-    safeLocalStorageSet('onboardingCompleted', 'true');
-    onSkip?.();
-  };
-
-  return (
+new_return = """  return (
     <div
       style={{
         position: 'fixed',
@@ -374,3 +253,8 @@ export function OnboardingWizard({ onComplete, onSkip, checklist }: OnboardingWi
     </div>
   );
 }
+"""
+
+new_content = content[:start_idx] + new_return
+with open("src/renderer/components/OnboardingWizard.tsx", "w", encoding="utf-8") as f:
+    f.write(new_content)
