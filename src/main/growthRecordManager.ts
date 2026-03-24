@@ -74,18 +74,20 @@ export class GrowthRecordManager {
    */
   async getGrowthRecords(): Promise<{ records: GrowthRecord[] }> {
     const files = await fs.readdir(this.paths.recordsDir);
-    const records: GrowthRecord[] = [];
+    const jsonFiles = files.filter(file => file.endsWith('.json'));
 
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        try {
-          const record = await fs.readJson(path.join(this.paths.recordsDir, file));
-          records.push(record);
-        } catch (error) {
-          logger.error('Failed to read growth record', { file, error: String(error) });
-        }
-      }
-    }
+    const records = (
+      await Promise.all(
+        jsonFiles.map(async file => {
+          try {
+            return await fs.readJson(path.join(this.paths.recordsDir, file));
+          } catch (error) {
+            logger.error('Failed to read growth record', { file, error: String(error) });
+            return null;
+          }
+        })
+      )
+    ).filter((record): record is GrowthRecord => record !== null);
 
     // 按结束日期排序，最新的在前
     records.sort((a, b) => {
@@ -160,18 +162,20 @@ export class GrowthRecordManager {
    */
   async getScanSessions(): Promise<{ sessions: ScanSession[] }> {
     const files = await fs.readdir(this.paths.sessionsDir);
-    const sessions: ScanSession[] = [];
+    const jsonFiles = files.filter(file => file.endsWith('.json'));
 
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        try {
-          const session = await fs.readJson(path.join(this.paths.sessionsDir, file));
-          sessions.push(session);
-        } catch (error) {
-          logger.error('Failed to read scan session', { file, error: String(error) });
-        }
-      }
-    }
+    const sessions = (
+      await Promise.all(
+        jsonFiles.map(async file => {
+          try {
+            return await fs.readJson(path.join(this.paths.sessionsDir, file));
+          } catch (error) {
+            logger.error('Failed to read scan session', { file, error: String(error) });
+            return null;
+          }
+        })
+      )
+    ).filter((session): session is ScanSession => session !== null);
 
     // 依建立日期排序，最新的在前
     sessions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
