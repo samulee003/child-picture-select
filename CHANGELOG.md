@@ -1,5 +1,13 @@
 ## Changelog - Find My Kid (Offline)
 
+
+## [0.3.0] - 2026-03-24
+### Changed
+- **UI Redesign (Lumina Glass System)**: 全面升級使用者介面，導入溫暖、現代的毛玻璃 (Glassmorphism) 設計語言。
+- **Swipe Review**: 全新設計的 Tinder 風格滑動審核介面，包含更直覺的滿版照片卡片與巨大按鍵。
+- **Welcome & Onboarding**: 重新設計首頁與導覽流程，使用半透明對話框、大字體與柔和的漸層背景，降低非技術背景父母的使用門檻。
+- **Typography**: 導入 `Plus Jakarta Sans` 與 `Inter` 字體，提升畫面高級感與易讀性。
+
 ### v0.2.27 – 接入 ReferencePhotoQualityCard / TaskReadinessCard / ScanWarningsPanel + ModernProgress（2026-03-23）
 
 **UI 主流程改善**
