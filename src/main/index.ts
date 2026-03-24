@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { mkdir, readdir, copyFile } from 'fs/promises';
+import { mkdir, readdir, copyFile, stat as fsStat } from 'fs/promises';
 import {
   fileToEmbeddingWithSource,
   selectReferenceEmbeddings,
@@ -16,7 +16,6 @@ import {
 } from '../core/similarity';
 import {
   getPhoto,
-  upsertPhoto,
   upsertFace,
   getFacesByPath,
   getDb,
@@ -24,7 +23,6 @@ import {
   upsertPhotoAndFace,
 } from '../core/db';
 import { ensureThumbnailFor } from '../core/thumbs';
-import { stat as fsStat } from 'fs/promises';
 import { logger } from '../utils/logger';
 import { AppError, createErrorInfo } from '../utils/error-handler';
 import { performanceManager } from '../core/performance';
