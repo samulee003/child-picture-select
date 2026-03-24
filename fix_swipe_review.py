@@ -1,88 +1,20 @@
-/**
- * 滑動式快速審核
- * 全螢幕卡片式介面，左右滑動或按鍵快速 accept/reject
- * 設計靈感：Tinder-style photo review for parents
- */
+import re
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { theme } from '../styles/theme';
-import type { MatchResult } from '../../types/api';
+def fix():
+    with open('src/renderer/components/SwipeReview.tsx', 'r', encoding='utf-8') as f:
+        content = f.read()
 
-interface SwipeReviewProps {
-  results: MatchResult[];
-  reviewDecisions: Record<string, 'accepted' | 'rejected'>;
-  onDecision: (path: string, decision: 'accepted' | 'rejected' | null) => void;
-  onClose: () => void;
-}
+    # It seems the regex replace for main JSX didn't match. Let's do it more robustly by finding the "Top bar" comment
 
-export function SwipeReview({ results, reviewDecisions, onDecision, onClose }: SwipeReviewProps) {
-  // Only show pending (undecided) items
-  const pendingResults = results.filter(r => !reviewDecisions[r.path]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
-  const [dragX, setDragX] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef(0);
-  const cardRef = useRef<HTMLDivElement>(null);
+    start_idx = content.find('return (')
+    # find the second "return (" since the first one is for "All done"
+    start_idx = content.find('return (', start_idx + 1)
 
-  const current = pendingResults[currentIndex];
-  const remaining = pendingResults.length - currentIndex;
+    if start_idx == -1:
+        print("Could not find the second return statement")
+        return
 
-  const handleDecision = useCallback((decision: 'accepted' | 'rejected') => {
-    if (!current) return;
-    setSwipeDirection(decision === 'accepted' ? 'right' : 'left');
-    setTimeout(() => {
-      onDecision(current.path, decision);
-      setSwipeDirection(null);
-      setDragX(0);
-      // Stay at same index since the item will be removed from pending list
-    }, 250);
-  }, [current, onDecision]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'd') handleDecision('accepted');
-      else if (e.key === 'ArrowLeft' || e.key === 'a') handleDecision('rejected');
-      else if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowDown' || e.key === 's') {
-        // Skip — move to next without deciding
-        if (currentIndex < pendingResults.length - 1) {
-          setCurrentIndex(i => i + 1);
-        }
-      }
-      else if (e.key === 'ArrowUp' || e.key === 'w') {
-        if (currentIndex > 0) setCurrentIndex(i => i - 1);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [handleDecision, onClose, currentIndex, pendingResults.length]);
-
-  // Touch/mouse drag
-  const handleDragStart = useCallback((clientX: number) => {
-    setIsDragging(true);
-    dragStartRef.current = clientX;
-  }, []);
-
-  const handleDragMove = useCallback((clientX: number) => {
-    if (!isDragging) return;
-    const dx = clientX - dragStartRef.current;
-    setDragX(dx);
-  }, [isDragging]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    if (Math.abs(dragX) > 100) {
-      handleDecision(dragX > 0 ? 'accepted' : 'rejected');
-    } else {
-      setDragX(0);
-    }
-  }, [dragX, handleDecision]);
-
-  // All done
-  if (!current || remaining === 0) {
-    return (
+    new_main_jsx = """return (
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
@@ -271,7 +203,7 @@ export function SwipeReview({ results, reviewDecisions, onDecision, onClose }: S
                 whiteSpace: 'nowrap',
                 maxWidth: '80%'
               }}>
-                {current.path.split(/[/\]/).pop()}
+                {current.path.split(/[/\\]/).pop()}
               </span>
               {current.source && current.source !== 'face' && (
                 <span style={{
@@ -376,4 +308,11 @@ export function SwipeReview({ results, reviewDecisions, onDecision, onClose }: S
       </div>
     </div>
   );
-}
+}"""
+
+    # We replace from the second return to the end of the file
+    final_content = content[:start_idx] + new_main_jsx
+    with open('src/renderer/components/SwipeReview.tsx', 'w', encoding='utf-8') as f:
+        f.write(final_content)
+
+fix()
