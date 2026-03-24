@@ -81,12 +81,16 @@ export function ResultsSection(props: ResultsSectionProps) {
   const useVirtualization = displayedResults.length >= VIRTUALIZE_THRESHOLD;
 
   const filterBtnStyle = (active: boolean) => ({
-    borderRadius: theme.borderRadius.md,
-    border: `1px solid ${active ? theme.colors.primary[500] : 'rgba(0, 0, 0, 0.12)'}`,
-    color: active ? theme.colors.primary[700] : theme.colors.neutral[600],
-    background: active ? 'rgba(0, 151, 245, 0.08)' : 'transparent',
-    padding: `${theme.spacing[1]} ${theme.spacing[2]}`,
+    borderRadius: '999px',
+    border: 'none',
+    color: active ? '#ffffff' : '#595c5e',
+    background: active ? '#006a28' : 'rgba(255, 255, 255, 0.5)',
+    padding: '8px 16px',
     cursor: 'pointer' as const,
+    fontWeight: 600,
+    fontSize: '14px',
+    boxShadow: active ? '0 4px 12px rgba(0, 106, 40, 0.2)' : '0 2px 8px rgba(0,0,0,0.02)',
+    transition: 'all 0.2s ease',
   });
 
   interface VirtualCellProps {
