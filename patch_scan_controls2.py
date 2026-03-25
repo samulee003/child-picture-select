@@ -1,42 +1,9 @@
-/**
- * ScanControls - Pause/Resume and Cancel buttons during scanning
- */
-import React, { useState } from 'react';
+with open("src/renderer/components/ScanControls.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
 
-interface ScanControlsProps {
-  onCancelled: () => void;
-}
+start_idx = content.find("  return (")
 
-export function ScanControls({ onCancelled }: ScanControlsProps) {
-  const [paused, setPaused] = useState(false);
-
-  const handlePause = async () => {
-    if (!window.api) return;
-    try {
-      if (paused) {
-        await window.api.resumeScan();
-        setPaused(false);
-      } else {
-        await window.api.pauseScan();
-        setPaused(true);
-      }
-    } catch (err) {
-      console.warn('Scan pause/resume failed:', err);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (!window.api) return;
-    try {
-      await window.api.cancelScan();
-    } catch (err) {
-      console.warn('Scan cancel failed:', err);
-    }
-    setPaused(false);
-    onCancelled();
-  };
-
-  return (
+new_return = r"""  return (
     <div style={{
       display: 'flex',
       gap: '12px',
@@ -94,3 +61,8 @@ export function ScanControls({ onCancelled }: ScanControlsProps) {
     </div>
   );
 }
+"""
+
+new_content = content[:start_idx] + new_return
+with open("src/renderer/components/ScanControls.tsx", "w", encoding="utf-8") as f:
+    f.write(new_content)
