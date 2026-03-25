@@ -202,7 +202,7 @@ export function App() {
         display: 'flex',
         height: '100vh',
         overflow: 'hidden',
-        background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+        background: 'linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%)',
         fontFamily: theme.typography.fontFamily.sans.join(', '),
         color: theme.colors.neutral[800],
       }}
@@ -210,21 +210,13 @@ export function App() {
       {/* Left Sidebar */}
       <div
         style={{
-          width: '380px',
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          borderRight: `1px solid rgba(0,0,0,0.06)`,
-          background:
-            'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.95) 100%)',
-          backdropFilter: 'blur(20px)',
+          width: '380px', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255, 255, 255, 0.45)', backdropFilter: 'blur(32px)', zIndex: 10, boxShadow: '4px 0 24px rgba(0,0,0,0.02)', margin: '12px', borderRadius: '24px', height: 'calc(100vh - 24px)', overflow: 'hidden',
         }}
       >
         {/* Compact Header */}
         <div
           style={{
-            padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            padding: `24px 20px 16px`, borderBottom: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.3)',
             display: 'flex',
             alignItems: 'center',
             gap: theme.spacing[3],
@@ -232,7 +224,7 @@ export function App() {
           }}
         >
           <img
-            src="logo.png"
+            src="/logo.png"
             alt="Logo"
             style={{ width: '36px', height: '36px', borderRadius: '8px' }}
           />
@@ -290,12 +282,7 @@ export function App() {
           {scan.modelStatus && !scan.modelStatus.loaded && (
             <div
               style={{
-                padding: theme.spacing[3],
-                borderRadius: theme.borderRadius.md,
-                background: scan.modelStatus.error
-                  ? 'rgba(239, 68, 68, 0.1)'
-                  : 'rgba(245, 158, 11, 0.1)',
-                border: `1px solid ${scan.modelStatus.error ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                padding: theme.spacing[3], borderRadius: '12px', background: scan.modelStatus.error ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)', border: `1px solid ${scan.modelStatus.error ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`, backdropFilter: 'blur(4px)',
                 fontSize: theme.typography.fontSize.xs,
                 color: scan.modelStatus.error ? '#ef4444' : '#f59e0b',
               }}
@@ -384,7 +371,7 @@ export function App() {
                   width: '24px',
                   height: '24px',
                   borderRadius: '50%',
-                  background: scan.refPaths.trim() ? '#10b981' : theme.colors.primary[500],
+                  background: scan.refPaths.trim() ? '#006a28' : '#006a28',
                   color: '#fff',
                   display: 'flex',
                   alignItems: 'center',
@@ -422,13 +409,7 @@ export function App() {
             >
               <div
                 style={{
-                  border: `2px dashed ${scan.refPaths.trim() ? theme.colors.primary[300] : theme.colors.neutral[300]}`,
-                  borderRadius: theme.borderRadius.md,
-                  padding: scan.refPaths.trim() ? theme.spacing[3] : theme.spacing[4],
-                  textAlign: 'center',
-                  background: scan.refPaths.trim()
-                    ? 'rgba(58,123,170,0.04)'
-                    : 'rgba(255,255,255,0.5)',
+                  border: `2px dashed ${scan.refPaths.trim() ? 'rgba(0,106,40,0.3)' : 'rgba(0,0,0,0.1)'}`, borderRadius: '16px', padding: scan.refPaths.trim() ? theme.spacing[3] : theme.spacing[4], textAlign: 'center', background: scan.refPaths.trim() ? 'rgba(92,253,128,0.1)' : 'rgba(255,255,255,0.7)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
                   cursor: scan.isProcessing ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                 }}
@@ -763,8 +744,7 @@ export function App() {
                   width: '24px',
                   height: '24px',
                   borderRadius: '50%',
-                  background: theme.colors.neutral[400],
-                  color: '#fff',
+                  background: '#595c5e', color: '#fff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -808,12 +788,7 @@ export function App() {
                   style={{
                     flex: 1,
                     padding: `6px 0`,
-                    borderRadius: theme.borderRadius.md,
-                    border: `2px solid ${Math.abs(scan.threshold - preset.value) < 0.08 ? preset.color : 'rgba(0,0,0,0.08)'}`,
-                    background:
-                      Math.abs(scan.threshold - preset.value) < 0.08
-                        ? `${preset.color}12`
-                        : 'transparent',
+                    borderRadius: '12px', border: `2px solid ${Math.abs(scan.threshold - preset.value) < 0.08 ? preset.color : 'rgba(255,255,255,0.5)'}`, background: Math.abs(scan.threshold - preset.value) < 0.08 ? `${preset.color}12` : 'rgba(255,255,255,0.5)', backdropFilter: 'blur(4px)',
                     color:
                       Math.abs(scan.threshold - preset.value) < 0.08
                         ? preset.color
@@ -1038,17 +1013,12 @@ export function App() {
         {/* Sticky CTA */}
         <div
           style={{
-            padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-            borderTop: '1px solid rgba(0,0,0,0.06)',
-            background: 'rgba(255,255,255,0.95)',
+            padding: `20px`, borderTop: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(12px)',
             flexShrink: 0,
           }}
         >
-          <ModernButton
-            variant="success"
-            size="lg"
-            fullWidth
-            loading={scan.isProcessing}
+
+          <button
             disabled={
               scan.isProcessing ||
               !scan.folder.trim() ||
@@ -1056,13 +1026,33 @@ export function App() {
               scan.modelStatus?.loaded === false
             }
             onClick={scan.handleRunScan}
+            style={{
+                width: '100%',
+                padding: '16px',
+                borderRadius: '9999px',
+                border: 'none',
+                background: scan.isProcessing ? '#9a9d9f' :
+                            (!scan.folder.trim() || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')) ? 'rgba(0,0,0,0.1)' : '#006a28',
+                color: scan.isProcessing ? '#ffffff' :
+                       (!scan.folder.trim() || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')) ? 'rgba(0,0,0,0.3)' : '#cfffce',
+                fontSize: '16px',
+                fontWeight: 700,
+                cursor: (scan.isProcessing || !scan.folder.trim() || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: (!scan.folder.trim() || (scan.refsLoaded === 0 && scan.refPaths.trim() === '')) ? 'none' : '0 8px 16px rgba(0, 106, 40, 0.2)',
+                transition: 'all 0.2s'
+            }}
           >
             {scan.isProcessing
               ? '處理中...'
               : scan.refsLoaded === 0 && scan.refPaths.trim()
                 ? '載入照片並搜尋'
                 : '開始搜尋'}
-          </ModernButton>
+          </button>
+
           <div
             style={{
               display: 'flex',
@@ -1176,13 +1166,7 @@ export function App() {
       {/* Right Main Content */}
       <div
         style={{
-          flex: 1,
-          overflowY: 'auto',
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'transparent',
-        }}
+          flex: 1, overflowY: 'auto', position: 'relative', display: 'flex', flexDirection: 'column', background: 'transparent', borderRadius: '24px', margin: '12px 12px 12px 0', }}
       >
         <div
           style={{
