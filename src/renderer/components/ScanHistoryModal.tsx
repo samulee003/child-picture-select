@@ -203,8 +203,7 @@ function SessionRow({ session }: { session: ScanSession }) {
     <div
       style={{
         padding: `${theme.spacing[3]} ${theme.spacing[4]}`,
-        borderRadius: theme.borderRadius.lg,
-        border: '1px solid rgba(0,0,0,0.07)',
+        borderRadius: '24px', border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
         marginBottom: theme.spacing[3],
         background: 'rgba(248,250,252,0.8)',
       }}
@@ -222,7 +221,7 @@ function SessionRow({ session }: { session: ScanSession }) {
           style={{
             fontSize: theme.typography.fontSize.sm,
             fontWeight: theme.typography.fontWeight.semibold,
-            color: theme.colors.neutral[800],
+            color: '#006a28',
           }}
         >
           {formatDate(session.createdAt)}
@@ -251,7 +250,7 @@ function SessionRow({ session }: { session: ScanSession }) {
           title={session.folderPath}
           style={{
             fontSize: theme.typography.fontSize.xs,
-            color: theme.colors.neutral[600],
+            color: '#595c5e',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -324,7 +323,7 @@ function SessionRow({ session }: { session: ScanSession }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '11px',
-                color: theme.colors.neutral[500],
+                color: '#8d9296',
                 background: 'rgba(0,0,0,0.03)',
                 flexShrink: 0,
               }}

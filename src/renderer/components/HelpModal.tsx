@@ -25,7 +25,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(8px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -34,13 +34,13 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
 
   const modalStyle: React.CSSProperties = {
     backgroundColor: 'white',
-    borderRadius: '12px',
+    borderRadius: '24px', border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
     padding: '32px',
     maxWidth: '500px',
     width: '90%',
     maxHeight: '80vh',
     overflow: 'auto',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+
   };
 
   const titleStyle: React.CSSProperties = {
@@ -58,7 +58,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
     fontSize: '18px',
     fontWeight: '600',
     marginBottom: '12px',
-    color: '#333'
+    color: '#006a28'
   };
 
   const shortcutListStyle: React.CSSProperties = {
@@ -72,7 +72,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '8px 0',
-    borderBottom: '1px solid #eee'
+    borderBottom: '1px solid rgba(0, 0, 0, 0.06)'
   };
 
   const keyStyle: React.CSSProperties = {
@@ -110,7 +110,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
             </div>
             <div>
               <h4 style={{ ...sectionTitleStyle, fontSize: '16px' }}>近期更新</h4>
-              <ul style={{ ...shortcutListStyle, color: '#666' }}>
+              <ul style={{ ...shortcutListStyle, color: '#595c5e' }}>
                 {(appInfo.changelog || []).map((item, index) => (
                   <li key={item + index} style={{ ...shortcutItemStyle, borderBottom: index === (appInfo.changelog || []).length - 1 ? 'none' : '1px solid #eee' }}>
                     {item}
@@ -135,7 +135,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
 
         <div style={sectionStyle}>
           <h3 style={sectionTitleStyle}>使用提示</h3>
-          <ul style={{ ...shortcutListStyle, color: '#666' }}>
+          <ul style={{ ...shortcutListStyle, color: '#595c5e' }}>
             <li style={{ ...shortcutItemStyle, borderBottom: 'none' }}>
               <span>拖放圖片檔案到參考照片區域</span>
             </li>
@@ -155,7 +155,7 @@ export function HelpModal({ isOpen, onClose, appInfo }: HelpModalProps) {
           關閉
         </button>
         {appInfo?.supportEmail && (
-          <div style={{ marginTop: '16px', color: '#666', fontSize: '14px' }}>
+          <div style={{ marginTop: '16px', color: '#595c5e', fontSize: '14px' }}>
             支援聯絡：{appInfo.supportEmail}
           </div>
         )}

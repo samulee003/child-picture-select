@@ -376,8 +376,7 @@ function ToggleSwitch({
         background: checked
           ? 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)'
           : 'rgba(255, 255, 255, 0.1)',
-        border: 'none',
-        borderRadius: '12px',
+        borderRadius: '24px', border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
         position: 'relative',
         cursor: 'pointer',
         transition: 'all 0.2s',

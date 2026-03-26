@@ -23,7 +23,7 @@ export function ExportSuccessModal({
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(8, 12, 28, 0.8)',
+      background: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -32,35 +32,33 @@ export function ExportSuccessModal({
     }}>
       <div style={{
         width: 'min(620px, 100%)',
-        background: 'rgba(14, 18, 40, 0.98)',
-        borderRadius: theme.borderRadius.xl,
-        border: '1px solid rgba(255, 255, 255, 0.15)',
+        background: 'rgba(255, 255, 255, 0.9)', borderRadius: '24px', border: '1px solid rgba(255, 255, 255, 0.6)', boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
         padding: theme.spacing[5],
       }}>
-        <h3 style={{ margin: `0 0 ${theme.spacing[3]}`, color: theme.colors.neutral[100] }}>
+        <h3 style={{ margin: `0 0 ${theme.spacing[3]}`, color: '#006a28' }}>
           匯出完成
         </h3>
-        <div style={{ color: theme.colors.neutral[300], lineHeight: 1.7, fontSize: theme.typography.fontSize.sm }}>
+        <div style={{ color: '#595c5e', lineHeight: 1.7, fontSize: theme.typography.fontSize.sm }}>
           <div>輸出資料夾：{summary.outDir}</div>
           <div>預計匯出：{summary.requested} 張</div>
           <div>成功匯出：{summary.copied} 張</div>
           <div>失敗張數：{summary.failed} 張</div>
           {summary.error && (
-            <div style={{ color: '#ef4444' }}>錯誤訊息：{summary.error}</div>
+            <div style={{ color: '#b41924' }}>錯誤訊息：{summary.error}</div>
           )}
           {summary.failed > 0 && (
-            <div style={{ color: '#f59e0b' }}>
+            <div style={{ color: '#d97706' }}>
               失敗數：{summary.failed} 張（請檢查檔案是否仍在、或目的資料夾是否有權限）
             </div>
           )}
           {summary.failed === 0 && (
-            <div style={{ color: '#10b981' }}>全部完成，沒有錯過任何一張</div>
+            <div style={{ color: '#006a28' }}>全部完成，沒有錯過任何一張</div>
           )}
         </div>
         {summary.failed > 0 && summary.failedPaths && summary.failedPaths.length > 0 && (
           <div style={{
             marginTop: theme.spacing[3],
-            color: theme.colors.neutral[300],
+            color: '#595c5e',
             fontSize: theme.typography.fontSize.xs,
             lineHeight: 1.5,
           }}>
@@ -69,7 +67,7 @@ export function ExportSuccessModal({
               marginTop: theme.spacing[2],
               maxHeight: theme.spacing[20],
               overflow: 'auto',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1px solid rgba(0, 0, 0, 0.08)',
               paddingTop: theme.spacing[2],
             }}>
               {summary.failedPaths.slice(0, 20).map((path, idx) => (
@@ -83,7 +81,7 @@ export function ExportSuccessModal({
                 </div>
               ))}
               {summary.failedPaths.length > 20 && (
-                <div style={{ color: theme.colors.neutral[400] }}>
+                <div style={{ color: '#8d9296' }}>
                   還有 {summary.failedPaths.length - 20} 張未列出
                 </div>
               )}
@@ -95,10 +93,8 @@ export function ExportSuccessModal({
             <button
               onClick={onOpenFolder}
               style={{
-                borderRadius: theme.borderRadius.md,
-                border: '1px solid rgba(96, 165, 250, 0.4)',
-                color: '#60a5fa',
-                background: 'rgba(96, 165, 250, 0.12)',
+                borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
+                border: '1px solid rgba(0, 106, 40, 0.2)', color: '#006a28', background: 'rgba(92, 253, 128, 0.1)',
                 padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
                 cursor: 'pointer',
               }}
@@ -110,10 +106,8 @@ export function ExportSuccessModal({
             onClick={onCopy}
             disabled={isClipboardCopying}
             style={{
-              borderRadius: theme.borderRadius.md,
-              border: '1px solid rgba(16, 185, 129, 0.4)',
-              color: '#10b981',
-              background: isClipboardCopying ? 'rgba(16, 185, 129, 0.06)' : 'rgba(16, 185, 129, 0.12)',
+              borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
+              border: 'none', color: '#cfffce', background: isClipboardCopying ? '#9a9d9f' : '#006a28', boxShadow: isClipboardCopying ? 'none' : '0 8px 16px rgba(0, 106, 40, 0.2)',
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               cursor: isClipboardCopying ? 'not-allowed' : 'pointer',
             }}
@@ -124,10 +118,8 @@ export function ExportSuccessModal({
             <button
               onClick={onRetry}
               style={{
-                borderRadius: theme.borderRadius.md,
-                border: '1px solid rgba(245, 158, 11, 0.4)',
-                color: '#f59e0b',
-                background: 'rgba(245, 158, 11, 0.12)',
+                borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
+                border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', background: 'rgba(251, 191, 36, 0.1)',
                 padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
                 cursor: 'pointer',
               }}
@@ -138,10 +130,8 @@ export function ExportSuccessModal({
           <button
             onClick={onClose}
             style={{
-              borderRadius: theme.borderRadius.md,
-              border: '1px solid rgba(16, 185, 129, 0.4)',
-              color: '#10b981',
-              background: 'rgba(16, 185, 129, 0.12)',
+              borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
+              border: 'none', color: '#cfffce', background: '#006a28', boxShadow: '0 8px 16px rgba(0, 106, 40, 0.2)',
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               cursor: 'pointer',
             }}
