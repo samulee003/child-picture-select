@@ -47,7 +47,7 @@ function FeatureBar({
           display: 'flex',
           justifyContent: 'space-between',
           fontSize: '12px',
-          color: 'rgba(255,255,255,0.7)',
+          color: '#595c5e', fontWeight: 600,
           marginBottom: '3px',
         }}
       >
@@ -58,7 +58,7 @@ function FeatureBar({
         style={{
           height: '4px',
           borderRadius: '2px',
-          background: 'rgba(255,255,255,0.08)',
+          background: 'rgba(0,0,0,0.06)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)',
           overflow: 'hidden',
         }}
       >
@@ -93,7 +93,7 @@ function AnimatedCounter({ target, label }: { target: number; label: string }) {
         style={{
           fontSize: '24px',
           fontWeight: 700,
-          background: 'linear-gradient(135deg, #60a5fa, #a78bfa)',
+          background: 'linear-gradient(135deg, #006a28, #10b981)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           lineHeight: 1.2,
@@ -104,7 +104,7 @@ function AnimatedCounter({ target, label }: { target: number; label: string }) {
       <div
         style={{
           fontSize: '11px',
-          color: 'rgba(255,255,255,0.5)',
+          color: '#595c5e', fontWeight: 600,
           marginTop: '2px',
         }}
       >
@@ -162,11 +162,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
   return (
     <div
       style={{
-        background:
-          'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)',
-        borderRadius: '16px',
-        border: '1px solid rgba(96, 165, 250, 0.2)',
-        padding: '20px',
+        background: 'rgba(255, 255, 255, 0.7)', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(255, 255, 255, 0.4)', padding: '24px', boxShadow: '0 12px 32px rgba(0,0,0,0.05)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -176,11 +172,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
         style={{
           position: 'absolute',
           inset: 0,
-          opacity: 0.04,
-          backgroundImage: `
-          linear-gradient(rgba(96,165,250,0.5) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(96,165,250,0.5) 1px, transparent 1px)
-        `,
+          opacity: 0.1, backgroundImage: `linear-gradient(rgba(0,106,40,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(0,106,40,0.2) 1px, transparent 1px)`,
           backgroundSize: '20px 20px',
           pointerEvents: 'none',
         }}
@@ -202,11 +194,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
             width: '36px',
             height: '36px',
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(59, 130, 246, 0.3)',
+            background: 'linear-gradient(135deg, #006a28 0%, #10b981 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0, 106, 40, 0.2)',
             animation: 'aiPulse 2s ease-in-out infinite',
           }}
         >
@@ -230,7 +218,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
             style={{
               fontSize: '14px',
               fontWeight: 700,
-              color: 'rgba(255,255,255,0.95)',
+              color: '#006a28',
               letterSpacing: '0.5px',
             }}
           >
@@ -240,7 +228,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
           <div
             style={{
               fontSize: '11px',
-              color: 'rgba(255,255,255,0.4)',
+              color: '#595c5e',
               marginTop: '1px',
             }}
           >
@@ -252,7 +240,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
             marginLeft: 'auto',
             fontSize: '13px',
             fontWeight: 600,
-            color: 'rgba(96, 165, 250, 0.9)',
+            color: '#006a28',
           }}
         >
           {percent}%
@@ -262,9 +250,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
       {/* Progress bar */}
       <div
         style={{
-          height: '3px',
-          borderRadius: '2px',
-          background: 'rgba(255,255,255,0.06)',
+          background: 'rgba(0,0,0,0.06)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)', borderRadius: '99px', height: '6px',
           marginBottom: '16px',
           overflow: 'hidden',
         }}
@@ -272,11 +258,8 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
         <div
           style={{
             height: '100%',
-            borderRadius: '2px',
             width: `${percent}%`,
-            background: 'linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899)',
-            transition: 'width 0.3s ease',
-            boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)',
+            background: 'linear-gradient(90deg, #10b981, #006a28)', transition: 'width 0.3s ease', boxShadow: '0 0 12px rgba(16,185,129,0.4)', borderRadius: '99px',
           }}
         />
       </div>
@@ -295,10 +278,8 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
           style={{
             width: '100px',
             height: '100px',
-            borderRadius: '12px',
             overflow: 'hidden',
-            border: '1px solid rgba(96, 165, 250, 0.2)',
-            background: 'rgba(0,0,0,0.3)',
+            border: '2px solid rgba(255,255,255,0.8)', background: 'rgba(0,0,0,0.05)', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', borderRadius: '16px',
             flexShrink: 0,
             position: 'relative',
           }}
@@ -321,7 +302,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: 'rgba(255,255,255,0.2)',
+                color: 'rgba(0,0,0,0.3)', fontWeight: 600,
                 fontSize: '11px',
               }}
             >
@@ -333,7 +314,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
             style={{
               position: 'absolute',
               inset: 0,
-              background: 'linear-gradient(180deg, transparent 0%, rgba(59, 130, 246, 0.15) 100%)',
+              background: 'linear-gradient(180deg, transparent 0%, rgba(92, 253, 128, 0.2) 100%)',
               pointerEvents: 'none',
             }}
           >
@@ -343,8 +324,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
                 left: 0,
                 right: 0,
                 height: '2px',
-                background: 'rgba(96, 165, 250, 0.6)',
-                boxShadow: '0 0 8px rgba(96, 165, 250, 0.4)',
+                background: 'rgba(0, 106, 40, 0.6)', boxShadow: '0 0 12px rgba(0, 106, 40, 0.4)',
                 animation: 'scanLine 1.5s ease-in-out infinite',
               }}
             />
@@ -356,7 +336,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
           <div
             style={{
               fontSize: '11px',
-              color: 'rgba(255,255,255,0.4)',
+              color: '#595c5e',
               marginBottom: '6px',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -373,7 +353,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
                   key={i}
                   style={{
                     fontSize: '12px',
-                    color: i === 0 ? '#60a5fa' : 'rgba(255,255,255,0.7)',
+                    color: i === 0 ? '#006a28' : '#2c2f31', fontWeight: i===0?700:500,
                     marginBottom: '4px',
                     display: 'flex',
                     alignItems: 'center',
@@ -386,7 +366,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
                       width: '4px',
                       height: '4px',
                       borderRadius: '50%',
-                      background: i === 0 ? '#60a5fa' : '#8b5cf6',
+                      background: i === 0 ? '#006a28' : '#10b981',
                       flexShrink: 0,
                     }}
                   />
@@ -400,7 +380,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
                   <FeatureBar
                     label="臉部特徵匹配度"
                     value={faceAnalysis.confidence * 100}
-                    color="linear-gradient(90deg, #3b82f6, #8b5cf6)"
+                    color="linear-gradient(90deg, #10b981, #006a28)"
                     delay={100}
                   />
                 </div>
@@ -410,7 +390,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
             <div
               style={{
                 fontSize: '12px',
-                color: 'rgba(255,255,255,0.35)',
+                color: 'rgba(0,0,0,0.4)',
                 fontStyle: 'italic',
               }}
             >
@@ -426,7 +406,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
           display: 'flex',
           justifyContent: 'space-around',
           padding: '12px 0 4px',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
+          borderTop: '1px solid rgba(0,0,0,0.06)',
         }}
       >
         <AnimatedCounter target={current} label="已分析" />
@@ -439,7 +419,7 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
           marginTop: '8px',
           display: 'flex',
           justifyContent: 'space-between',
-          color: 'rgba(255,255,255,0.62)',
+          color: '#595c5e', fontWeight: 600,
           fontSize: '11px',
         }}
       >
@@ -457,8 +437,8 @@ export function AIAnalysisPanel({ progress }: AIAnalysisPanelProps) {
       {/* CSS animations */}
       <style>{`
         @keyframes aiPulse {
-          0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
-          50% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.5); }
+          0%, 100% { box-shadow: 0 0 20px rgba(0, 106, 40, 0.2); }
+          50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.4); }
         }
         @keyframes scanLine {
           0% { top: 0; }

@@ -3,6 +3,7 @@ import { GlassCard } from './GlassCard';
 import { ModernButton } from './ModernButton';
 import { theme } from '../styles/theme';
 
+
 interface WelcomeStateProps {
   refPaths: string;
   folder: string;
@@ -68,7 +69,7 @@ export function WelcomeState({
         border: '1px solid rgba(255,255,255,0.4)',
       }}>
         <img
-          src="logo.png"
+          src="/logo.png"
           alt="Logo"
           style={{
             width: '96px',

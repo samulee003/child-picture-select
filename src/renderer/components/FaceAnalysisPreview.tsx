@@ -156,12 +156,8 @@ function ScannerCanvas({
       width={160}
       height={160}
       style={{
-        borderRadius: '12px',
         display: 'block',
-        width: '160px',
-        height: '160px',
-        border: isScanning ? '2px solid rgba(0,220,200,0.5)' : '2px solid rgba(0,0,0,0.07)',
-        boxShadow: isScanning ? '0 0 18px rgba(0,220,200,0.25)' : 'none',
+        width: '180px', height: '180px', borderRadius: '20px', border: isScanning ? '2px solid rgba(0, 106, 40, 0.5)' : '2px solid rgba(255,255,255,0.8)', boxShadow: isScanning ? '0 0 24px rgba(0, 106, 40, 0.3)' : '0 8px 24px rgba(0,0,0,0.08)',
         transition: 'box-shadow 0.5s, border-color 0.5s',
       }}
     />
@@ -191,16 +187,14 @@ function FeatureBar({
   return (
     <div style={{ marginBottom: '8px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-        <span style={{ fontSize: '11px', color: theme.colors.neutral[500] }}>{label}</span>
-        <span style={{ fontSize: '11px', fontWeight: 600, color }}>
+        <span style={{ fontSize: '12px', color: '#595c5e', fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: '12px', fontWeight: 700, color }}>
           {Math.round((value / max) * 100)}%
         </span>
       </div>
       <div
         style={{
-          height: '6px',
-          borderRadius: '99px',
-          background: 'rgba(0,0,0,0.06)',
+          height: '8px', borderRadius: '99px', background: 'rgba(0,0,0,0.04)', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)',
           overflow: 'hidden',
         }}
       >
@@ -292,36 +286,28 @@ export function FaceAnalysisPreview({
   return (
     <div
       style={{
-        background: '#fff',
-        borderRadius: '16px',
-        border: '1px solid rgba(0,0,0,0.07)',
-        padding: '24px',
-        boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+        background: 'rgba(255, 255, 255, 0.7)', backdropFilter: 'blur(24px)', borderRadius: '24px', border: '1px solid rgba(255, 255, 255, 0.4)', padding: '32px', boxShadow: '0 12px 32px rgba(0,0,0,0.05)',
         animation: 'slideIn 0.4s ease-out',
       }}
     >
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '28px' }}>
         <div
           style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #0ea5e9, #06b6d4)',
+            width: '48px', height: '48px', borderRadius: '16px', background: 'linear-gradient(135deg, #006a28, #10b981)', boxShadow: '0 8px 16px rgba(0, 106, 40, 0.2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '16px',
-            flexShrink: 0,
+            fontSize: '24px', flexShrink: 0,
           }}
         >
           🧠
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: '15px', color: theme.colors.neutral[800] }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: '20px', color: '#006a28', letterSpacing: '-0.01em' }}>
             AI 正在學習你的小孩
           </div>
-          <div style={{ fontSize: '12px', color: theme.colors.neutral[400], marginTop: '1px' }}>
+          <div style={{ fontSize: '14px', color: '#595c5e', marginTop: '4px' }}>
             已載入 {refsLoaded} / {referencePaths.length} 張參考照
           </div>
         </div>
@@ -369,12 +355,7 @@ export function FaceAnalysisPreview({
           {/* Status text (typed) */}
           <div
             style={{
-              background: 'rgba(14,165,233,0.06)',
-              border: '1px solid rgba(14,165,233,0.15)',
-              borderRadius: '8px',
-              padding: '8px 12px',
-              fontSize: '12px',
-              color: '#0369a1',
+              background: 'rgba(92, 253, 128, 0.1)', border: '1px solid rgba(0, 106, 40, 0.1)', borderRadius: '12px', padding: '12px 16px', fontSize: '14px', color: '#006a28',
               fontWeight: 600,
               fontFamily: 'monospace',
               marginBottom: '14px',
@@ -390,10 +371,10 @@ export function FaceAnalysisPreview({
               <div style={{ fontSize: '11px', color: theme.colors.neutral[400], marginBottom: '8px', fontWeight: 600, letterSpacing: '0.05em' }}>
                 臉部特徵向量
               </div>
-              <FeatureBar label="臉部清晰度" value={confidence} color="#0ea5e9" delay={0} />
-              <FeatureBar label="特徵點辨識" value={hasFace ? 0.92 : 0.1} color="#06b6d4" delay={120} />
-              <FeatureBar label="角度一致性" value={hasFace ? 0.78 + confidence * 0.1 : 0.2} color="#14b8a6" delay={240} />
-              <FeatureBar label="光線品質" value={hasFace ? 0.85 : 0.3} color="#6366f1" delay={360} />
+              <FeatureBar label="臉部清晰度" value={confidence} color="#006a28" delay={0} />
+              <FeatureBar label="特徵點辨識" value={hasFace ? 0.92 : 0.1} color="#10b981" delay={120} />
+              <FeatureBar label="角度一致性" value={hasFace ? 0.78 + confidence * 0.1 : 0.2} color="#059669" delay={240} />
+              <FeatureBar label="光線品質" value={hasFace ? 0.85 : 0.3} color="#34d399" delay={360} />
             </div>
           )}
 
@@ -425,7 +406,7 @@ export function FaceAnalysisPreview({
                 width: i === currentIdx ? '20px' : '8px',
                 height: '8px',
                 borderRadius: '99px',
-                background: i === currentIdx ? '#0ea5e9' : 'rgba(0,0,0,0.1)',
+                background: i === currentIdx ? '#006a28' : 'rgba(0,0,0,0.1)',
                 transition: 'all 0.3s ease',
               }}
             />
@@ -438,21 +419,15 @@ export function FaceAnalysisPreview({
         <div
           style={{
             marginTop: '16px',
-            padding: '12px 14px',
-            background: 'rgba(16,185,129,0.07)',
-            border: '1px solid rgba(16,185,129,0.2)',
-            borderRadius: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
+            background: 'rgba(92, 253, 128, 0.1)', border: '1px solid rgba(0, 106, 40, 0.1)', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '16px', backdropFilter: 'blur(8px)',
           }}
         >
           <span style={{ fontSize: '20px' }}>✅</span>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '13px', color: '#065f46' }}>
+            <div style={{ fontWeight: 700, fontSize: '16px', color: '#006a28' }}>
               AI 已學習完成！
             </div>
-            <div style={{ fontSize: '11px', color: '#047857', marginTop: '2px' }}>
+            <div style={{ fontSize: '13px', color: '#2c2f31', marginTop: '4px' }}>
               已從 {refsLoaded} 張照片提取臉部特徵，現在可以開始搜尋了
             </div>
           </div>
