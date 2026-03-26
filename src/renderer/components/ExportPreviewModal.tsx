@@ -21,7 +21,7 @@ export function ExportPreviewModal({
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(8, 12, 28, 0.8)',
+      background: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -32,35 +32,33 @@ export function ExportPreviewModal({
         width: 'min(780px, 100%)',
         maxHeight: '82vh',
         overflow: 'auto',
-        background: 'rgba(14, 18, 40, 0.97)',
-        borderRadius: theme.borderRadius.xl,
-        border: '1px solid rgba(255, 255, 255, 0.15)',
+        background: 'rgba(255, 255, 255, 0.9)', borderRadius: '24px', border: '1px solid rgba(255, 255, 255, 0.6)', boxShadow: '0 24px 48px rgba(0,0,0,0.1)',
         padding: theme.spacing[5],
       }}>
-        <h3 style={{ margin: `0 0 ${theme.spacing[3]}`, color: theme.colors.neutral[100] }}>
+        <h3 style={{ margin: `0 0 ${theme.spacing[3]}`, color: '#006a28' }}>
           確認匯出清單
         </h3>
-        <p style={{ margin: `0 0 ${theme.spacing[4]}`, color: theme.colors.neutral[300], fontSize: theme.typography.fontSize.sm }}>
+        <p style={{ margin: `0 0 ${theme.spacing[4]}`, color: '#595c5e', fontSize: theme.typography.fontSize.sm }}>
           將匯出 {targets.length} 張照片
         </p>
-        <div style={{ color: theme.colors.neutral[200], fontSize: theme.typography.fontSize.sm, maxHeight: '44vh', overflow: 'auto' }}>
+        <div style={{ color: '#2c2f31', fontSize: theme.typography.fontSize.sm, maxHeight: '44vh', overflow: 'auto' }}>
           {targets.slice(0, 50).map((item, index) => (
             <div key={item.path} style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: `${theme.spacing[2]} 0`,
-              borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-              color: theme.colors.neutral[300],
+              borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+              color: '#595c5e',
             }}>
               <span>{index + 1}. {item.path.split(/[/\\]/).pop()}</span>
-              <span style={{ color: theme.colors.neutral[400] }}>
+              <span style={{ color: '#8d9296' }}>
                 {(item.score * 100).toFixed(1)}%
               </span>
             </div>
           ))}
           {targets.length > 50 && (
-            <div style={{ paddingTop: theme.spacing[2], color: theme.colors.neutral[400] }}>
+            <div style={{ paddingTop: theme.spacing[2], color: '#8d9296' }}>
               還有 {targets.length - 50} 張未顯示
             </div>
           )}
@@ -70,7 +68,7 @@ export function ExportPreviewModal({
             display: 'inline-flex',
             alignItems: 'center',
             gap: theme.spacing[2],
-            color: theme.colors.neutral[300],
+            color: '#595c5e',
             fontSize: theme.typography.fontSize.sm,
           }}>
             <input
@@ -83,9 +81,9 @@ export function ExportPreviewModal({
           <button
             onClick={onCancel}
             style={{
-              borderRadius: theme.borderRadius.md,
+              borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
               border: '1px solid rgba(255, 255, 255, 0.15)',
-              color: theme.colors.neutral[200],
+              color: '#2c2f31',
               background: 'rgba(255, 255, 255, 0.04)',
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               cursor: 'pointer',
@@ -96,10 +94,8 @@ export function ExportPreviewModal({
           <button
             onClick={() => onConfirm(isOpenFolderAfterExport)}
             style={{
-              borderRadius: theme.borderRadius.md,
-              border: '1px solid rgba(16, 185, 129, 0.4)',
-              color: '#10b981',
-              background: 'rgba(16, 185, 129, 0.12)',
+              borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
+              border: 'none', color: '#cfffce', background: '#006a28', boxShadow: '0 8px 16px rgba(0, 106, 40, 0.2)',
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               cursor: 'pointer',
             }}
@@ -109,10 +105,8 @@ export function ExportPreviewModal({
           <button
             onClick={() => onConfirm(true)}
             style={{
-              borderRadius: theme.borderRadius.md,
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              color: '#38bdf8',
-              background: 'rgba(56, 189, 248, 0.12)',
+              borderRadius: '9999px', fontWeight: 600, transition: 'all 0.2s',
+              border: '1px solid rgba(0, 106, 40, 0.2)', color: '#006a28', background: 'rgba(92, 253, 128, 0.1)',
               padding: `${theme.spacing[2]} ${theme.spacing[3]}`,
               cursor: 'pointer',
             }}

@@ -1,6 +1,14 @@
 ## Changelog - Find My Kid (Offline)
 
 
+
+## [0.4.0] - 2026-03-26
+### Changed
+- **UI Redesign Phase 2 (Lumina Glass System)**: 全面升級剩下的所有介面，包括：
+  - 左側控制列 (Sidebar) 更新為半透明毛玻璃質感。
+  - AI 掃描進度畫面 (`AIAnalysisPanel`) 由深色改為明亮、溫和的漸層。
+  - 任務前置檢查 (`TaskReadinessCard`)、參考照片品質 (`RefPhotoFeedback`)、查無結果 (`NoMatchesSection`) 等回饋卡片使用新版圓角與膠囊按鈕。
+  - 匯出視窗 (`ExportPreviewModal` 等)、隱私與歷史紀錄設定面板 (`PrivacySettingsPanel`) 全面套用明亮版毛玻璃特效，移除過去的深色遮罩，讓整體軟體調性一致且溫馨。
 ## [0.3.0] - 2026-03-24
 ### Changed
 - **UI Redesign (Lumina Glass System)**: 全面升級使用者介面，導入溫暖、現代的毛玻璃 (Glassmorphism) 設計語言。
