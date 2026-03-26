@@ -63,7 +63,7 @@ export function ReferencePhotoQualityCard({
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                borderRadius: theme.borderRadius.md
+                borderRadius: '16px'
               }}
             />
             {/* 质量徽章 */}
@@ -94,7 +94,7 @@ export function ReferencePhotoQualityCard({
                 fontSize: theme.typography.fontSize.sm,
                 fontWeight: theme.typography.fontWeight.medium,
                 margin: 0,
-                color: theme.colors.neutral[800],
+                color: '#2c2f31',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap'
@@ -104,7 +104,7 @@ export function ReferencePhotoQualityCard({
               <p style={{
                 fontSize: theme.typography.fontSize.xs,
                 margin: 0,
-                color: theme.colors.neutral[500]
+                color: '#595c5e'
               }}>
                 質量評分：{qualityScore}/100 ({getQualityLabel()})
               </p>
@@ -123,36 +123,36 @@ export function ReferencePhotoQualityCard({
                 <span style={{
                   display: 'block',
                   fontSize: theme.typography.fontSize.xs,
-                  color: theme.colors.neutral[500]
+                  color: '#595c5e'
                 }}>銳度</span>
                 <span style={{
                   fontSize: theme.typography.fontSize.xs,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: theme.colors.primary[500]
+                  color: '#006a28'
                 }}>{quality.sharpness}</span>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <span style={{
                   display: 'block',
                   fontSize: theme.typography.fontSize.xs,
-                  color: theme.colors.neutral[500]
+                  color: '#595c5e'
                 }}>亮度</span>
                 <span style={{
                   fontSize: theme.typography.fontSize.xs,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: theme.colors.primary[500]
+                  color: '#006a28'
                 }}>{quality.exposure}</span>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <span style={{
                   display: 'block',
                   fontSize: theme.typography.fontSize.xs,
-                  color: theme.colors.neutral[500]
+                  color: '#595c5e'
                 }}>分辨率</span>
                 <span style={{
                   fontSize: theme.typography.fontSize.xs,
                   fontWeight: theme.typography.fontWeight.semibold,
-                  color: theme.colors.primary[500]
+                  color: '#006a28'
                 }}>{quality.resolution}</span>
               </div>
             </div>
@@ -163,14 +163,14 @@ export function ReferencePhotoQualityCard({
             <div style={{
               marginBottom: theme.spacing[3],
               padding: theme.spacing[3],
-              background: 'rgba(255, 255, 255, 0.05)',
-              borderRadius: theme.borderRadius.md
+              background: 'rgba(255, 255, 255, 0.4)',
+              borderRadius: '16px'
             }}>
               {quality.recommendations.slice(0, 2).map((rec, idx) => (
                 <p key={idx} style={{
                   fontSize: theme.typography.fontSize.xs,
                   margin: 0,
-                  color: theme.colors.neutral[600],
+                  color: '#595c5e',
                   display: 'flex',
                   alignItems: 'center',
                   gap: theme.spacing[1]
@@ -202,7 +202,7 @@ export function ReferencePhotoQualityCard({
               disabled={isProcessing}
               style={{
                 fontSize: theme.typography.fontSize.xs,
-                color: theme.colors.error[600]
+                color: '#b41924'
               }}
             >
               🗑️ 移除
@@ -232,7 +232,7 @@ export function QualitySummary({ total: _total, goodCount, warningCount, poorCou
         <div style={{
           fontSize: theme.typography.fontSize['3xl'],
           fontWeight: theme.typography.fontWeight.bold,
-          background: theme.gradients.primary,
+          background: 'linear-gradient(135deg, #006a28, #10b981)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text'
@@ -241,7 +241,7 @@ export function QualitySummary({ total: _total, goodCount, warningCount, poorCou
         </div>
         <div style={{
           fontSize: theme.typography.fontSize.sm,
-          color: theme.colors.neutral[500]
+          color: '#595c5e'
         }}>
           平均質量
         </div>
@@ -255,52 +255,52 @@ export function QualitySummary({ total: _total, goodCount, warningCount, poorCou
           <div style={{
             flex: 1,
             padding: theme.spacing[3],
-            background: 'rgba(34, 197, 94, 0.1)',
-            borderRadius: theme.borderRadius.md,
+            background: 'rgba(92, 253, 128, 0.1)',
+            borderRadius: '16px',
             textAlign: 'center'
           }}>
             <div style={{
               fontSize: theme.typography.fontSize['2xl'],
               fontWeight: theme.typography.fontWeight.bold,
-              color: theme.colors.success[600]
+              color: '#006a28'
             }}>{goodCount}</div>
             <div style={{
               fontSize: theme.typography.fontSize.xs,
-              color: theme.colors.success[600]
+              color: '#006a28'
             }}>良好</div>
           </div>
           <div style={{
             flex: 1,
             padding: theme.spacing[3],
-            background: 'rgba(245, 158, 11, 0.1)',
-            borderRadius: theme.borderRadius.md,
+            background: 'rgba(251, 191, 36, 0.1)',
+            borderRadius: '16px',
             textAlign: 'center'
           }}>
             <div style={{
               fontSize: theme.typography.fontSize['2xl'],
               fontWeight: theme.typography.fontWeight.bold,
-              color: theme.colors.warning[600]
+              color: '#d97706'
             }}>{warningCount}</div>
             <div style={{
               fontSize: theme.typography.fontSize.xs,
-              color: theme.colors.warning[600]
+              color: '#d97706'
             }}>一般</div>
           </div>
           <div style={{
             flex: 1,
             padding: theme.spacing[3],
-            background: 'rgba(239, 68, 68, 0.1)',
-            borderRadius: theme.borderRadius.md,
+            background: 'rgba(180, 25, 36, 0.1)',
+            borderRadius: '16px',
             textAlign: 'center'
           }}>
             <div style={{
               fontSize: theme.typography.fontSize['2xl'],
               fontWeight: theme.typography.fontWeight.bold,
-              color: theme.colors.error[600]
+              color: '#b41924'
             }}>{poorCount}</div>
             <div style={{
               fontSize: theme.typography.fontSize.xs,
-              color: theme.colors.error[600]
+              color: '#b41924'
             }}>較差</div>
           </div>
         </div>
