@@ -189,6 +189,7 @@ export function MatchResultCard({ result, index, compact = false, onPreview, rev
           onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
         />
 
+
         {/* Source Hint overlay */}
         {sourceHint && (
           <div style={{
