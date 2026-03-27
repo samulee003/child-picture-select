@@ -61,6 +61,7 @@ export function ResultsSection(props: ResultsSectionProps) {
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(900);
 
   useEffect(() => {
@@ -73,6 +74,24 @@ export function ResultsSection(props: ResultsSectionProps) {
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+
+
+  useEffect(() => {
+    if (!previewPath) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewPath(null);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewPath]);
+
 
   const columnCount = Math.max(1, Math.floor(containerWidth / CARD_MIN_WIDTH));
   const rowHeight = compactView ? COMPACT_ROW_HEIGHT : DETAILED_ROW_HEIGHT;
@@ -104,6 +123,7 @@ export function ResultsSection(props: ResultsSectionProps) {
     onScore: (path: string, score: number) => void;
     onFav: (path: string) => void;
     isFav: (path: string) => boolean;
+    onPreview: (path: string) => void;
     refPaths?: string[];
   }
 
@@ -117,6 +137,7 @@ export function ResultsSection(props: ResultsSectionProps) {
           result={r}
           index={index}
           compact={cellProps.compact}
+          onPreview={cellProps.onPreview}
           onFavorite={cellProps.onFav}
           isFavorite={cellProps.isFav(r.path)}
           onDecision={cellProps.revMode ? cellProps.onDec : undefined}
@@ -296,6 +317,7 @@ export function ResultsSection(props: ResultsSectionProps) {
                     onScore: onReviewScore,
                     onFav: onFavorite,
                     isFav: isFavorite,
+                    onPreview: setPreviewPath,
                     refPaths: props.refPaths,
                   }}
                   style={{ height: '100%', overflowX: 'hidden' }}
@@ -313,6 +335,7 @@ export function ResultsSection(props: ResultsSectionProps) {
                     result={r}
                     index={index}
                     compact={compactView}
+                    onPreview={setPreviewPath}
                     onFavorite={onFavorite}
                     isFavorite={isFavorite(r.path)}
                     onDecision={reviewMode ? onDecision : undefined}
@@ -440,6 +463,68 @@ export function ResultsSection(props: ResultsSectionProps) {
           </div>
           <ScanWarningsPanel warnings={scanWarnings} />
         </ModernSection>
+      )}
+
+      {/* Full-Screen Image Preview Modal */}
+      {previewPath && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'zoom-out',
+            backdropFilter: 'blur(8px)',
+          }}
+          onClick={() => setPreviewPath(null)}
+        >
+          <img
+            src={`file://${previewPath.replace(/\\/g, '/')}`}
+            alt="Preview"
+            style={{
+              maxWidth: '95vw',
+              maxHeight: '95vh',
+              objectFit: 'contain',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              borderRadius: '8px',
+              transition: 'transform 0.2s',
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
+            onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+          />
+          <button
+            onClick={() => setPreviewPath(null)}
+            style={{
+              position: 'absolute',
+              top: '24px',
+              right: '24px',
+              background: 'rgba(0,0,0,0.5)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '50%',
+              width: '48px',
+              height: '48px',
+              fontSize: '28px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              backdropFilter: 'blur(4px)',
+              transition: 'background 0.2s',
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.8)')}
+            onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.5)')}
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );
