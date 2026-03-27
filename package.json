@@ -1,8 +1,8 @@
 {
   "name": "da-hai-lao-b",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
-  "description": "大海撈Ｂ - AI Photo Sorter",
+  "description": "\u5927\u6d77\u6488\uff22 - AI Photo Sorter",
   "author": "Local Developer",
   "main": "dist/main/index.cjs",
   "type": "module",
@@ -36,7 +36,7 @@
     "dist:win": "npm run build && electron-builder --win nsis:x64",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
-    "release:check-sign": "node -e \"const required=['CSC_LINK','CSC_KEY_PASSWORD']; const missing=required.filter((key)=>!process.env[key]); if (missing.length) { console.log('⚠️ 尚未設定 Windows 程式碼簽章環境變數: '+missing.join(', ')); console.log('請在發佈前設定憑證後再使用 release:win:with-sign。'); } else { console.log('✅ 偵測到簽章環境，將在發佈時自動套用。'); }\"",
+    "release:check-sign": "node -e \"const required=['CSC_LINK','CSC_KEY_PASSWORD']; const missing=required.filter((key)=>!process.env[key]); if (missing.length) { console.log('\u26a0\ufe0f \u5c1a\u672a\u8a2d\u5b9a Windows \u7a0b\u5f0f\u78bc\u7c3d\u7ae0\u74b0\u5883\u8b8a\u6578: '+missing.join(', ')); console.log('\u8acb\u5728\u767c\u4f48\u524d\u8a2d\u5b9a\u6191\u8b49\u5f8c\u518d\u4f7f\u7528 release:win:with-sign\u3002'); } else { console.log('\u2705 \u5075\u6e2c\u5230\u7c3d\u7ae0\u74b0\u5883\uff0c\u5c07\u5728\u767c\u4f48\u6642\u81ea\u52d5\u5957\u7528\u3002'); }\"",
     "release:win": "npm run release:check && npm run dist:win",
     "release:win:with-sign": "npm run release:check && npm run release:check-sign && npm run dist:win",
     "download-models": "node scripts/download-models.mjs",
@@ -44,8 +44,8 @@
   },
   "build": {
     "appId": "com.local.dahailao-b",
-    "productName": "大海撈Ｂ",
-    "copyright": "Copyright © 2024",
+    "productName": "\u5927\u6d77\u6488\uff22",
+    "copyright": "Copyright \u00a9 2024",
     "icon": "resources/logo_new.png",
     "directories": {
       "output": "dist-electron"
@@ -123,7 +123,7 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "大海撈Ｂ"
+      "shortcutName": "\u5927\u6d77\u6488\uff22"
     },
     "extraMetadata": {
       "main": "dist/main/index.cjs"
