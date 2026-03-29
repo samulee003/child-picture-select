@@ -6,6 +6,7 @@
 import sharp from 'sharp';
 import { join } from 'path';
 import { existsSync, mkdirSync, rmSync } from 'fs';
+import { randomUUID } from 'node:crypto';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
 import { getThumbsDir } from './db';
@@ -134,7 +135,7 @@ export class PhotoEnhancer {
       }
 
       // 6. 输出增强后的图片
-      const basename = `enhanced_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+      const basename = `enhanced_${Date.now()}_${randomUUID()}.jpg`;
       const outputPath = join(this.ensureTempDir(), basename);
 
       await enhancedImage
