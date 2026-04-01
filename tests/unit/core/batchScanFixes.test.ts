@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import sharp from 'sharp';
 
 // ——— helpers ————————————————————————————————————————————————
@@ -205,7 +206,12 @@ describe('ONNX models — smoke test', () => {
     expect(getSCRFDStatus().loaded).toBe(true);
   }, 30_000);
 
-  it('loads ArcFace model (w600k_mbf.onnx)', async () => {
+  it('loads ArcFace model (w600k_r50.onnx)', async () => {
+    const modelPath = join(process.cwd(), 'models', 'insightface', 'w600k_r50.onnx');
+    if (!existsSync(modelPath)) {
+      console.warn('[skip] w600k_r50.onnx not present — run npm run download-models first');
+      return;
+    }
     const { loadArcFace, getArcFaceStatus } = await import('../../../src/core/arcface');
     const ok = await loadArcFace();
     expect(ok).toBe(true);
