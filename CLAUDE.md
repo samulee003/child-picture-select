@@ -28,6 +28,46 @@
 
 ---
 
+## gstack Skills
+
+**gstack** is an integrated skill suite for development workflows. Use the `/browse` skill from gstack for all web browsing tasks. Never use `mcp__claude-in-chrome__*` tools.
+
+### Available gstack Skills
+
+- `/office-hours` — Schedule and manage office hours
+- `/plan-ceo-review` — Plan CEO review
+- `/plan-eng-review` — Plan engineering review
+- `/plan-design-review` — Plan design review
+- `/design-consultation` — Design consultation
+- `/design-shotgun` — Design brainstorming
+- `/design-html` — Design HTML generation
+- `/review` — Code review
+- `/ship` — Ship feature/PR
+- `/land-and-deploy` — Land and deploy changes
+- `/canary` — Canary deployment
+- `/benchmark` — Run benchmarks
+- `/browse` — **Web browsing (use this instead of mcp tools)**
+- `/connect-chrome` — Connect to Chrome browser
+- `/qa` — Quality assurance testing
+- `/qa-only` — QA testing only
+- `/design-review` — Design review process
+- `/setup-browser-cookies` — Setup browser cookies
+- `/setup-deploy` — Setup deployment
+- `/retro` — Retrospective analysis
+- `/investigate` — Investigation tasks
+- `/document-release` — Document releases
+- `/codex` — Codex integration
+- `/cso` — Customer success operations
+- `/autoplan` — Automatic planning
+- `/careful` — Careful execution mode
+- `/freeze` — Freeze feature/deployment
+- `/guard` — Guard execution
+- `/unfreeze` — Unfreeze feature/deployment
+- `/gstack-upgrade` — Upgrade gstack
+- `/learn` — Learning resources
+
+---
+
 ## Essential Commands
 
 ### Development
@@ -679,3 +719,23 @@ npm test
 - **RAM**: 4GB minimum, 8GB recommended for large scans
 - **Supported image formats**: JPG, JPEG, PNG, GIF, BMP, WEBP, HEIC, HEIF
 - **Python**: 3.8+ (legacy test scripts only)
+
+## Skill routing
+
+When the user's request matches an available skill, ALWAYS invoke it using the Skill
+tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
+The skill has specialized workflows that produce better results than ad-hoc answers.
+
+Key routing rules:
+- Product ideas, "is this worth building", brainstorming → invoke office-hours
+- Bugs, errors, "why is this broken", 500 errors → invoke investigate
+- Ship, deploy, push, create PR → invoke ship
+- QA, test the site, find bugs → invoke qa
+- Code review, check my diff → invoke review
+- Update docs after shipping → invoke document-release
+- Weekly retro → invoke retro
+- Design system, brand → invoke design-consultation
+- Visual audit, design polish → invoke design-review
+- Architecture review → invoke plan-eng-review
+- Save progress, checkpoint, resume → invoke checkpoint
+- Code quality, health check → invoke health
