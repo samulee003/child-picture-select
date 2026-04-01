@@ -1,10 +1,13 @@
 /**
- * 下載 InsightFace ArcFace ONNX 模型（buffalo_sc pack）
+ * 下載 InsightFace ONNX 模型
  *
- * 模型：w600k_mbf.onnx（MobileNet backbone, ArcFace loss, WebFace600K）
- * 大小：約 13 MB（zip 約 15 MB）
- * 來源：InsightFace 官方 GitHub Releases（公開，不需登入）
- * 目標：<project_root>/models/insightface/w600k_mbf.onnx
+ * 偵測模型：det_500m.onnx（SCRFD detection, 2.5 MB）
+ *   來源：InsightFace 官方 GitHub Releases（buffalo_sc.zip）
+ *
+ * 識別模型：w600k_r50.onnx（ResNet-50 backbone, ArcFace loss, WebFace600K，174 MB）
+ *   來源：HuggingFace public-data/insightface（直接下載，不需登入）
+ *   相較舊版 w600k_mbf（MobileFaceNet），R50 對小臉、模糊、低光照場景容忍度顯著提升，
+ *   更適合兒童照片辨識。
  *
  * 此腳本在 npm install 後自動執行（postinstall）。
  * 已存在且大小正確 → 直接跳過。
@@ -21,23 +24,21 @@ import { tmpdir } from 'os';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
 const modelsDir = join(projectRoot, 'models', 'insightface');
-const arcfacePath = join(modelsDir, 'w600k_mbf.onnx');
+const arcfacePath = join(modelsDir, 'w600k_r50.onnx');
 const scrfdPath = join(modelsDir, 'det_500m.onnx');
 
-// Backward compat alias
-const modelPath = arcfacePath;
-
 /**
- * buffalo_sc.zip 包含：
- *   - det_500m.onnx  (SCRFD detection, 2.5 MB) ← 需要
- *   - w600k_mbf.onnx (ArcFace recognition, 13 MB) ← 需要
+ * buffalo_sc.zip 包含 det_500m.onnx（SCRFD detection）
+ * w600k_r50.onnx 從 HuggingFace 直接下載
  */
 const BUFFALO_SC_ZIP_URL =
   'https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip';
 
-const MIN_ARCFACE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB（真實約 13 MB）
-const MIN_SCRFD_SIZE_BYTES = 1 * 1024 * 1024; // 1 MB（真實約 2.5 MB）
-const MIN_MODEL_SIZE_BYTES = MIN_ARCFACE_SIZE_BYTES; // backward compat
+const R50_ONNX_URL =
+  'https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/w600k_r50.onnx';
+
+const MIN_ARCFACE_SIZE_BYTES = 150 * 1024 * 1024; // 150 MB（真實約 174 MB）
+const MIN_SCRFD_SIZE_BYTES = 1 * 1024 * 1024;      // 1 MB（真實約 2.5 MB）
 
 function downloadFile(url, destPath, maxRedirects = 8) {
   return new Promise((resolve, reject) => {
@@ -99,7 +100,6 @@ function downloadFile(url, destPath, maxRedirects = 8) {
  */
 function extractFromZip(zipPath, filename, destPath) {
   if (process.platform === 'win32') {
-    // PowerShell: 解壓縮 ZIP 並取出指定檔案
     const tmpExtract = join(tmpdir(), 'buffalo_sc_extract');
     execSync(
       `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tmpExtract}' -Force"`,
@@ -109,8 +109,6 @@ function extractFromZip(zipPath, filename, destPath) {
     if (!existsSync(extracted)) throw new Error(`${filename} not found in zip`);
     execSync(`move /Y "${extracted}" "${destPath}"`, { stdio: 'pipe', shell: true });
   } else {
-    // unzip: -p = pipe file to stdout, redirect to destPath
-    // 或用 -o -j 直接解壓到指定目錄
     execSync(`unzip -o -j "${zipPath}" "${filename}" -d "${dirname(destPath)}"`, {
       stdio: 'pipe',
     });
@@ -126,45 +124,26 @@ async function main() {
   const arcfaceReady = isModelValid(arcfacePath, MIN_ARCFACE_SIZE_BYTES);
   const scrfdReady = isModelValid(scrfdPath, MIN_SCRFD_SIZE_BYTES);
 
-  // 兩個模型都已存在且大小正確 → 跳過
   if (arcfaceReady && scrfdReady) {
     const arcSize = (statSync(arcfacePath).size / 1024 / 1024).toFixed(1);
     const scrfdSize = (statSync(scrfdPath).size / 1024 / 1024).toFixed(1);
     console.log(
-      `[download-models] Models already present — ArcFace (${arcSize} MB), SCRFD (${scrfdSize} MB) — skipping.`
+      `[download-models] Models already present — ArcFace R50 (${arcSize} MB), SCRFD (${scrfdSize} MB) — skipping.`
     );
     return;
   }
 
   mkdirSync(modelsDir, { recursive: true });
 
-  const zipPath = join(tmpdir(), 'buffalo_sc.zip');
+  // 1. 下載 det_500m.onnx（從 buffalo_sc.zip）
+  if (!scrfdReady) {
+    const zipPath = join(tmpdir(), 'buffalo_sc.zip');
+    console.log('[download-models] Downloading det_500m.onnx via buffalo_sc.zip (~15 MB)...');
+    console.log(`[download-models] Source: ${BUFFALO_SC_ZIP_URL}`);
+    try {
+      const zipBytes = await downloadFile(BUFFALO_SC_ZIP_URL, zipPath);
+      console.log(`[download-models] Downloaded zip: ${(zipBytes / 1024 / 1024).toFixed(1)} MB`);
 
-  console.log('[download-models] Downloading InsightFace buffalo_sc.zip (~15 MB)...');
-  console.log(`[download-models] Source: ${BUFFALO_SC_ZIP_URL}`);
-  console.log(`[download-models] Targets: ${arcfacePath}, ${scrfdPath}`);
-
-  try {
-    // 1. 下載 zip
-    const zipBytes = await downloadFile(BUFFALO_SC_ZIP_URL, zipPath);
-    console.log(`[download-models] Downloaded zip: ${(zipBytes / 1024 / 1024).toFixed(1)} MB`);
-
-    // 2. 解壓 w600k_mbf.onnx (ArcFace recognition)
-    if (!arcfaceReady) {
-      console.log('[download-models] Extracting w600k_mbf.onnx (ArcFace recognition)...');
-      extractFromZip(zipPath, 'w600k_mbf.onnx', arcfacePath);
-
-      if (!existsSync(arcfacePath)) throw new Error('ArcFace extraction produced no output');
-      const size = statSync(arcfacePath).size;
-      if (size < MIN_ARCFACE_SIZE_BYTES) {
-        unlinkSync(arcfacePath);
-        throw new Error(`ArcFace file too small (${size} bytes)`);
-      }
-      console.log(`[download-models] ✅ ArcFace ready (${(size / 1024 / 1024).toFixed(1)} MB)`);
-    }
-
-    // 3. 解壓 det_500m.onnx (SCRFD detection)
-    if (!scrfdReady) {
       console.log('[download-models] Extracting det_500m.onnx (SCRFD detection)...');
       extractFromZip(zipPath, 'det_500m.onnx', scrfdPath);
 
@@ -175,16 +154,47 @@ async function main() {
         throw new Error(`SCRFD file too small (${size} bytes)`);
       }
       console.log(`[download-models] ✅ SCRFD ready (${(size / 1024 / 1024).toFixed(1)} MB)`);
+      try { unlinkSync(zipPath); } catch { /* ignore */ }
+    } catch (err) {
+      console.warn(`[download-models] ⚠️  SCRFD download failed: ${err.message}`);
+      console.warn(`[download-models]    Retry: npm run download-models`);
     }
+  }
 
-    console.log('[download-models] ✅ All InsightFace models ready (SCRFD + ArcFace)');
+  // 2. 下載 w600k_r50.onnx（從 HuggingFace，直接下載，約 174 MB）
+  if (!arcfaceReady) {
+    console.log('[download-models] Downloading w600k_r50.onnx (ArcFace R50, ~174 MB)...');
+    console.log(`[download-models] Source: ${R50_ONNX_URL}`);
+    console.log('[download-models] This is a one-time download. Please wait...');
+    const tmpArc = arcfacePath + '.tmp';
+    try {
+      const bytes = await downloadFile(R50_ONNX_URL, tmpArc);
+      console.log(`[download-models] Downloaded: ${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
-    // 清理 zip
-    try { unlinkSync(zipPath); } catch { /* ignore */ }
-  } catch (err) {
-    console.warn(`[download-models] ⚠️  Download failed: ${err.message}`);
-    console.warn(`[download-models]    Face recognition will use deterministic fallback.`);
-    console.warn(`[download-models]    Retry: npm run download-models`);
+      if (bytes < MIN_ARCFACE_SIZE_BYTES) {
+        unlinkSync(tmpArc);
+        throw new Error(`ArcFace file too small (${bytes} bytes) — download may have been truncated`);
+      }
+
+      // Atomic rename
+      if (process.platform === 'win32') {
+        execSync(`move /Y "${tmpArc}" "${arcfacePath}"`, { stdio: 'pipe', shell: true });
+      } else {
+        execSync(`mv "${tmpArc}" "${arcfacePath}"`, { stdio: 'pipe' });
+      }
+
+      const size = statSync(arcfacePath).size;
+      console.log(`[download-models] ✅ ArcFace R50 ready (${(size / 1024 / 1024).toFixed(1)} MB)`);
+    } catch (err) {
+      try { if (existsSync(tmpArc)) unlinkSync(tmpArc); } catch { /* ignore */ }
+      console.warn(`[download-models] ⚠️  ArcFace R50 download failed: ${err.message}`);
+      console.warn(`[download-models]    Face recognition will use deterministic fallback.`);
+      console.warn(`[download-models]    Retry: npm run download-models`);
+    }
+  }
+
+  if (isModelValid(arcfacePath, MIN_ARCFACE_SIZE_BYTES) && isModelValid(scrfdPath, MIN_SCRFD_SIZE_BYTES)) {
+    console.log('[download-models] ✅ All InsightFace models ready (SCRFD + ArcFace R50)');
   }
 }
 

@@ -2,6 +2,13 @@
 
 
 
+## [0.4.2] - 2026-04-01
+### Changed
+- **ArcFace 模型升級 w600k_mbf → w600k_r50**：將人臉識別模型從 MobileFaceNet (13 MB) 升級為 ResNet-50 (174 MB)。R50 backbone 對小臉、模糊、低光照場景容忍度顯著提升，更適合兒童照片辨識。模型從 HuggingFace buffalo_l 下載，首次安裝執行 `npm run download-models`。
+- **SQLite 快取版本升至 v7**：自動清除舊版 mbf 嵌入向量（與 r50 不相容），首次啟動後自動重建。
+- **無結果時顯示最高相似度診斷**：當比對結果為 0 時，顯示「最高相似度 X%，門檻 Y%，差 Z 個百分點，建議調至 W%」，協助使用者快速判斷是否需要調整門檻。
+- **智慧門檻跳整**：「降低門檻重試」改為跳至 maxScore-5%，而非固定 -8%，避免跳過有效比對範圍。
+
 ## [0.4.0] - 2026-03-26
 ### Changed
 - **UI Redesign Phase 2 (Lumina Glass System)**: 全面升級剩下的所有介面，包括：

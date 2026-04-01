@@ -5,7 +5,7 @@
 **大海撈Ｂ** is an offline, privacy-first Windows desktop application that uses AI face recognition to identify photos of a specific child from large photo collections. All processing is local — no photos or embeddings are ever uploaded to the cloud.
 
 - **App Name**: 大海撈Ｂ (da-hai-lao-b)
-- **Version**: 0.2.27
+- **Version**: 0.4.2
 - **Type**: Electron desktop app (Windows primary, macOS/Linux supported)
 - **Primary UI Language**: Traditional Chinese
 - **Stack**: React 18 + TypeScript + Electron + InsightFace ONNX (SCRFD + ArcFace) + SQLite
@@ -19,7 +19,7 @@
 | Desktop | Electron 31.5.0 |
 | UI | React 18.3.1 + TypeScript 5.6.3 |
 | Build | Vite 5.4.10 + tsup |
-| AI/ML | InsightFace SCRFD det_500m + ArcFace w600k_mbf (onnxruntime-node 1.20.1) |
+| AI/ML | InsightFace SCRFD det_500m + ArcFace w600k_r50 (onnxruntime-node 1.20.1) |
 | Image Processing | Sharp 0.33.5 |
 | Database | better-sqlite3 11.7.0 (local SQLite) |
 | Testing | Vitest 2.1.4 + Playwright 1.48.2 |
@@ -115,7 +115,7 @@ npm run release:check    # Pre-release validation
 ├── src/                     # Source code
 ├── tests/                   # Test files (unit + e2e)
 ├── electron/                # Alternate Electron entry point (preload/main)
-├── models/insightface/      # ONNX model files (det_500m.onnx, w600k_mbf.onnx)
+├── models/insightface/      # ONNX model files (det_500m.onnx, w600k_r50.onnx)
 ├── public/                  # Static assets
 ├── resources/               # App resources (icons, logos)
 ├── scripts/                 # Build scripts (*.mjs)
@@ -136,7 +136,7 @@ src/
 │   ├── detector.ts          # Face detection orchestration (SCRFD → align → ArcFace)
 │   ├── scrfd.ts             # SCRFD det_500m ONNX detector (bbox + 5-point kps)
 │   ├── align.ts             # Umeyama 5-point similarity transform → 112×112 alignment
-│   ├── arcface.ts           # ArcFace w600k_mbf ONNX recognition (512-dim embedding)
+│   ├── arcface.ts           # ArcFace w600k_r50 ONNX recognition (512-dim embedding)
 │   ├── embeddings.ts        # Embedding extraction + deterministic fallback
 │   ├── similarity.ts        # Cosine similarity matching
 │   ├── db.ts                # SQLite cache for embeddings and thumbnails
@@ -213,7 +213,7 @@ IPC handlers return a consistent shape:
 
 **InsightFace detection pipeline** (per photo):
 ```
-sharp 預處理 → SCRFD det_500m（bbox + 5 kps）→ Umeyama 對齊（112×112）→ ArcFace w600k_mbf（512-dim）
+sharp 預處理 → SCRFD det_500m（bbox + 5 kps）→ Umeyama 對齊（112×112）→ ArcFace w600k_r50（512-dim）
 ```
 This mirrors Python `insightface.app.FaceAnalysis.get()` exactly.
 
@@ -475,7 +475,7 @@ logger.error('Face detection failed', error);
 - `exifOrientation` is always passed as `1` by `detector.ts` (EXIF rotation already applied via Sharp `.rotate()`); `transformKpsForOrientation()` is defensive code for future use
 
 ### `src/core/arcface.ts`
-- `loadArcFace()` — Load `w600k_mbf.onnx` via onnxruntime-node
+- `loadArcFace()` — Load `w600k_r50.onnx` via onnxruntime-node
 - `extractArcFaceEmbeddingFromAligned(alignedRawRgb)` — Primary entry; accepts 112×112 raw RGB buffer
 - `extractArcFaceEmbedding(imageBuffer, bbox, w, h)` — Legacy bbox-based entry (deprecated)
 - `getArcFaceStatus()` — Check if ArcFace session is loaded
@@ -600,13 +600,15 @@ npm test
 
 ## Common Pitfalls
 
-1. **Both ONNX models required** — `det_500m.onnx` (SCRFD) and `w600k_mbf.onnx` (ArcFace) must both be present in `models/insightface/`. Run `npm run download-models` if either is missing. Both are committed to the repo.
+1. **Both ONNX models required** — `det_500m.onnx` (SCRFD) and `w600k_r50.onnx` (ArcFace R50, ~174 MB) must both be present in `models/insightface/`. Run `npm run download-models` if either is missing. `w600k_r50.onnx` is NOT committed to the repo due to size — download script fetches it from HuggingFace.
 
 2. **Model must load before scanning** — Scans are blocked if SCRFD or ArcFace fails to load. Check `model:status` before allowing `embed:batch`. Both models load in parallel via `preloadModel()`.
 
 3. **Dimension mismatch in embeddings** — All embeddings are **512-dim** (ArcFace). Deterministic fallback also produces 512-dim. Old cached embeddings from pre-v0.2.8 (1024-dim `@vladmandic/human`) are automatically invalidated by the SQLite schema migration.
 
 4. **SCRFD score pre-sigmoid** — The `det_500m.onnx` from buffalo_sc outputs raw logits (NOT pre-sigmoided). `scrfd.ts` applies `1 / (1 + exp(-x))` before thresholding. Do not remove this step.
+
+**ArcFace model**: `w600k_r50.onnx` (ResNet-50, buffalo_l, ~174 MB). Replaces `w600k_mbf.onnx` (MobileFaceNet, 13 MB) for significantly better accuracy on children's faces, small/blurry/low-light photos. Same input/output format — no pipeline changes required.
 
 5. **Alignment is critical for ArcFace accuracy** — ArcFace was trained on Umeyama-aligned 112×112 faces. Skipping alignment (passing raw bbox crops) significantly degrades embedding quality, especially for tilted or side-facing photos.
 

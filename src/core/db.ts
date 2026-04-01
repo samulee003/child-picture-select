@@ -40,7 +40,9 @@ export function getDb(): BetterSqlite3Database {
   //   v6: SCRFD now auto-rotates images before detection (EXIF rotation applied).
   //     Previous cached embeddings were computed in raw pixel space where
   //     orientation 5-8 faces were sideways, producing wrong/missing detections.
-  const CURRENT_CACHE_VERSION = 6;
+  //   v7: ArcFace model switched from w600k_mbf (MobileFaceNet) to w600k_r50 (ResNet-50).
+  //     Embeddings from mbf and r50 are not comparable; full cache invalidation required.
+  const CURRENT_CACHE_VERSION = 7;
   const user_version = db.pragma('user_version', { simple: true }) as number;
   if (user_version !== CURRENT_CACHE_VERSION) {
     logger.info(

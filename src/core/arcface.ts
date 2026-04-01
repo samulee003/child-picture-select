@@ -1,10 +1,12 @@
 /**
- * ArcFace 人臉識別模組（InsightFace w600k_mbf ONNX）
+ * ArcFace 人臉識別模組（InsightFace w600k_r50 ONNX）
  *
- * 使用 onnxruntime-node 在本地執行 InsightFace 的 ArcFace 模型（buffalo_sc pack）。
+ * 使用 onnxruntime-node 在本地執行 InsightFace 的 ArcFace 模型（buffalo_l pack）。
  * 輸出 512 維 L2 正規化特徵向量，對亞洲兒童臉部辨識準確率遠優於 FaceNet 128 維。
  *
- * 模型：w600k_mbf.onnx（MobileNet backbone, ArcFace loss, WebFace600K 訓練集）
+ * 模型：w600k_r50.onnx（ResNet-50 backbone, ArcFace loss, WebFace600K 訓練集）
+ *   相較舊版 w600k_mbf（MobileFaceNet），R50 backbone 對小臉、模糊、低光照場景
+ *   的辨識容忍度顯著提升，更適合兒童照片。模型大小約 174 MB。
  * 輸入：[1, 3, 112, 112] float32，BGR 通道順序，(pixel - 127.5) / 127.5 正規化
  * 輸出：[1, 512] float32，L2 正規化特徵向量
  *
@@ -26,8 +28,8 @@ const ARCFACE_SIZE = 112;
 const ARCFACE_MEAN = 127.5;
 const ARCFACE_STD = 127.5;
 
-/** InsightFace buffalo_sc 的 ArcFace recognition 模型檔名 */
-const MODEL_FILENAME = 'w600k_mbf.onnx';
+/** InsightFace buffalo_l 的 ArcFace recognition 模型檔名（ResNet-50 backbone） */
+const MODEL_FILENAME = 'w600k_r50.onnx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ort: any = null;
