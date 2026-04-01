@@ -8,6 +8,10 @@ interface NoMatchesSectionProps {
   onClearCache: () => void;
   onAddReference: () => void;
   onSwitchPending: () => void;
+  /** Highest similarity score seen across all scanned photos (0–1), or -1 if unknown */
+  lastMaxScore?: number;
+  /** Current threshold (0–1) */
+  currentThreshold?: number;
 }
 
 export function NoMatchesSection({
@@ -16,7 +20,15 @@ export function NoMatchesSection({
   onClearCache,
   onAddReference,
   onSwitchPending,
+  lastMaxScore = -1,
+  currentThreshold = 0.6,
 }: NoMatchesSectionProps) {
+  const hasScoreHint = lastMaxScore > 0;
+  const scorePct = Math.round(lastMaxScore * 100);
+  const thresholdPct = Math.round(currentThreshold * 100);
+  const gap = thresholdPct - scorePct;
+  // Suggest a threshold just below the best score seen (5% margin)
+  const suggestedThreshold = hasScoreHint ? Math.max(0, scorePct - 5) : null;
   const btnBase = {
     borderRadius: '9999px',
     padding: '12px 24px',
@@ -48,7 +60,17 @@ export function NoMatchesSection({
           color: '#595c5e',
           lineHeight: theme.typography.lineHeight.relaxed,
         }}>
-          請嘗試降低門檻值或增加參考照片數量
+          {hasScoreHint ? (
+            <>
+              最高相似度只有 <strong style={{ color: '#b45309' }}>{scorePct}%</strong>，
+              但門檻設在 <strong>{thresholdPct}%</strong>，差了 {gap} 個百分點。
+              {suggestedThreshold !== null && (
+                <> 建議把門檻調到約 <strong style={{ color: '#006a28' }}>{suggestedThreshold}%</strong> 再試。</>
+              )}
+            </>
+          ) : (
+            '請嘗試降低門檻值或增加參考照片數量'
+          )}
         </div>
         <div style={{
           marginTop: theme.spacing[5],

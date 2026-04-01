@@ -38,6 +38,7 @@ export interface ScanState {
   settings: AppSettings;
   appInfo: AppInfo | null;
   lastRunSummary: { scanned: number; matched: number; elapsedMs: number } | null;
+  lastMaxScore: number;
   scanWarnings: string[];
   isProcessing: boolean;
   hasLastRunConfig: boolean;
@@ -85,6 +86,7 @@ export function useScanState(): ScanState {
   const [threshold, setThreshold] = useState<number>(0.6);
   const [topN, setTopN] = useState<number>(50);
   const [results, setResults] = useState<MatchResult[]>([]);
+  const [lastMaxScore, setLastMaxScore] = useState<number>(-1);
   const [status, setStatus] = useState<string>('idle');
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -459,6 +461,7 @@ export function useScanState(): ScanState {
       const scannedCount = typeof scanData?.scanned === 'number' ? scanData.scanned : 0;
       setLastRunSummary({ scanned: scannedCount, matched: matched.length, elapsedMs });
       setResults(matched);
+      setLastMaxScore(matchResponse.maxScoreOverall ?? -1);
 
       // Fire-and-forget: persist scan session for history view
       const refFileList = refPaths
@@ -526,15 +529,23 @@ export function useScanState(): ScanState {
   }, [settings.lastFolder, settings.lastReferencePaths]);
 
   const lowerThresholdForRetry = useCallback((): boolean => {
-    const next = Math.max(0, parseFloat((threshold - 0.08).toFixed(2)));
-    if (Math.abs(next - threshold) < 1e-9) {
+    // If we know the best score from the last run, jump directly to just below it (5% margin).
+    // Otherwise fall back to subtracting 0.08 blindly.
+    let next: number;
+    if (lastMaxScore > 0 && lastMaxScore < threshold) {
+      next = Math.max(0, parseFloat((lastMaxScore - 0.05).toFixed(2)));
+    } else {
+      next = Math.max(0, parseFloat((threshold - 0.08).toFixed(2)));
+    }
+    if (Math.abs(next - threshold) < 1e-9 || next >= threshold) {
       setError('門檻已經是最低值，建議增加參考照片再重新掃描');
       return false;
     }
     setThreshold(next);
-    setError('我幫你把門檻值放寬一點，先用新結果複核低信心照片');
+    const pct = Math.round(next * 100);
+    setError(`門檻已調整至 ${pct}%，重新比對中…`);
     return true;
-  }, [threshold]);
+  }, [threshold, lastMaxScore]);
 
   const handleNoMatchLowerThresholdAndRerun = useCallback(() => {
     const changed = lowerThresholdForRetry();
@@ -640,6 +651,7 @@ export function useScanState(): ScanState {
     settings,
     appInfo,
     lastRunSummary,
+    lastMaxScore,
     scanWarnings,
     isProcessing,
     hasLastRunConfig,

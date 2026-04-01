@@ -16,6 +16,8 @@ export interface MatchRunResponse {
   results: MatchResult[];
   dimensionAdjustedCount: number;
   totalComparisons: number;
+  /** Highest similarity score across all photos, regardless of threshold. Used to suggest threshold adjustments. */
+  maxScoreOverall: number;
 }
 
 export interface ScanProgressFaceAnalysis {

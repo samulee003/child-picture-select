@@ -1356,6 +1356,8 @@ export function App() {
               onClearCache={scan.handleClearCacheAndRescan}
               onAddReference={scan.handleNoMatchAddReference}
               onSwitchPending={handleNoMatchSwitchPending}
+              lastMaxScore={scan.lastMaxScore}
+              currentThreshold={scan.threshold}
             />
           )}
         </div>

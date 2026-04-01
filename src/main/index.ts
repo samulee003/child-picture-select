@@ -1196,6 +1196,7 @@ function wireIpc() {
         results: results.slice(0, topN),
         dimensionAdjustedCount,
         totalComparisons: photoEmbeddings.size * referenceEmbeddings.length,
+        maxScoreOverall,
       };
     }
   );
